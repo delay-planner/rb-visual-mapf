@@ -1,9 +1,21 @@
 from pud.dependencies import *
 from pud.utils import set_global_seed, set_env_seed, AttrDict
+import yaml
+from dotmap import DotMap
+from pathlib import Path
+from torch.utils.tensorboard import SummaryWriter
 
-cfg_file = sys.argv[-1]
-cfg = AttrDict(**eval(open(cfg_file, 'r').read()))
-print(cfg)
+#cfg_file = sys.argv[-1]
+#cfg = AttrDict(**eval(open(cfg_file, 'r').read()))
+#print(cfg)
+
+cfg = {}
+with open(sys.argv[-1], 'r') as f:
+    cfg = yaml.safe_load(f)
+# for dot completion
+cfg = DotMap(cfg)
+cfg.pprint()
+
 set_global_seed(cfg.seed)
 
 from pud.envs.simple_navigation_env import env_load_fn
@@ -38,7 +50,21 @@ print(agent)
 from pud.buffer import ReplayBuffer
 replay_buffer = ReplayBuffer(obs_dim, goal_dim, action_dim, **cfg.replay_buffer)
 
-if False:
+## custom logging
+log_dir = Path(cfg.ckpt_dir)
+from datetime import datetime
+now = datetime.now() # current date and time
+date_time = now.strftime("%Y-%m-%d-%H-%M-%S")
+log_dir = log_dir.joinpath(date_time)
+ckpt_dir = log_dir.joinpath('ckpt')
+ckpt_dir.mkdir(parents=True, exist_ok=True)
+bk_dir = log_dir.joinpath("bk")
+bk_dir.mkdir(parents=True, exist_ok=True)
+with open(bk_dir.joinpath("bk_config.yaml"), 'w') as f:
+    yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
+tb = SummaryWriter(log_dir=log_dir.as_posix())
+
+if True:
     from pud.policies import GaussianPolicy
     policy = GaussianPolicy(agent)
 
@@ -49,10 +75,11 @@ if False:
                env,
                eval_env,
                eval_func=eval_pointenv_dists,
+               tensorboard_writer=tb,
                **cfg.runner,
               )
     torch.save(agent.state_dict(), os.path.join(cfg.ckpt_dir, 'agent.pth'))
-elif True:
+elif False:
     ckpt_file = os.path.join(cfg.ckpt_dir, 'agent.pth')
     agent.load_state_dict(torch.load(ckpt_file))
     agent.eval()

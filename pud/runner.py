@@ -1,6 +1,10 @@
 from pud.dependencies import *
 from pud.collector import Collector
 from pud.envs.simple_navigation_env import set_env_difficulty
+from tqdm.auto import tqdm
+from typing import Optional
+from torch.utils.tensorboard import SummaryWriter
+from dotmap import DotMap
 
 def train_eval(
     policy,
@@ -17,25 +21,42 @@ def train_eval(
     num_eval_episodes=10,
     opt_log_interval=100,
     eval_interval=10000,
+    tensorboard_writer:Optional[SummaryWriter]=None,
+    verbose=True,
 ):
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     collector.step(collector.initial_collect_steps)
-    for i in range(1, num_iterations + 1):
+    for i in tqdm(range(1, num_iterations + 1),total=num_iterations):
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
 
         if i % opt_log_interval == 0:
-            print(f'iteration = {i}, opt_info = {opt_info}')
+            if verbose:
+                print(f'iteration = {i}, opt_info = {opt_info}')
 
         if i % eval_interval == 0:
             agent.eval()
-            print(f'evaluating iteration = {i}')
-            eval_func(agent, eval_env)
-            print('-' * 10)
+            if verbose:
+                print(f'evaluating iteration = {i}')
+            eval_info = eval_func(agent, eval_env)
+            if verbose:
+                print('-' * 10)
 
+        if tensorboard_writer:
+            tensorboard_writer.add_scalar("Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i)
+            tensorboard_writer.add_scalar("Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i)
 
-def eval_pointenv_dists(agent, eval_env, num_evals=10, eval_distances=[2, 5, 10]):
+            if i % eval_interval == 0:
+                for d_ref in eval_info:
+                    # dotmap has interal attributes like "_ipython_display_"
+                    if isinstance(d_ref, str) and d_ref.startswith("_"):
+                        continue
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), np.mean(eval_info[d_ref]["pred_dist"]), global_step=i)
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), -np.mean(eval_info[d_ref]["returns"]), global_step=i)
+
+def eval_pointenv_dists(agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], verbose=True):
+    eval_info = DotMap()
     for dist in eval_distances:
         eval_env.set_sample_goal_args(prob_constraint=1, min_dist=dist, max_dist=dist) # NOTE: samples goal distances in [min_dist, max_dist] closed interval
         returns = Collector.eval_agent(agent, eval_env, num_evals)
@@ -48,11 +69,17 @@ def eval_pointenv_dists(agent, eval_env, num_evals=10, eval_distances=[2, 5, 10]
             states['goal'].append(state['goal'])
         pred_dist = list(agent.get_dist_to_goal(states))
 
-        print(f'\tset goal dist = {dist}')
-        print(f'\t\treturns = {returns}')
-        print(f'\t\tpredicted_dists = {pred_dist}')
-        print(f'\t\taverage return = {np.mean(returns)}')
-        print(f'\t\taverage predicted_dist = {np.mean(pred_dist):.1f} ({np.std(pred_dist):.2f})')
+        if verbose:
+            print(f'\tset goal dist = {dist}')
+            print(f'\t\treturns = {returns}')
+            print(f'\t\tpredicted_dists = {pred_dist}')
+            print(f'\t\taverage return = {np.mean(returns)}')
+            print(f'\t\taverage predicted_dist = {np.mean(pred_dist):.1f} ({np.std(pred_dist):.2f})')
+
+        eval_info[dist]["pred_dist"] = pred_dist
+        eval_info[dist]["returns"] = returns
+    return eval_info
+    
 
 
 def eval_search_policy(search_policy, eval_env, num_evals=10):
