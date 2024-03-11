@@ -18,7 +18,6 @@ def train_eval(
     opt_steps=1,
     batch_size_opt=64,
     eval_func=lambda agent, eval_env: None,
-    num_eval_episodes=10,
     opt_log_interval=100,
     eval_interval=10000,
     tensorboard_writer:Optional[SummaryWriter]=None,

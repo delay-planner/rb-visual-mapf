@@ -18,7 +18,6 @@ runner:
     collect_steps: 2
     eval_interval: 1000
     initial_collect_steps: 1000
-    num_eval_episodes: 10
     num_iterations: 30000
     opt_steps: 1
 seed: 0
