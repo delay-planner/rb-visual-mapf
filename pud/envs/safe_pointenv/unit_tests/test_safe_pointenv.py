@@ -7,8 +7,8 @@ from pathlib import Path
 class TestSafePointEnv(unittest.TestCase):
     def setUp(self):
         env_kwargs = {
-            #"walls": "CentralObstacle",
-            "walls": "FourRooms",
+            "walls": "CentralObstacle",
+            #"walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
         }

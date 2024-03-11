@@ -21,13 +21,20 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
         ax.fill_between(x, y0, y1, color='grey')
     
     # plot non-wall unsafe boxes
-    for (i, j) in zip(*np.where(cost_map > cost_limit)):
-        if walls[i,j] == 1: # skip walls
-            continue
-        x = np.array([j, j+1]) / float(width)
-        y0 = np.array([i, i]) / float(height)
-        y1 = np.array([i+1, i+1]) / float(height)
-        ax.fill_between(x, y0, y1, color='red', alpha=0.5)
+    #for (i, j) in zip(*np.where(cost_map > cost_limit)):
+    #    if walls[i,j] == 1: # skip walls
+    #        continue
+        # grid points are more accurate than grid boxes
+        #x = np.array([j, j+1]) / float(width)
+        #y0 = np.array([i, i]) / float(height)
+        #y1 = np.array([i+1, i+1]) / float(height)
+        #ax.fill_between(x, y0, y1, color='red', alpha=0.5)
+
+    # scattered points are more accurate as they are state-wise estimations
+    unsafe_points = np.where(cost_map > cost_limit)
+    unsafe_points = np.column_stack(unsafe_points)
+    ax.scatter(unsafe_points[:,1]/float(width), unsafe_points[:,0]/float(height), s=2, marker='o', c="red")
+
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
     ax.set_xticks([])
