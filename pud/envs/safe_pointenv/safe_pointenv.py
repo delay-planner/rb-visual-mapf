@@ -4,9 +4,14 @@ import networkx as nx
 from typing import List
 import matplotlib.pyplot as plt
 from typing import Optional
+import time
 
-def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_upper_bound:float, ax:plt.axes):
+def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:plt.axes):
+    """
+    step-wise cost limit visualization
+    """
     walls = walls.T
+    cost_map = cost_map.T
     (height, width) = walls.shape
     # only plot walls
     for (i, j) in zip(*np.where(walls)):
@@ -16,7 +21,7 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_upper_bound:floa
         ax.fill_between(x, y0, y1, color='grey')
     
     # plot non-wall unsafe boxes
-    for (i, j) in zip(*np.where(cost_map > cost_upper_bound)):
+    for (i, j) in zip(*np.where(cost_map > cost_limit)):
         if walls[i,j] == 1: # skip walls
             continue
         x = np.array([j, j+1]) / float(width)
@@ -30,11 +35,13 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_upper_bound:floa
     ax.set_aspect('equal', adjustable='box')
     return ax
 
-
 class SafePointEnv (PointEnv):
     """
-    Add cost metric to PointEnv
-    add cost to _asap
+    - ensure start states are always safe. 
+    - in each step, a cost is returned along with other info
+    - rapidly estimate upper and lower feasible trajectory cost
+
+    NOTE: to allow rapid estimation of trajectory cost, make sure there is zero-cost trajectory between each test start and goal states. Use plot_safe_walls method to visualize the zero step cost map. 
     """
     def __init__(self, 
                 walls:str=None, 
@@ -43,17 +50,22 @@ class SafePointEnv (PointEnv):
                 thin=False,
                 # cost configs
                 cost_f_args:dict={},
-                precompiled_cost_apsps:List[float]= [0, 0.1],
+                cost_limit:float=0.5,
+                verbose:bool = True,
                 ):
+        t0 = time.time()
         super(SafePointEnv, self).__init__(
             walls,
             resize_factor,
             action_noise,
             thin,)
-
+        if verbose:
+            print("[INFO] PointEnv setup: {} s".format(time.time() - t0))
+        
         self.resize_factor = resize_factor
         self.thin = thin
         self.wall_name = walls
+        self.cost_limit = cost_limit
         
         obstacle_x, obstacle_y = np.where(self._walls == 1)
         self.obstacles = np.stack([obstacle_x, obstacle_y], axis=-1).astype(float)
@@ -61,44 +73,62 @@ class SafePointEnv (PointEnv):
         self.cost_f_cfg = cost_f_args
         cost_fn_name = cost_f_args.get('name')
         self.cost_function = None
+
+        t0 = time.time()
         if cost_fn_name == 'cosine':
             from pud.envs.safe_pointenv.cost_functions import cost_from_cosine_distance
             import functools
             self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
 
-            # if it is fast, leave it here to avoid another config entry to load from file
+            # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
             self._cost_map = self.build_cost_map()
             self._safe_apsp = {}
-            for c_up in precompiled_cost_apsps:
-                self._safe_apsp[c_up] = self._compute_safe_apsp(self._walls, self._cost_map, cost_upper_bound=c_up)
+
+            # compute an conservative (upper-bound) apsp (step cost_limit = 0), this can be used to quickly estimate the distance between two states, and the cost of trajectory = 0
+            self._safe_apsp["ub"] = self._compute_safe_apsp(self._walls, self._cost_map, cost_limit=0.0)
+            # compute an lower-bound apsp, so the accurate accumulated cost fallws between the two
+            self._safe_apsp["lb"] = self._compute_safe_apsp(self._walls, self._cost_map, cost_limit=self.cost_limit)
+        self.safe_empty_states = self.gather_safe_empty_states(self.cost_limit)
+        self.reset()
+        print("[INFO] SafePointEnv setup: {} s".format(time.time() - t0))
 
     def get_map_width(self):
         return self._width
     
     def get_map_height(self):
         return self._height
+    
+    def set_cost_limit(self, cost_limit:float):
+        self.cost_limit = cost_limit
 
     def build_cost_map(self):
-        width = self.get_map_width()
-        height = self.get_map_height()
+        (height, width) = self._walls.shape
+        cost_map = np.ones([height, width], dtype=float) * np.inf
+        
+        for i in range(height):
+            for j in range(width):
+                min_d, _  = self.dist_2_blocks([i,j])
+                cost_map[i,j]= self.cost_function(min_d)
+        
+        # todo: there seems exist a bug below, but not sure where
+        # ! NOTE: stop writing fancy but buggy code!!
+        # ! seems wrongly flipped/transposed
+        # NOTE: the h,w order is (height, width) = self._walls.shape
+        #mesh_x, mesh_y = np.meshgrid(np.arange(height), np.arange(width))
+        #p_x = mesh_x.ravel()
+        #p_y = mesh_y.ravel()
+        #pnts = np.column_stack([p_x, p_y])
+        #pnts_cost = np.ones((len(p_x),), dtype=float) * np.inf
+        #for ii in range(len(pnts)):
+        #    pt = pnts[ii]
+        #    min_d, _  = self.dist_2_blocks(pt)
+        #    pt_cost= self.cost_function(min_d)
+        #    pnts_cost[ii] = pt_cost
+        #cost_map = pnts_cost.reshape(mesh_x.shape)
 
-        # todo: does the height and weight order matter here?
-        mesh_x, mesh_y = np.meshgrid(np.arange(height), np.arange(width))
-        p_x = mesh_x.ravel()
-        p_y = mesh_y.ravel()
-        pnts = np.transpose(np.vstack([p_x, p_y]))
-
-        pnts_cost = np.zeros((len(p_x),), dtype=float)
-
-        for ii, pt in enumerate(pnts):
-            min_d, _  = self.dist_2_blocks(pt)
-            pt_cost= self.cost_function(min_d)
-            pnts_cost[ii] = pt_cost
-
-        cost_map = pnts_cost.reshape(mesh_x.shape)
         return cost_map
     
-    def _compute_safe_apsp(self, walls:np.ndarray, cost_map:np.ndarray, cost_upper_bound:float):
+    def _compute_safe_apsp(self, walls:np.ndarray, cost_map:np.ndarray, cost_limit:float):
         """
         cost equivalent of _compute_asps
         take advantage of the knowledge that edges are bi-directional, so simply removing unsafe nodes/edges
@@ -127,9 +157,9 @@ class SafePointEnv (PointEnv):
                         if walls[i + di, j + dj] == 1:
                             continue  # Don't add edges to walls
                         ## filtering by cost map
-                        if cost_map[i,j] >= cost_upper_bound:
+                        if cost_map[i,j] >= cost_limit:
                             continue
-                        if cost_map[i + di,j + dj] >= cost_upper_bound:
+                        if cost_map[i + di,j + dj] >= cost_limit:
                             continue
                         g.add_edge((i, j), (i + di, j + dj))
 
@@ -140,37 +170,50 @@ class SafePointEnv (PointEnv):
                 dist[i1, j1, i2, j2] = d
         return dist
     
-    def _sample_safe_empty_state(self, max_attempts=100):
-        candidate_states = np.where(self._walls == 0)
+    def reset(self):
+        if (not hasattr(self, "cost_limit")) or (not hasattr(self, "_cost_map")):
+            print("[INFO] skipping the reset in PointEnv.__init__ because setup is not ready yet")
+            return
 
-        if hasattr(self, "_cost_constraints") and hasattr(self, "cost_map"):
-            new_candidate_states = [[],[]]
-            for cx, cy in zip(*candidate_states):
-                # only sample states whose costs are lower than an upper bound
-                if self.cost_map[cx, cy] < self._cost_constraints['max_cost']:
-                    new_candidate_states[0].append(cx)
-                    new_candidate_states[1].append(cy)
-            candidate_states = new_candidate_states
-            
-        num_candidate_states = len(candidate_states[0])
-        assert num_candidate_states > 0
-        state_index = np.random.choice(num_candidate_states)
+        # todo: perhaps suffer from label inbalance?
+        self.state = self._sample_safe_empty_state(cost_limit=self.cost_limit)
+        return self.state.copy()
 
-        # state extracted from grid coords, all intergers
-        state_int = np.array([candidate_states[0][state_index],
-                          candidate_states[1][state_index]],
-                         dtype=np.float32)
-        
-        for i in range(max_attempts):
-            state = state_int + np.random.uniform(size=2)
-            if hasattr(self, "_cost_constraints") and hasattr(self, "cost_map"):
-                state_cost = self.get_state_cost(state)
-                if state_cost >= self._cost_constraints["max_cost"]:
-                    continue
-            if not self._is_blocked(state):
-                return state
-        # if all failed, use state_int instead
-        return state_int
+    def gather_safe_empty_states(self, cost_limit:float):
+        """
+        due to the increased cost in reset, precompile a list of initial states here
+        """
+        empty_states = np.where(self._walls == 0)
+        safe_empty_states = [[],[]]
+
+        for cx, cy in zip(*empty_states):
+            # only sample states whose costs are lower than an upper bound
+            if self._cost_map[cx, cy] < cost_limit:
+            #if self.get_state_cost([cx, cy]) < cost_limit: # more reliable when cost map is buggy
+                safe_empty_states[0].append(cx)
+                safe_empty_states[1].append(cy)
+
+        safe_empty_states = np.column_stack(safe_empty_states) # N,d
+        return safe_empty_states
+    
+    def _sample_safe_empty_state(self, cost_limit:float):
+        """
+        must take intersection with the empty states because state cost is computed from the center of the block?
+        """
+        #if not hasattr(self, "safe_empty_states"):
+        #    print("[WARN] safe_empty_states are not pre-generated, compiling safe empty states")
+        #    self.safe_empty_states = self.gather_safe_empty_states(cost_limit)
+
+        num_candidate_states = len(self.safe_empty_states)
+
+        idx = np.random.randint(0, num_candidate_states)
+        new_state = self.safe_empty_states[idx].astype(np.float32)
+        #state += np.random.uniform(size=2)
+
+        # don't remove the checks below
+        assert not self._is_blocked(new_state)
+        assert self.get_state_cost(new_state) < self.cost_limit
+        return new_state
     
     def dist_2_blocks(self, xy:np.ndarray):
         """
@@ -215,3 +258,38 @@ class SafePointEnv (PointEnv):
     def get_state_cost(self, xy:np.ndarray):
         min_d, _ = self.dist_2_blocks(xy)
         return self.cost_function(min_d)
+    
+    def _get_safe_distance(self, obs, goal):
+        """Compute the shortest path distance.
+
+        Note: This distance is *not* used for training."""
+        (i1, j1) = self._discretize_state(obs)
+        (i2, j2) = self._discretize_state(goal)
+        return {
+            "ub": self._safe_apsp["ub"][i1, j1, i2, j2],
+            "lb": self._safe_apsp["lb"][i1, j1, i2, j2],
+        }
+    
+    def step(self, action):
+        if self._action_noise > 0:
+            action += np.random.normal(0, self._action_noise)
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        assert self.action_space.contains(action)
+        num_substeps = 10
+        dt = 1.0 / num_substeps
+        num_axis = len(action)
+        # NOTE: use the maximum cost along the action segment
+        cost = self.get_state_cost(self.state)
+        for _ in np.linspace(0, 1, num_substeps):
+            for axis in range(num_axis):
+                new_state = self.state.copy()
+                new_state[axis] += dt * action[axis]
+                new_cost = self.get_state_cost(new_state)
+                if cost < new_cost:
+                    cost = new_cost
+                if not self._is_blocked(new_state):
+                    self.state = new_state
+
+        done = False
+        rew = -1.0 * np.linalg.norm(self.state)
+        return self.state.copy(), rew, done, {"cost": cost}
