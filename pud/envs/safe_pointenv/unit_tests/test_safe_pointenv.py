@@ -1,5 +1,5 @@
 import unittest
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv, plot_safe_walls
+from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv, plot_safe_walls, plot_maze_grid_points
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -37,10 +37,20 @@ class TestSafePointEnv(unittest.TestCase):
             ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
             fig.savefig("pud/envs/safe_pointenv/unit_tests/outputs/{}_resize={:0>2d}_cost={:.2f}.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub), dpi=300)
             plt.close(fig)
+
+    def test_plot_safe_walls_w_grids(self):
+        output_dir = Path("pud/envs/safe_pointenv/unit_tests/outputs")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for cost_ub in [0, 1, 2]:
+            fig, ax = plt.subplots()
+            ax = plot_maze_grid_points(walls=self.p_env._walls, ax=ax)
+            ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
+            fig.savefig("pud/envs/safe_pointenv/unit_tests/outputs/{}_resize={:0>2d}_cost={:.2f}_w_grids.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub), dpi=300)
+            plt.close(fig)
         
     def test_reset(self):
         """
-        python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls
+        python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
         """
         for _ in range(100):
             new_state = self.p_env.reset()

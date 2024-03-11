@@ -27,12 +27,20 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
         x = np.array([j, j+1]) / float(width)
         y0 = np.array([i, i]) / float(height)
         y1 = np.array([i+1, i+1]) / float(height)
-        ax.fill_between(x, y0, y1, color='red')
+        ax.fill_between(x, y0, y1, color='red', alpha=0.5)
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_aspect('equal', adjustable='box')
+    return ax
+
+def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
+    walls = walls.T
+    (height, width) = walls.shape
+    empty_points = np.where(walls == 0)
+    empty_points = np.column_stack(empty_points)
+    ax.scatter(empty_points[:,1]/float(width), empty_points[:,0]/float(height), s=0.5, marker='o', c="green")
     return ax
 
 class SafePointEnv (PointEnv):
