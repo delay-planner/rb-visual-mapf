@@ -50,7 +50,7 @@ class TestSafePointEnv(unittest.TestCase):
         
     def test_reset(self):
         """
-        python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
+        python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_apsp
         """
         for _ in range(100):
             new_state = self.p_env.reset()
@@ -63,6 +63,25 @@ class TestSafePointEnv(unittest.TestCase):
         s0 = self.p_env.reset()
         at = self.p_env.action_space.sample()
         self.p_env.step(at)
+
+    def test_safe_apsp(self):
+        """
+        check the set of safe apsp, could be empty if done wrong (or with the wrong maze)
+        """
+        self.start_n_goal_candidates = {}
+        mask_finite = self.p_env._safe_apsp["ub"] < np.inf
+        mask_no_loop = self.p_env._safe_apsp["ub"] > 0
+        mask_cands = mask_finite * mask_no_loop
+        inds_cands = np.where(mask_cands)
+
+        finite_dists = np.where(mask_finite)
+        # check if the finite distances are all 0
+        self.assertTrue(len(np.unique(self.p_env._safe_apsp["ub"][finite_dists])) > 1) 
+
+        # check if there are more than 1 candiates
+        self.start_n_goal_candidates["ub"] = np.column_stack(inds_cands) # x1, y1, x2, y2
+
+        self.assertTrue(len(self.start_n_goal_candidates["ub"]) > 0)
 
 
 if __name__ == '__main__':
