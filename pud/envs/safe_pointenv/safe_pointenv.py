@@ -83,7 +83,7 @@ class SafePointEnv (PointEnv):
         self.cost_limit = cost_limit
         
         obstacle_x, obstacle_y = np.where(self._walls == 1)
-        self.obstacles = np.stack([obstacle_x, obstacle_y], axis=-1).astype(float)
+        self.obstacles = np.stack([obstacle_x, obstacle_y], axis=-1).astype(float) # Nx2
         
         self.cost_f_cfg = cost_f_args
         cost_fn_name = cost_f_args.get('name')
@@ -172,9 +172,9 @@ class SafePointEnv (PointEnv):
                         if walls[i + di, j + dj] == 1:
                             continue  # Don't add edges to walls
                         ## filtering by cost map
-                        if cost_map[i,j] >= cost_limit:
+                        if cost_map[i,j] > cost_limit:
                             continue
-                        if cost_map[i + di,j + dj] >= cost_limit:
+                        if cost_map[i + di,j + dj] > cost_limit:
                             continue
                         g.add_edge((i, j), (i + di, j + dj))
 
