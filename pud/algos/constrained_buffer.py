@@ -1,0 +1,52 @@
+import numpy as np
+import torch
+from pud.buffer import ReplayBuffer
+
+
+class ConstrainedReplayBuffer (ReplayBuffer):
+    def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
+        """maintain the 
+            - cost buffer  
+            - cost class indices 
+                - if distributional RL is used, which is a necessity to obtain good goal-conditioned cost critic 
+
+        Args:
+            obs_dim (_type_): _description_
+            goal_dim (_type_): _description_
+            action_dim (_type_): _description_
+            max_size (_type_, optional): _description_. Defaults to int(1e6).
+        """
+        super(ConstrainedReplayBuffer, self).__init__(obs_dim, goal_dim, action_dim, max_size)
+        self.cost = np.zeros((max_size, 1))
+
+    def add(self, state:dict, action:np.ndarray, next_state:dict, reward:float, cost:float, done:float, cost_ind:int=-1):
+        self.observation[self.ptr] = state['observation']
+        self.goal[self.ptr] = state['goal']
+        self.next_observation[self.ptr] = next_state['observation']
+        self.next_goal[self.ptr] = next_state['goal']
+        self.action[self.ptr] = action
+        self.reward[self.ptr] = reward
+        self.cost[self.ptr] = cost
+        self.done[self.ptr] = done
+
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
+
+    def sample(self, batch_size):
+        ind = np.random.randint(0, self.size, size=batch_size)
+
+        batch = (
+            dict(
+                observation=torch.FloatTensor(self.observation[ind]),
+                goal=torch.FloatTensor(self.goal[ind]), 
+            ),
+            dict(
+                observation=torch.FloatTensor(self.next_observation[ind]),
+                goal=torch.FloatTensor(self.next_goal[ind]), 
+            ),
+            torch.FloatTensor(self.action[ind]),
+            torch.FloatTensor(self.reward[ind]),
+            torch.FloatTensor(self.cost[ind]),
+            torch.FloatTensor(self.done[ind]),
+        )
+        return batch
