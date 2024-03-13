@@ -19,7 +19,7 @@ class ConstrainedReplayBuffer (ReplayBuffer):
         super(ConstrainedReplayBuffer, self).__init__(obs_dim, goal_dim, action_dim, max_size)
         self.cost = np.zeros((max_size, 1))
 
-    def add(self, state:dict, action:np.ndarray, next_state:dict, reward:float, cost:float, done:float, cost_ind:int=-1):
+    def add(self, state:dict, action:np.ndarray, next_state:dict, reward:float, cost:float, done:float):
         self.observation[self.ptr] = state['observation']
         self.goal[self.ptr] = state['goal']
         self.next_observation[self.ptr] = next_state['observation']
