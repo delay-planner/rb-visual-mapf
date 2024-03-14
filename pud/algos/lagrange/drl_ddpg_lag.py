@@ -122,15 +122,19 @@ class DRLDDPGLag(UVFDDPG):
         critic_loss_list = []
         for current_q, target_q in zip(current_q_list, target_q_list):
             # Compute distributional td targets
-            import IPython
-            IPython.embed(colors='Linux')
-            target_q_probs = F.softmax(target_q, dim=1)
-            batch_size = target_q_probs.shape[0]
-            one_hot = torch.zeros(batch_size, self.num_bins)
-            one_hot[:, 0] = 1
+            new_target_probs = None
+            with torch.no_grad():
+                target_q_probs = F.softmax(target_q, dim=1)
+                batch_size = target_q_probs.shape[0]
 
-
-        new_supports = cost + ((1 - done) * self.discount * self.F_categorical.zs) # batch_size, num_classes
+                zs = self.F_categorical.zs.tile([batch_size, 1])
+                new_zs = cost + ((1 - done) * self.discount * zs) # batch_size, num_classes
+                new_target_probs = self.F_categorical.forward(probs=target_q_probs, new_zs=new_zs)
+            # cross entry loss: $$-\sum_{i}m_{i}\log p_{i}\left(x_{t},a_{t}\right)$$
+            critic_loss = torch.mean(-torch.sum(new_target_probs * torch.log_softmax(current_q, dim=1), dim=1)) # 
+            critic_loss_list.append(critic_loss)
+        critic_loss = torch.mean(torch.stack(critic_loss_list))
+        return critic_loss
 
     def get_cost_q_values(self, 
                     state: Union[torch.Tensor, Dict[str, torch.Tensor]], 

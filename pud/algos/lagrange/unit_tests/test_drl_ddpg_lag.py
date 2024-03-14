@@ -90,7 +90,20 @@ class TestDRLDDPGLag(unittest.TestCase):
             )
 
     def test_cost_loss(self):
-        self.policy.optimize(replay_buffer=self.buffer, iterations=1, batch_size=250)
+        """only test if the cost loss runs OK, but not the math"""
+        for _ in range(10):
+
+            # Each of these are batches 
+            state, next_state, action, reward, cost, done =     self.buffer.sample_w_cost(20)
+            
+            current_q = self.policy.cost_critic(state, action)
+            target_q = self.policy.cost_critic_target(next_state, self.policy.actor_target(next_state))
+            loss = self.policy.cost_critic_loss(
+                    current_q=current_q,
+                    target_q=target_q,
+                    cost=cost,
+                    done=done,
+                    )
 
 if __name__ == '__main__':
     unittest.main()
