@@ -5,8 +5,7 @@ Evaluate the accuracy and reliability of reward and cost critics
 import numpy as np
 import time
 from typing import Optional, List, Union, Dict
-
-from pud.algos.ddpg_lag.constrained_collector import ConstrainedCollector as Collector
+from pud.algos.constrained_collector import ConstrainedCollector as Collector
 
 def regroup_value_lists(
         val_list:np.ndarray, 
