@@ -51,6 +51,11 @@ class ConstrainedCollector (Collector):
 
 
     def step(self, num_steps, discretize_cost=False):
+        """step num_steps in the env. 
+        ! the env is not reset before stepping, the env is kept alive after exiting this method 
+        todo: update internal tracking of cost as step does not guarantee a full episode
+        todo: check how the DDPG-Lag handles the cost
+        """
         # init rollout stats
         eps_rewards = []
         eps_costs = []
