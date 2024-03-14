@@ -32,7 +32,8 @@ class ConstrainedReplayBuffer (ReplayBuffer):
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
 
-    def sample(self, batch_size):
+    def sample_w_cost(self, batch_size):
+        """a separate method to sample with cost, leave the original sample method for compat reason"""
         ind = np.random.randint(0, self.size, size=batch_size)
 
         batch = (
