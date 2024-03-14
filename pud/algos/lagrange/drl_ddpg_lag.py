@@ -92,6 +92,7 @@ class DRLDDPGLag(UVFDDPG):
             iterations=iterations,
             batch_size=batch_size,
             )
+        opt_info["cost_critic_loss"] = []
         for _ in range(iterations):
             self.optimize_iterations += 1
 
@@ -101,6 +102,17 @@ class DRLDDPGLag(UVFDDPG):
             current_q = self.cost_critic(state, action)
             target_q = self.cost_critic_target(next_state, self.actor_target(next_state))
             critic_loss = self.cost_critic_loss(current_q, target_q, cost, done)
+
+            # Optimize the critic
+            self.cost_critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.cost_critic_optimizer.step()
+            opt_info['cost_critic_loss'].append(critic_loss.cpu().detach().numpy())
+
+            # Update the frozen target models
+            if self.optimize_iterations % self.targets_update_interval == 0:
+                self.update_cost_critic_target()
+        return opt_info
 
 
     def cost_critic_loss(self, 

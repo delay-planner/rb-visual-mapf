@@ -6,7 +6,7 @@ from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import (GoalConditionedActor, GoalConditionedCritic)
 
 """
-python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py TestDRLDDPGLag.test_get_cost_to_goal
+python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py TestDRLDDPGLag.test_optimize
 """
 
 class TestDRLDDPGLag(unittest.TestCase):
@@ -116,6 +116,9 @@ class TestDRLDDPGLag(unittest.TestCase):
         self.policy.get_cost_to_goal( 
                     state=state, 
                     aggregate='mean')
+        
+    def test_optimize(self):
+        self.policy.optimize(replay_buffer=self.buffer, iterations=1, batch_size=20)
 
 if __name__ == '__main__':
     unittest.main()
