@@ -4,6 +4,7 @@ from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from copy import deepcopy
 
 """
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_env_load_fn
@@ -34,9 +35,10 @@ class TestSafePointEnv(unittest.TestCase):
         """"test env loader with wrappers
         TimeLimit is loaded by default if max_episode_steps>0
         """
+        env_args = deepcopy(self.env_kwargs)
+        env_args.update(self.precompilation_kwargs)
         gym_env_wrappers = [SafeGoalConditionedPointWrapper]
-        env = safe_env_load_fn(self.env_kwargs,
-                        self.precompilation_kwargs,
+        env = safe_env_load_fn(env_args,
                         self.cost_f_kwargs,
                         max_episode_steps=20,
                         gym_env_wrappers=gym_env_wrappers,

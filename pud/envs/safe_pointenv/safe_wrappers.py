@@ -174,7 +174,6 @@ class SafeTimeLimit (TimeLimit):
         return observation, info
 
 def safe_env_load_fn(env_kwargs:dict,
-                precompilation_kwargs:dict,
                 cost_f_kwargs:dict,
                 max_episode_steps=None,
                 gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
@@ -197,7 +196,6 @@ def safe_env_load_fn(env_kwargs:dict,
     """
     env = SafePointEnv(
                     **env_kwargs, 
-                    **precompilation_kwargs,
                     cost_f_args=cost_f_kwargs
                 )
 
