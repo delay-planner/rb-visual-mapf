@@ -1,4 +1,5 @@
-from pud.envs.simple_navigation_env import PointEnv
+from pud.envs.simple_navigation_env import PointEnv, GoalConditionedPointWrapper
+from pud.envs.wrappers import TimeLimit
 import numpy as np
 import networkx as nx
 from typing import List
@@ -192,7 +193,9 @@ class SafePointEnv (PointEnv):
 
         # todo: perhaps suffer from label inbalance?
         self.state = self._sample_safe_empty_state(cost_limit=self.cost_limit)
-        return self.state.copy()
+        new_state_cost = self.get_state_cost(xy=self.state)
+        info = {"cost": new_state_cost}
+        return self.state.copy(), info
 
     def gather_safe_empty_states(self, cost_limit:float):
         """

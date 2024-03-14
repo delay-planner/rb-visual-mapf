@@ -1,29 +1,55 @@
 import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv, plot_safe_walls, plot_maze_grid_points
+from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+"""
+python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_env_load_fn
+"""
+
 class TestSafePointEnv(unittest.TestCase):
     def setUp(self):
-        env_kwargs = {
+        self.env_kwargs = {
             "walls": "CentralObstacle",
             #"walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
         }
-        cost_f_kwargs = {
+        self.cost_f_kwargs = {
             "name": "cosine",
             "radius": 2.,
         }
-        precompilation_kwargs = {
+        self.precompilation_kwargs = {
             "cost_limit": 1,
         }
 
         self.p_env = SafePointEnv(
-                    **env_kwargs, 
-                    **precompilation_kwargs,
-                    cost_f_args=cost_f_kwargs)
+                    **self.env_kwargs, 
+                    **self.precompilation_kwargs,
+                    cost_f_args=self.cost_f_kwargs)
+
+    def test_safe_env_load_fn(self):
+        """"test env loader with wrappers
+        TimeLimit is loaded by default if max_episode_steps>0
+        """
+        gym_env_wrappers = [SafeGoalConditionedPointWrapper]
+        env = safe_env_load_fn(self.env_kwargs,
+                        self.precompilation_kwargs,
+                        self.cost_f_kwargs,
+                        max_episode_steps=20,
+                        gym_env_wrappers=gym_env_wrappers,
+                        terminate_on_timeout=False,
+                        )
+
+        new_state, info = env.reset()
+        self.assertTrue("cost" in info)
+
+        for _ in range(40):
+            at = env.action_space.sample()
+            next_state, rew, done, info = env.step(at)
+            self.assertTrue("cost" in info)
 
     def test_safe_apsp(self):
         self.assertFalse(np.allclose(self.p_env._safe_apsp["ub"], self.p_env._apsp))        
@@ -49,18 +75,15 @@ class TestSafePointEnv(unittest.TestCase):
             plt.close(fig)
         
     def test_reset(self):
-        """
-        python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_apsp
-        """
         for _ in range(100):
-            new_state = self.p_env.reset()
+            new_state, info = self.p_env.reset()
             sample_cost = self.p_env.get_state_cost(new_state)
             cx, cy = new_state
             self.assertTrue(sample_cost < self.p_env.cost_limit, msg="sample={}, sample cost= {}, cost map = {}, cost limit={}".format(new_state, sample_cost, self.p_env._cost_map[int(cx), int(cy)], self.p_env.cost_limit))
             self.assertTrue(not self.p_env._is_blocked(new_state))
 
     def test_step(self):
-        s0 = self.p_env.reset()
+        s0, info = self.p_env.reset()
         at = self.p_env.action_space.sample()
         self.p_env.step(at)
 

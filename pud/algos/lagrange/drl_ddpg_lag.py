@@ -19,6 +19,9 @@ class DRLDDPGLag(UVFDDPG):
     Aim to have a clean separation from unconstrained and constrained, have costs in separate loops, even at the cost of efficiency
 
     todo: missing Lagrange update
+        - in external loop
+        - get Jc from the collector
+        - needs to add Lagrange multiplier to the actor loss
     """
     def __init__(self, 
             # DDPG args

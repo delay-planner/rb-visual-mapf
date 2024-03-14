@@ -1,8 +1,10 @@
 import gym
 import numpy as np
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
+from pud.envs.wrappers import TimeLimit
 from dotmap import DotMap
 from typing import Union
+
 
 class SafeGoalConditionedPointWrapper(gym.Wrapper):
     """Wrapper that appends goal to observation produced by environment.
@@ -115,10 +117,14 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         obs = out["s0"]
         self.state = obs.copy()
         cost = self.env.get_state_cost(self._goal)
-        return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal), 
-                "cost": cost,
-                }
+
+        new_state = {
+            'observation': self._normalize_obs(obs),
+            'goal': self._normalize_obs(self._goal), 
+            }
+        info = {"cost": cost}
+
+        return new_state, info
 
     def step(self, action):
         obs, _, _, info = self.env.step(action)
@@ -146,8 +152,59 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
     def _is_done(self, obs, goal):
         """Determines whether observation equals goal."""
         return np.linalg.norm(obs - goal) < self._threshold_distance
-
+    
     @property
     def max_goal_dist(self):
         apsp = self.env._safe_apsp["ub"]
         return np.max(apsp[np.isfinite(apsp)])
+
+class SafeTimeLimit (TimeLimit):
+    def __init__(self, env, duration, terminate_on_timeout=False):
+        super(SafeTimeLimit, self).__init__(
+            env=env, 
+            duration=duration, 
+            terminate_on_timeout=terminate_on_timeout,
+            )
+
+    def reset(self):
+        """reset adds a info dict"""
+        self.step_count = 0
+        observation, info = self.env.reset()
+        observation['first_step'] = True
+        return observation, info
+
+def safe_env_load_fn(env_kwargs:dict,
+                precompilation_kwargs:dict,
+                cost_f_kwargs:dict,
+                max_episode_steps=None,
+                gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
+                terminate_on_timeout=False,
+                ):
+    """Loads the selected environment and wraps it with the specified wrappers.
+
+    Args:
+      environment_name: Name for the environment to load.
+      max_episode_steps: If None the max_episode_steps will be set to the default
+        step limit defined in the environment's spec. No limit is applied if set
+        to 0 or if there is no timestep_limit set in the environment's spec.
+      gym_env_wrappers: Iterable with references to wrapper classes to use
+        directly on the gym environment.
+      terminate_on_timeout: Whether to set done = True when the max episode
+        steps is reached.
+
+    Returns:
+      An environment instance.
+    """
+    env = SafePointEnv(
+                    **env_kwargs, 
+                    **precompilation_kwargs,
+                    cost_f_args=cost_f_kwargs
+                )
+
+    for wrapper in gym_env_wrappers:
+        env = wrapper(env)
+
+    if max_episode_steps > 0:
+        env = SafeTimeLimit(env, max_episode_steps, terminate_on_timeout=terminate_on_timeout)
+
+    return env
