@@ -17,6 +17,8 @@ class DRLDDPGLag(UVFDDPG):
     """
     Base Distributional DDPG, removing unnecessary compat to non-distributional RL code
     Aim to have a clean separation from unconstrained and constrained, have costs in separate loops, even at the cost of efficiency
+
+    todo: missing Lagrange update
     """
     def __init__(self, 
             # DDPG args
@@ -195,13 +197,9 @@ class DRLDDPGLag(UVFDDPG):
     def get_pairwise_cost(self, obs_vec, goal_vec=None, aggregate='mean', max_search_steps=7, masked=False):
         pass
 
-    def optimize_cost_critic(self, buffer:ConstrainedReplayBuffer, batch_size:int=128, opt_info:Dict[str, List[float]]={}):
-        pass
-
     def state_dict(self):
         out = super.state_dict()
         # add cost info
-
 
     def load_state_dict(self, state_dict:dict):
         unconstrained_keys = []
