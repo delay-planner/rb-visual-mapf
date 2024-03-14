@@ -32,13 +32,7 @@ class DRLDDPGLag(UVFDDPG):
             actor_update_interval=1,
             targets_update_interval=1,
             tau=0.005,
-            ActorCls=GoalConditionedActor, 
             CriticCls=GoalConditionedCritic,
-
-            # lr configs
-            actor_lr:float=3e-4,
-            critic_lr:float=3e-4,
-            device:str='cpu',
 
             # UVFDDPG args
             num_bins=20,
