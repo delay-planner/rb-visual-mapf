@@ -136,15 +136,49 @@ class DRLDDPGLag(UVFDDPG):
         critic_loss = torch.mean(torch.stack(critic_loss_list))
         return critic_loss
 
+    def _get_cost_q_values(self, state):
+        actions = self.actor(state)
+        q_values = self.cost_critic(state, actions)
+        return q_values
+
     def get_cost_q_values(self, 
                     state: Union[torch.Tensor, Dict[str, torch.Tensor]], 
-                    actions:Union[None, torch.Tensor], 
                     aggregate='mean'):
         """"""
-        pass
+        q_values = self._get_cost_q_values(state)
+        q_values_list = []
+        if not isinstance(q_values, list):
+            q_values_list = [q_values]
+        else:
+            q_values_list = q_values
+        
+        expected_q_values_list = []
+        for q_values in q_values_list:
+            q_probs = F.softmax(q_values, dim=1)
+            batch_size = q_probs.shape[0]
+            zs = self.F_categorical.zs.tile([batch_size, 1])
+            # Take the inner product between these two tensors
+            expected_q_values = torch.sum(q_probs * zs, dim=1, keepdim=True)
+            expected_q_values_list.append(expected_q_values)
+
+        expected_q_values = torch.stack(expected_q_values_list)
+        if aggregate is not None:
+            if aggregate == 'mean':
+                expected_q_values = torch.mean(expected_q_values, dim=0)
+            elif aggregate == 'min':
+                expected_q_values, _ = torch.min(expected_q_values, dim=0)
+            else:
+                raise ValueError
+        return expected_q_values
 
     def get_cost_to_goal(self, state, **kwargs):
-        pass
+        with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation']),
+                goal=torch.FloatTensor(state['goal']),
+            )
+            q_values = self.get_cost_q_values(state, **kwargs)
+            return q_values.cpu().detach().numpy().squeeze(-1)
 
     def get_pairwise_cost(self, obs_vec, goal_vec=None, aggregate='mean', max_search_steps=7, masked=False):
         pass

@@ -6,7 +6,7 @@ from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import (GoalConditionedActor, GoalConditionedCritic)
 
 """
-python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py
+python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py TestDRLDDPGLag.test_get_cost_to_goal
 """
 
 class TestDRLDDPGLag(unittest.TestCase):
@@ -89,7 +89,7 @@ class TestDRLDDPGLag(unittest.TestCase):
                 done= done,
             )
 
-    def test_cost_loss(self):
+    def test_cost_critic_loss(self):
         """only test if the cost loss runs OK, but not the math"""
         for _ in range(10):
 
@@ -104,6 +104,18 @@ class TestDRLDDPGLag(unittest.TestCase):
                     cost=cost,
                     done=done,
                     )
+
+    def test_get_cost_q_values(self):
+        state, next_state, action, reward, cost, done = self.buffer.sample_w_cost(20)
+        self.policy.get_cost_q_values( 
+                    state=state, 
+                    aggregate='mean')
+        
+    def test_get_cost_to_goal(self):
+        state, next_state, action, reward, cost, done = self.buffer.sample_w_cost(20)
+        self.policy.get_cost_to_goal( 
+                    state=state, 
+                    aggregate='mean')
 
 if __name__ == '__main__':
     unittest.main()
