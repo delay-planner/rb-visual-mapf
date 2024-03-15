@@ -97,34 +97,67 @@ class DRLDDPGLag(UVFDDPG):
         for param, target_param in zip(self.cost_critic.parameters(), self.cost_critic_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-    def optimize(self, replay_buffer:ConstrainedReplayBuffer, iterations=1, batch_size=128):
-        opt_info = super().optimize(
-            replay_buffer=replay_buffer,
-            iterations=iterations,
-            batch_size=batch_size,
-            )
-        opt_info["cost_critic_loss"] = []
+    def optimize(
+            self, 
+            replay_buffer:ConstrainedReplayBuffer, 
+            iterations=1, 
+            batch_size=128, 
+            ):
+        """override the default optimize to include the Lagrange optimize and have an unified self.optimize_iterations count"""
+        opt_info = dict(actor_loss=[], critic_loss=[], cost_critic_loss=[])
         for _ in range(iterations):
             self.optimize_iterations += 1
 
             # Each of these are batches 
-            state, next_state, action, reward, cost, done =     replay_buffer.sample_w_cost(batch_size)
-            
-            current_q = self.cost_critic(state, action)
-            target_q = self.cost_critic_target(next_state, self.actor_target(next_state))
-            critic_loss = self.cost_critic_loss(current_q, target_q, cost, done)
+            state, next_state, action, reward, cost, done = replay_buffer.sample_w_cost(batch_size)
+
+            current_q = self.critic(state, action)
+            target_q = self.critic_target(next_state, self.actor_target(next_state))
+            critic_loss = self.critic_loss(current_q, target_q, reward, done)
 
             # Optimize the critic
-            self.cost_critic_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
             critic_loss.backward()
+            self.critic_optimizer.step()
+            opt_info['critic_loss'].append(critic_loss.cpu().detach().numpy())
+
+            # for cost critic
+            cost_current_q = self.cost_critic(state, action)
+            cost_target_q = self.cost_critic_target(next_state, self.actor_target(next_state))
+            cost_critic_loss = self.cost_critic_loss(cost_current_q, cost_target_q, cost, done)
+            self.cost_critic_optimizer.zero_grad()
+            cost_critic_loss.backward()
             self.cost_critic_optimizer.step()
-            opt_info['cost_critic_loss'].append(critic_loss.cpu().detach().numpy())
+            opt_info['cost_critic_loss'].append(cost_critic_loss.cpu().detach().numpy())
+
+            if self.optimize_iterations % self.actor_update_interval == 0:
+                # Compute actor loss
+                actor_loss_r = -self.get_q_values(state)
+                actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
+                actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
+
+                # Optimize the actor 
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+                opt_info['actor_loss'].append(actor_loss.cpu().detach().numpy())
 
             # Update the frozen target models
             if self.optimize_iterations % self.targets_update_interval == 0:
+                self.update_actor_target()
+                self.update_critic_target()
                 self.update_cost_critic_target()
+
         return opt_info
 
+    def optimize_lagrange(self, ep_cost:float):
+        """wrapper of lagrange update, lagrange is updated separately as there are different options:
+        1. update lagrange when new episode finishes
+        2. update lagrange along with the main optimize call regardless new episode has finished
+        NOTE: the omnisafe ddpg updates lagrange multiplier regardless a new episode has finished
+        """
+        self.lagrange.update_lagrange_multiplier(ep_cost)
+        return self.lagrange.lagrangian_multiplier.item()
 
     def cost_critic_loss(self, 
             current_q:Union[torch.Tensor, List[torch.Tensor]], 
