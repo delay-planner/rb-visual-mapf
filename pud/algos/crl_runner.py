@@ -6,13 +6,16 @@ import time
 from typing import Dict, List, Optional, Union
 
 import numpy as np
+from termcolor import cprint
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
-from pud.policies import GaussianPolicy
-from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.algos.constrained_collector import ConstrainedCollector as Collector
+
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
+from pud.algos.constrained_collector import ConstrainedCollector as Collector
+from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
+from pud.envs.safe_pointenv.safe_wrappers import \
+    SafeGoalConditionedPointWrapper
+from pud.policies import GaussianPolicy
 
 
 def train_eval(
@@ -23,7 +26,7 @@ def train_eval(
     eval_env,
     num_iterations=int(1e6),
     initial_collect_steps=1000,
-    collect_steps=1,
+    collect_steps=2,
     opt_steps=1,
     batch_size_opt=64,
     eval_func=None, # make this a partial func
@@ -32,17 +35,32 @@ def train_eval(
     eval_distances=[2, 5, 10], # reference grouping based on estimated distances
     eval_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
     tensorboard_writer:Optional[SummaryWriter]=None,
+    warmup_epochs:int =100,
+    num_eval_episodes:int=10,
     verbose=True,
     ):
     """train constrained RL agent"""
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
+    
+    num_eps = collector.num_eps
+    ep_cost = 0.0
     collector.step(collector.initial_collect_steps)
+    
     for i in tqdm(range(1, num_iterations + 1),total=num_iterations):
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
 
-        # todo: update Lagrange multiplier
+        if collector.num_eps > num_eps:
+            ep_cost = collector.past_eps[-1]["ep_cost"]
+            ep_len = collector.past_eps[-1]["ep_len"]
+            if verbose:
+                cprint("[INFO] eps Jc='{:.2f}', eps length={}".format(ep_cost, ep_len), "green")
+            num_eps = collector.num_eps
+
+            if i > warmup_epochs:
+                agent.optimize_lagrange(ep_cost=ep_cost)
+
 
         if i % opt_log_interval == 0:
             if verbose:
@@ -60,6 +78,7 @@ def train_eval(
                 agent=agent, 
                 eval_env=eval_env,
                 eval_distances=eval_distances,
+                num_evals=num_eval_episodes,
                 sample_args=sample_args,
                 cost_intervals=eval_cost_intervals,
                 )
@@ -69,14 +88,30 @@ def train_eval(
         if tensorboard_writer:
             tensorboard_writer.add_scalar("Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i)
             tensorboard_writer.add_scalar("Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i)
+            tensorboard_writer.add_scalar("Opt/cost_critic_loss", np.mean(opt_info["cost_critic_loss"]), global_step=i)
+            tensorboard_writer.add_scalar("Opt/Lagrange_Multiplier", agent.lagrange.lagrangian_multiplier.item(), global_step=i)
 
             if i % eval_interval == 0:
-                for d_ref in eval_info:
-                    # dotmap has interal attributes like "_ipython_display_"
-                    if isinstance(d_ref, str) and d_ref.startswith("_"):
-                        continue
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), np.mean(eval_info[d_ref]["pred_dist"]), global_step=i)
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), -np.mean(eval_info[d_ref]["returns"]), global_step=i)
+                for d_ref in eval_info["rewards"]:
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/d_pred".format(d_ref), eval_info["rewards"][d_ref]["d_pred"], global_step=i)
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/d_from_rewards".format(d_ref), -eval_info["rewards"][d_ref]["d_from_rewards"], global_step=i)
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/std_d_pred".format(d_ref), eval_info["rewards"][d_ref]["std_d_pred"], global_step=i)
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/std_d_from_rewards".format(d_ref), -eval_info["rewards"][d_ref]["std_d_from_rewards"], global_step=i)
+
+                for cost_div in eval_info["grouped_costs"]:
+                    if len(eval_info["grouped_costs"][cost_div]["true"]) > 0:
+                        tensorboard_writer.add_scalar('Costs_{}/pred'.format(cost_div), 
+                            np.mean(eval_info["grouped_costs"][cost_div]["pred"]), 
+                            i)
+                        tensorboard_writer.add_scalar('Costs_{}/std_pred'.format(cost_div), 
+                            np.std(eval_info["grouped_costs"][cost_div]["pred"]), 
+                            i)
+                        tensorboard_writer.add_scalar('Costs_{}/true'.format(cost_div), 
+                            np.mean(eval_info["grouped_costs"][cost_div]["true"]), 
+                            i)
+                        tensorboard_writer.add_scalar('Costs_{}/std_true'.format(cost_div), 
+                            np.std(eval_info["grouped_costs"][cost_div]["true"]), 
+                            i)
 
 
 def eval_pointenv_cost_constrained_dists(agent, 

@@ -35,4 +35,6 @@ runner:
     num_eval_episodes: 10
     num_iterations: 30000
     opt_steps: 1
+    warmup_epochs: 1000
+    eval_cost_intervals: [0., 0.2, 0.5, 1.0]
 seed: 0
