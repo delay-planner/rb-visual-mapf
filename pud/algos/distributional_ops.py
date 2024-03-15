@@ -4,7 +4,7 @@ Implementation of distributional operators with bug fix
 from typing import Union, List
 import torch
 
-class CategoricalActivation(torch.nn.Module):
+class CategoricalActivation:
     def __init__(self, vmin, vmax, N):
         self.vmin = vmin
         self.vmax = vmax
