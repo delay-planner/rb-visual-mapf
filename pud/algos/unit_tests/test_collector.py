@@ -5,6 +5,11 @@ from pud.algos.constrained_collector import ConstrainedCollector
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.policies import GaussianPolicy
 from pud.ddpg import GoalConditionedCritic
+from termcolor import cprint
+
+"""
+python pud/algos/unit_tests/test_collector.py TestConstrainedCollector.test_simple_optimize
+"""
 
 class TestConstrainedCollector(unittest.TestCase):
     def setUp(self):
@@ -76,7 +81,25 @@ class TestConstrainedCollector(unittest.TestCase):
     def test_step(self):
         self.collector.step(1000)
         self.assertTrue(self.collector.num_eps > 0)
-        
+
+    def test_simple_optimize(self):
+        """test simple train loop without Lagrange"""
+        num_iterations = 10
+        collect_steps = 2
+
+        num_eps = self.collector.num_eps
+        ep_cost = 0
+        for i in range(1, num_iterations + 1):
+            self.collector.step(collect_steps)
+            self.agent.train()
+            opt_info = self.agent.optimize(self.buffer, iterations=1, batch_size=64)
+            cprint(opt_info, "yellow")
+
+            if self.collector.num_eps > num_eps:
+                ep_cost = self.collector.past_eps[-1]["ep_cost"]
+                ep_len = self.collector.past_eps[-1]["ep_len"]
+                cprint("[INFO] eps Jc='{:.2f}', eps length={}".format(ep_cost, ep_len), "green")
+                num_eps = self.collector.num_eps
 
 if __name__ == '__main__':
     unittest.main()

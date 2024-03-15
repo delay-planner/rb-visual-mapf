@@ -35,7 +35,6 @@ def train_eval(
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     collector.step(collector.initial_collect_steps)
     for i in tqdm(range(1, num_iterations + 1),total=num_iterations):
-        # todo: collect one episode? one step? need to get the cumulative cost
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
@@ -125,3 +124,33 @@ def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_dis
         eval_stats["grouped_costs"][lb_cost]["pred"] = eval_stats["costs"]["pred"][cur_mask]
 
     return eval_stats
+
+
+
+def regroup_value_lists(
+        val_list:np.ndarray, 
+        div_intervals:Union[np.ndarray, List[float]]
+        ) -> Dict[float, np.ndarray]:
+    """
+    returns binary masks for each group
+
+    split a list of values into different classes for easy visualization
+    
+    grouping rule: class <= input < class_next goes to class
+    for the last classes, input > class_end
+    """
+    rearranged_outs = {}
+
+    for div_i in range(len(div_intervals)):
+        div_start = div_intervals[div_i]
+        if div_i == len(div_intervals)-1:
+            cur_div_mask = val_list >= div_start
+        else:
+            div_end = div_intervals[div_i+1]
+
+            mas_cond1 = div_start<=val_list
+            mas_cond2 = val_list<div_end
+            cur_div_mask = mas_cond1 * mas_cond2
+
+        rearranged_outs[div_start] = cur_div_mask
+    return rearranged_outs
