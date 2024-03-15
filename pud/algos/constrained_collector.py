@@ -1,8 +1,9 @@
+from __future__ import annotations
 import numpy as np
 from pud.collector import Collector
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from typing import Union, Optional, List
-
+from pud.policies import GaussianPolicy
 
 def calc_cost_class_inds(cost:Union[float, List[float], np.ndarray], cost_classes:np.ndarray) -> Union[int, np.ndarray]:
     """class-independent method to discretize the float cost into classes
@@ -30,44 +31,55 @@ def calc_cost_class_inds(cost:Union[float, List[float], np.ndarray], cost_classe
 class ConstrainedCollector (Collector):
     def __init__(
             self, 
-            policy, 
+            policy: GaussianPolicy, 
             buffer:ConstrainedReplayBuffer, 
             env, 
             initial_collect_steps:int=0,
-            max_cost:float=0.,
-            num_bins:int=20,
             ):
         super(ConstrainedCollector, self).__init__(
             policy=policy, buffer=buffer, env=env, initial_collect_steps=initial_collect_steps,
         )
         assert isinstance(self.buffer, ConstrainedReplayBuffer), "Error: need to use ConstrainedReplayBuffer"
 
-        self.max_cost = max_cost
-        self.num_bins = num_bins
+        self.past_eps = []
+        self.num_eps = 0
+        self.state, info = env.reset()
+        self._reset_log()
 
-    def reset_eps_stats(self):
-        super().reset_eps_stats()
-        self.eps_costs = []
+    def _reset_log(self) -> None:
+        """Reset the episode return, episode cost and episode length.
 
+        Args:
+            idx (int or None, optional): The index of the environment. Defaults to None
+                (single environment).
+        """
+        self._ep_ret = 0.0
+        self._ep_cost = 0.0
+        self._ep_len = 0.0
+        self._ep_cost_max = 0.0
 
-    def step(self, num_steps, discretize_cost=False):
+    def _append_ep_log(self):
+        self.past_eps.append(
+            {
+                "ep_ret": self._ep_ret,
+                "ep_cost": self._ep_cost,
+                "ep_len": self._ep_len,
+                "ep_cost_max": self._ep_cost_max,
+            }
+        )
+        self.num_eps += 1
+    
+    def _log_metric(self, reward:float, cost:float):
+        self._ep_len += 1
+        self._ep_ret += reward
+        self._ep_cost += cost
+        if self._ep_cost_max < cost:
+            self._ep_cost_max = cost
+
+    def step(self, num_steps):
         """step num_steps in the env. 
         ! the env is not reset before stepping, the env is kept alive after exiting this method 
-        todo: update internal tracking of cost as step does not guarantee a full episode
-        todo: check how the DDPG-Lag handles the cost
         """
-        # init rollout stats
-        eps_rewards = []
-        eps_costs = []
-        eps_lens = []
-        eps_max_costs = []
-
-        # init current eps stats
-        eps_len = 0
-        eps_reward = 0
-        eps_cost = 0
-        eps_cost_max = 0
-
         for _ in range(num_steps):
             if self.steps < self.initial_collect_steps:
                 action = self.env.action_space.sample()
@@ -75,38 +87,18 @@ class ConstrainedCollector (Collector):
                 action = self.policy.select_action(self.state)
 
             next_state, reward, done, info = self.env.step(np.copy(action))
-            cost_ind = 0
-
-            eps_len += 1
-            eps_reward += reward
-            eps_cost += info['cost']
-            if eps_cost_max < info['cost']:
-                eps_cost_max = info['cost']
+            self._log_metric(reward, cost=info["cost"])
 
             if info.get('last_step', False):
-                self.buffer.add(self.state, action, info['terminal_observation'], reward, info['cost'], done, cost_ind)
-                eps_rewards.append(eps_reward)
-                eps_costs.append(eps_cost)
-                eps_lens.append(eps_len)
-                eps_max_costs.append(eps_cost_max)
-
-                eps_len = 0
-                eps_reward = 0
-                eps_cost = 0
-                eps_cost_max = 0
+                self.buffer.add(self.state, action, info['terminal_observation'], reward, info['cost'], done)
+                self._append_ep_log()
+                self._reset_log()
             else:
-                self.buffer.add(self.state, action, next_state, reward, info['cost'], done, cost_ind)
+                self.buffer.add(self.state, action, next_state, reward, info['cost'], done)
                 
             self.state = next_state
 
             self.steps += 1
-
-        self.rollout_stats.append({
-            'eps_r': eps_rewards,
-            'eps_c': eps_costs,
-            'eps_l': eps_lens,
-            'max_eps_c': eps_max_costs,
-        })
 
     @classmethod
     def sample_initial_states(cls, eval_env, num_states):
