@@ -9,6 +9,7 @@ from pud.ddpg import (EnsembledCritic, GoalConditionedActor, GoalConditionedCrit
 from pud.algos.distributional_ops import CategoricalActivation
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import UVFDDPG
+from pud.algos.lagrange.lagrange import Lagrange
 
 nn = torch.nn
 F = nn.functional
@@ -44,6 +45,10 @@ class DRLDDPGLag(UVFDDPG):
             cost_max:float = 2.0,
             cost_N=20,
             cost_critic_lr:float=1e-3,
+
+            cost_limit:float=1.0,
+            lambda_lr:float=0.001,
+            lambda_optimizer:str="Adam",
             ):
         super(DRLDDPGLag, self).__init__(
             state_dim=state_dim,
@@ -63,6 +68,13 @@ class DRLDDPGLag(UVFDDPG):
             num_bins=num_bins,
             use_distributional_rl=use_distributional_rl,
             ensemble_size=ensemble_size,
+        )
+
+        self.lagrange = Lagrange(
+            cost_limit=cost_limit,
+            lagrangian_multiplier_init=0.0,
+            lambda_lr=lambda_lr,
+            lambda_optimizer=lambda_optimizer,
         )
 
         # add cost critic
