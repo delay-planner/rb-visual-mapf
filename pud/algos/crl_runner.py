@@ -12,6 +12,7 @@ from pud.policies import GaussianPolicy
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
+from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
 
 
 def train_eval(
@@ -25,9 +26,11 @@ def train_eval(
     collect_steps=1,
     opt_steps=1,
     batch_size_opt=64,
-    eval_func=lambda agent, eval_env: None,
+    eval_func=None, # make this a partial func
     opt_log_interval=100,
     eval_interval=10000,
+    eval_distances=[2, 5, 10], # reference grouping based on estimated distances
+    eval_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
     tensorboard_writer:Optional[SummaryWriter]=None,
     verbose=True,
     ):
@@ -49,7 +52,17 @@ def train_eval(
             agent.eval()
             if verbose:
                 print(f'evaluating iteration = {i}')
-            eval_info = eval_func(agent, eval_env)
+
+            sample_args = dict(
+                sample_key = "ub",
+            )
+            eval_info = eval_func(
+                agent=agent, 
+                eval_env=eval_env,
+                eval_distances=eval_distances,
+                sample_args=sample_args,
+                cost_intervals=eval_cost_intervals,
+                )
             if verbose:
                 print('-' * 10)
 
@@ -66,8 +79,16 @@ def train_eval(
                     tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), -np.mean(eval_info[d_ref]["returns"]), global_step=i)
 
 
-def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], cost_args:dict={}, sample_args:Optional[dict]=None, verbose:bool=True):
-    """sample starts and goals that are lower than a preset maximum cost limit (linear interpolation). 
+def eval_pointenv_cost_constrained_dists(agent, 
+        eval_env:SafeGoalConditionedPointWrapper, 
+        num_evals=10, 
+        eval_distances=[2, 5, 10, 20],
+        cost_intervals=[0., 0.2, 0.5, 1.0],
+        sample_args:Optional[dict]=None, 
+        ):
+    """sample starts and goals that are lower than a preset maximum cost limit (linear interpolation).
+
+    The reference apsp in eval_env are all integers because they are computed from grid distances (no diagonal paths)
     """
     eval_stats = {
         # rewards are organized by reference distances
@@ -79,11 +100,17 @@ def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_dis
         },
     } 
     
-    for dist in eval_distances:
-        eval_env.set_sample_goal_args(prob_constraint=1, min_dist=dist, max_dist=dist) # NOTE: samples goal distances in [min_dist, max_dist] closed interval
-        eval_env.set_sample_cost_args(sample_args)
+    for idx_d in range(len(eval_distances)-1):
+        #todo: what if the requested distance is not available?
+        min_dist = eval_distances[idx_d]
+        max_dist = eval_distances[idx_d+1]
+        eval_env.set_sample_goal_args(
+            prob_constraint=1, 
+            min_dist=min_dist, 
+            max_dist=max_dist,
+            **sample_args)
         
-        eval_outputs = Collector.eval_agent_w_init_states(agent, eval_env, num_evals)
+        eval_outputs = Collector.eval_agent_n_record_init_states(agent, eval_env, num_evals)
 
         # estimate distance-to-goal from initial states
         states = dict(observation=[], goal=[])
@@ -97,7 +124,7 @@ def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_dis
 
         
         pred_dist = list(agent.get_dist_to_goal(states))
-        eval_stats["rewards"][dist] = {
+        eval_stats["rewards"][min_dist] = {
             'd_from_rewards': np.mean(dist_from_rewards),
             'std_d_from_rewards': np.std(dist_from_rewards),
             'd_pred': np.mean(pred_dist),
@@ -113,7 +140,7 @@ def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_dis
     # regroup costs into low, mid, and high classes for easy visual
     re_masks = regroup_value_lists(
         val_list=eval_stats["costs"]["true"],
-        div_intervals=[0., 0.2, 0.5, 1.0],
+        div_intervals=cost_intervals,
         )
 
     eval_stats["grouped_costs"] = {}
