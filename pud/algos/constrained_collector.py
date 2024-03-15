@@ -176,7 +176,7 @@ class ConstrainedCollector (Collector):
         c = 0 # count
 
         r, co, max_co, cum_co = [0.] * 4
-        state = eval_env.reset()
+        state, info = eval_env.reset()
         cur_key = new_record(state)
         while c < n:
             action = policy.select_action(state)

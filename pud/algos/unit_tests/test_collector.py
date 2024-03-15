@@ -8,26 +8,26 @@ from pud.ddpg import GoalConditionedCritic
 from termcolor import cprint
 
 """
-python pud/algos/unit_tests/test_collector.py TestConstrainedCollector.test_simple_optimize
+python pud/algos/unit_tests/test_collector.py TestConstrainedCollector.test_eval_agent_n_record_init_states
 """
 
 class TestConstrainedCollector(unittest.TestCase):
     def setUp(self):
-        env_kwargs = {
+        self.env_kwargs = {
             "walls": "CentralObstacle",
             #"walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
             "cost_limit": 1,
         }
-        cost_f_kwargs = {
+        self.cost_f_kwargs = {
             "name": "cosine",
             "radius": 2.,
         }
 
         self.env = safe_env_load_fn(
-            env_kwargs=env_kwargs,
-            cost_f_kwargs=cost_f_kwargs,
+            env_kwargs=self.env_kwargs,
+            cost_f_kwargs=self.cost_f_kwargs,
             max_episode_steps=10,
             gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
             terminate_on_timeout=False,
@@ -100,6 +100,18 @@ class TestConstrainedCollector(unittest.TestCase):
                 ep_len = self.collector.past_eps[-1]["ep_len"]
                 cprint("[INFO] eps Jc='{:.2f}', eps length={}".format(ep_cost, ep_len), "green")
                 num_eps = self.collector.num_eps
+
+    def test_eval_agent_n_record_init_states(self):
+        self.eval_env = safe_env_load_fn(
+            env_kwargs=self.env_kwargs,
+            cost_f_kwargs=self.cost_f_kwargs,
+            max_episode_steps=10,
+            gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
+            terminate_on_timeout=True,
+        )
+        num_evals = 5
+        eval_outputs = ConstrainedCollector.eval_agent_n_record_init_states(self.agent, self.eval_env, num_evals)
+
 
 if __name__ == '__main__':
     unittest.main()
