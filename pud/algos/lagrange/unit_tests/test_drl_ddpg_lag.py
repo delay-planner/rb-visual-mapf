@@ -130,5 +130,8 @@ class TestDRLDDPGLag(unittest.TestCase):
     def test_optimize(self):
         self.agent.optimize(replay_buffer=self.buffer, iterations=1, batch_size=20)
 
+    def test_optimize_lagrange(self):
+        self.agent.optimize_lagrange(ep_cost=2.0)
+
 if __name__ == '__main__':
     unittest.main()
