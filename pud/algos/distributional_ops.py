@@ -1,7 +1,6 @@
 """
 Implementation of distributional operators with bug fix
 """
-from typing import Union, List
 import torch
 
 class CategoricalActivation:
