@@ -165,6 +165,15 @@ class SafeTimeLimit (TimeLimit):
             duration=duration, 
             terminate_on_timeout=terminate_on_timeout,
             )
+    
+    def step(self, action):
+        observation, reward, done, info = super(SafeTimeLimit, self).step(action)
+        new_obs = observation
+        if isinstance(observation, tuple):
+            # a reset happens, separate the obs and info
+            new_obs, new_info = observation
+            new_obs["first_cost"] = new_info["cost"]
+        return new_obs, reward, done, info
 
     def reset(self):
         """reset adds a info dict"""

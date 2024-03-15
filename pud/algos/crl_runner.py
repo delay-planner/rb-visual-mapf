@@ -2,38 +2,69 @@
 Evaluate the accuracy and reliability of reward and cost critics
 """
 
-import numpy as np
 import time
-from typing import Optional, List, Union, Dict
+from typing import Dict, List, Optional, Union
+
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+from tqdm.auto import tqdm
+from pud.policies import GaussianPolicy
+from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
+from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 
-def regroup_value_lists(
-        val_list:np.ndarray, 
-        div_intervals:Union[np.ndarray, List[float]]
-        ) -> Dict[float, np.ndarray]:
-    """
-    returns binary masks for each group
 
-    split a list of values into different classes for easy visualization
-    
-    grouping rule: class <= input < class_next goes to class
-    for the last classes, input > class_end
-    """
-    rearranged_outs = {}
+def train_eval(
+    policy:GaussianPolicy,
+    agent:DRLDDPGLag,
+    replay_buffer:ConstrainedReplayBuffer,
+    env,
+    eval_env,
+    num_iterations=int(1e6),
+    initial_collect_steps=1000,
+    collect_steps=1,
+    opt_steps=1,
+    batch_size_opt=64,
+    eval_func=lambda agent, eval_env: None,
+    opt_log_interval=100,
+    eval_interval=10000,
+    tensorboard_writer:Optional[SummaryWriter]=None,
+    verbose=True,
+    ):
+    """train constrained RL agent"""
+    collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
+    collector.step(collector.initial_collect_steps)
+    for i in tqdm(range(1, num_iterations + 1),total=num_iterations):
+        # todo: collect one episode? one step? need to get the cumulative cost
+        collector.step(collect_steps)
+        agent.train()
+        opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
 
-    for div_i in range(len(div_intervals)):
-        div_start = div_intervals[div_i]
-        if div_i == len(div_intervals)-1:
-            cur_div_mask = val_list >= div_start
-        else:
-            div_end = div_intervals[div_i+1]
+        # todo: update Lagrange multiplier
 
-            mas_cond1 = div_start<=val_list
-            mas_cond2 = val_list<div_end
-            cur_div_mask = mas_cond1 * mas_cond2
+        if i % opt_log_interval == 0:
+            if verbose:
+                print(f'iteration = {i}, opt_info = {opt_info}')
 
-        rearranged_outs[div_start] = cur_div_mask
-    return rearranged_outs
+        if i % eval_interval == 0:
+            agent.eval()
+            if verbose:
+                print(f'evaluating iteration = {i}')
+            eval_info = eval_func(agent, eval_env)
+            if verbose:
+                print('-' * 10)
+
+        if tensorboard_writer:
+            tensorboard_writer.add_scalar("Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i)
+            tensorboard_writer.add_scalar("Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i)
+
+            if i % eval_interval == 0:
+                for d_ref in eval_info:
+                    # dotmap has interal attributes like "_ipython_display_"
+                    if isinstance(d_ref, str) and d_ref.startswith("_"):
+                        continue
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), np.mean(eval_info[d_ref]["pred_dist"]), global_step=i)
+                    tensorboard_writer.add_scalar("Eval_{:0>2d}/pred_dist".format(d_ref), -np.mean(eval_info[d_ref]["returns"]), global_step=i)
 
 
 def eval_pointenv_cost_constrained_dists(agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], cost_args:dict={}, sample_args:Optional[dict]=None, verbose:bool=True):
