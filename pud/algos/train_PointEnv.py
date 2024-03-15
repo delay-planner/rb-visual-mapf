@@ -99,7 +99,7 @@ if __name__ == "__main__":
                 replay_buffer,
                 env,
                 eval_env,
-                eval_func=eval_pointenv_dists,
+                eval_func=eval_pointenv_cost_constrained_dists,
                 tensorboard_writer=tb,
                 **cfg.runner,
                 )
