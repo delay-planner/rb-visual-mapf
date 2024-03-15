@@ -12,9 +12,10 @@ python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py TestDRLDDPGLag.test_la
 
 class TestDRLDDPGLag(unittest.TestCase):
     def setUp(self):
-        state_dim, goal_dim = 2, 2
+        obs_dim, goal_dim = 2, 2
         action_dim = 2
         max_action=1.0
+        state_dim = obs_dim + goal_dim
 
         self.env_kwargs = {
             "walls": "CentralObstacle",
@@ -36,7 +37,7 @@ class TestDRLDDPGLag(unittest.TestCase):
 
         self.agent = DRLDDPGLag(
             # DDPG args
-            state_dim + goal_dim,
+            state_dim,
             action_dim,
             max_action,
             discount=1,
