@@ -133,8 +133,9 @@ class DRLDDPGLag(UVFDDPG):
             if self.optimize_iterations % self.actor_update_interval == 0:
                 # Compute actor loss
                 actor_loss_r = -self.get_q_values(state)
-                actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
-                actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
+                #actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
+                #actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
+                actor_loss = actor_loss_r.mean() # debug training, drop lagrange
 
                 # Optimize the actor 
                 self.actor_optimizer.zero_grad()
@@ -240,14 +241,25 @@ class DRLDDPGLag(UVFDDPG):
         pass
 
     def state_dict(self):
-        out = super.state_dict()
-        # add cost info
+        out = super().state_dict()
+        out["cost_critic"] = self.cost_critic.state_dict()
+        out["cost_critic_optimizer"] = self.cost_critic_optimizer.state_dict()
+        #out["lagrange"] = self.lagrange.state_dict()
+        return out
 
     def load_state_dict(self, state_dict:dict):
-        unconstrained_keys = []
+        unconstrained_keys = [
+            "actor",
+            "actor_optimizer",
+            "critic",
+            "critic_optimizer",
+            "optimize_iterations",
+        ]
         unconstrained_state_dict = {}
         for key in unconstrained_keys:
             unconstrained_state_dict[key] = state_dict[key]
         super().load_state_dict(unconstrained_state_dict)
 
-        # load cost-relevant info
+        self.cost_critic.load_state_dict(state_dict["cost_critic"])
+        self.cost_critic_optimizer.load_state_dict(state_dict["cost_critic_optimizer"])
+        #self.lagrange.load_state_dict(state_dict["lagrange"])
