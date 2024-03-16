@@ -106,7 +106,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             obs[1] / float(self.env._width)
         ])
 
-    def reset(self):
+    def reset_bk(self):
         out = None
         if np.random.random() < self._prob_constraint:
             out = self.sample_safe_start_n_goal_in_dists(self._min_dist, self._max_dist, key = self._sample_key)
@@ -123,7 +123,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             'goal': self._normalize_obs(self._goal), 
             }
         info = {"cost": cost}
-
         return new_state, info
 
     def step(self, action):
@@ -152,7 +151,70 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
     def _is_done(self, obs, goal):
         """Determines whether observation equals goal."""
         return np.linalg.norm(obs - goal) < self._threshold_distance
-    
+
+    #########################################
+    # debug, override start and goal sampling
+    #########################################
+    def reset(self):
+        goal, info = None, {"cost": 0.}
+        count = 0
+        while goal is None:
+            obs, info = self.env.reset()
+            (obs, goal) = self._sample_goal(obs)
+            count += 1
+            if count > 1000:
+                print('WARNING: Unable to find goal within constraints.')
+        self._goal = goal
+        return {'observation': self._normalize_obs(obs),
+                'goal': self._normalize_obs(self._goal)}, info
+
+    def _sample_goal(self, obs):
+        """Sampled a goal observation."""
+        if np.random.random() < self._prob_constraint:
+            return self._sample_goal_constrained(obs, self._min_dist, self._max_dist)
+        else:
+            return self._sample_goal_unconstrained(obs)
+
+    def _sample_goal_constrained(self, obs, min_dist, max_dist):
+        """Samples a goal with dist min_dist <= d(observation, goal) <= max_dist.
+
+        Args:
+          obs: observation (without goal).
+          min_dist: (int) minimum distance to goal.
+          max_dist: (int) maximum distance to goal.
+        Returns:
+          observation: observation (without goal).
+          goal: a goal observation.
+        """
+        (i, j) = self.env._discretize_state(obs)
+        mask = np.logical_and(self.env._apsp[i, j] >= min_dist,
+                              self.env._apsp[i, j] <= max_dist)
+        mask = np.logical_and(mask, self.env._walls == 0)
+        candidate_states = np.where(mask)
+        num_candidate_states = len(candidate_states[0])
+        if num_candidate_states == 0:
+            return (obs, None)
+        goal_index = np.random.choice(num_candidate_states)
+        goal = np.array([candidate_states[0][goal_index],
+                         candidate_states[1][goal_index]],
+                        dtype=np.float32)
+        goal += np.random.uniform(size=2)
+        dist_to_goal = self.env._get_distance(obs, goal)
+        assert min_dist <= dist_to_goal <= max_dist
+        assert not self.env._is_blocked(goal)
+        return (obs, goal)
+
+    def _sample_goal_unconstrained(self, obs):
+        """Samples a goal without any constraints.
+
+        Args:
+          obs: observation (without goal).
+        Returns:
+          observation: observation (without goal).
+          goal: a goal observation.
+        """
+        return (obs, self.env._sample_empty_state())
+
     @property
     def max_goal_dist(self):
         apsp = self.env._safe_apsp["ub"]
