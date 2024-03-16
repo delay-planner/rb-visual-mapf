@@ -14,7 +14,8 @@ agent:
     cost_critic_lr: 0.001
     lambda_lr: 0.001
     lambda_optimizer: "Adam"
-ckpt_dir: ./workdirs/CentralObstacle/
+ckpt_dir: ./workdirs/debug_CentralObstacle/
+#ckpt_dir: ./workdirs/debug_FourRooms/
 env:
     walls: CentralObstacle
     resize_factor: 5
@@ -33,9 +34,10 @@ runner:
     eval_interval: 1000
     initial_collect_steps: 1000
     num_eval_episodes: 10
-    num_iterations: 30000
+    num_iterations: 300000
     opt_steps: 1
     warmup_epochs: 1000
+    eval_distances: [2, 5, 10, 20]
     eval_cost_intervals: [0., 0.2, 0.5, 1.0]
     verbose: false
 seed: 0
