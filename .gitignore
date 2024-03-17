@@ -1,4 +1,6 @@
 workdirs
+pud/envs/precompiles/*
+pud/envs/safe_pointenv/unit_tests/outputs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -129,15 +131,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=0.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=0.00.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=1.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=1.00.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=2.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/CentralObstacle_resize=05_cost=2.00.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=0.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=0.00.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=1.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=1.00.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=2.00_w_grids.jpg
-pud/envs/safe_pointenv/unit_tests/outputs/FourRooms_resize=05_cost=2.00.jpg

@@ -196,6 +196,13 @@ class SafePointEnv (PointEnv):
         new_state_cost = self.get_state_cost(xy=self.state)
         info = {"cost": new_state_cost}
         return self.state.copy(), info
+    
+    def reset_manual(self, start_state:np.ndarray):
+        "manually set the start state"
+        self.state = start_state
+        new_state_cost = self.get_state_cost(xy=self.state)
+        info = {"cost": new_state_cost}
+        return self.state.copy(), info
 
     def gather_safe_empty_states(self, cost_limit:float):
         """

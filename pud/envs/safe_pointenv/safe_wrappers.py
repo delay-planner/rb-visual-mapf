@@ -116,6 +116,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self._goal = out["sg"]
         obs = out["s0"]
         self.state = obs.copy()
+        # make sure the 
         cost = self.env.get_state_cost(self._goal)
 
         new_state = {
@@ -126,6 +127,12 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         return new_state, info
 
     def step(self, action):
+        """
+        the safe_pointenv does NOT use normalized obs, the goal-conditioned env does
+        Make sure the cost is computed from the safe_pointenv using the un-normalized obs
+
+        NOTE: the step is still computed by safe_pointenv, so the internal variables are all un-normalized
+        """
         obs, _, _, info = self.env.step(action)
         rew = -1.0
         done = self._is_done(obs, self._goal)
