@@ -9,10 +9,7 @@ Only operate on the discretized maze/graph level, no actual env stepping
 """
 
 from numba import jit
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 import numpy as np
-import networkx as nx
-import time
 from tqdm.auto import tqdm
 from pathlib import Path
 import pickle
@@ -35,6 +32,7 @@ def CBFS(g:dict, root:tuple, cost_limit:float, cost_map:np.ndarray):
         #c) Add to Q all the extended paths;
         #d) Add children of head(N) to Visited;
         #e) Go to step 2
+    todo: make this function fully compatible to numba fast compile @njit
     """
     # setup
     visited = [] # visited nodes, not partial paths
