@@ -1,12 +1,12 @@
 import unittest
 
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.algos.cbfs_eval import CBFS, compile_all_pair_constrained_shortest_trajs
+from pud.algos.cbfs_eval import CBFS, compile_all_pair_constrained_shortest_trajs, load_precompiled_paths
 import networkx as nx
 import numpy as np
 from pathlib import Path
 """
-python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_compile_all_pair_constrained_shortest_trajs
+python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_load_precompiled_paths
 """
 
 class TestCBFSEval(unittest.TestCase):
@@ -127,6 +127,10 @@ class TestCBFSEval(unittest.TestCase):
             cost_map=cost_map,
             output_dir=output_dir,
             )
+        
+    def test_load_precompiled_paths(self):
+        savedir = "pud/envs/precompiles/CentralObstacle_resize_factor=05_thin=False_cost_limit='1.00'"
+        load_precompiled_paths(savedir=savedir)
 
 if __name__ == '__main__':
     unittest.main()
