@@ -145,7 +145,7 @@ def analyze_precompiled_cost_and_lengths(savedir):
     return set_costs, set_lens
 
 
-def load_precompiled_paths(savedir):
+def catalog_precompiled_paths(savedir):
     """load all prebuilt policies for balanced sampling
     query policies based on traj distance and cost
 
@@ -199,6 +199,6 @@ def load_precompiled_paths(savedir):
     t0 = time.time()
     with open("pud/envs/precompiles/central_obstacle.pkl", 'rb') as f:
         pickle.load(f)
-    print(time.time() - t0)
+    print("[INFO] loading time of sample policy catalog: {}".format(time.time() - t0))
 
     return data_catalog
