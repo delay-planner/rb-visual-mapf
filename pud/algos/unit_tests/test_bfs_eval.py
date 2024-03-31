@@ -1,12 +1,17 @@
+import pickle
 import unittest
+from pathlib import Path
 
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.algos.cbfs_eval import CBFS, compile_all_pair_constrained_shortest_trajs, catalog_precompiled_paths
 import networkx as nx
 import numpy as np
-from pathlib import Path
+
+from pud.algos.cbfs_eval import (CBFS, catalog_precompiled_paths,
+                                 compile_all_pair_constrained_shortest_trajs,
+                                 sample_precompiled_grid_policies)
+from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
+
 """
-python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_unpack_n_sample
+python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_sample_grid_traj
 """
 
 class TestCBFSEval(unittest.TestCase):
@@ -133,8 +138,6 @@ class TestCBFSEval(unittest.TestCase):
         catalog_precompiled_paths(savedir=savedir)
 
     def test_unpack_n_sample(self):
-        import pickle
-
         fp = "pud/envs/precompiles/central_obstacle.pkl"
         policies = None
         with open(fp, 'rb') as f:
@@ -183,6 +186,33 @@ class TestCBFSEval(unittest.TestCase):
         assert len(sample_traj) == sample_len
 
         print("[INFO] sample time: {}".format(time.time() - time_start))
+
+    def test_sample_grid_traj(self):
+        fp = "pud/envs/precompiles/central_obstacle.pkl"
+        policies = None
+        with open(fp, 'rb') as f:
+            policies = pickle.load(f)
+
+        min_cost, max_cost, min_len, max_len = 0, 1, 1, 10
+        out = sample_precompiled_grid_policies(policies=policies, min_cost=min_cost, max_cost=max_cost, min_len=min_len, max_len=max_len)
+        assert out is not None
+        assert (out[1] <= max_cost and out[1] >= min_cost)
+        assert (len(out[0]) <= max_len and len(out[0]) >= min_len)
+
+        min_cost, max_cost, min_len, max_len = 0.5, 1, 5, 5
+        out = sample_precompiled_grid_policies(policies=policies, min_cost=min_cost, max_cost=max_cost, min_len=min_len, max_len=max_len)
+        assert out is not None
+        assert (out[1] <= max_cost and out[1] >= min_cost)
+        assert (len(out[0]) <= max_len and len(out[0]) >= min_len)
+
+        min_cost, max_cost, min_len, max_len = 0.5, 1, 6, 5
+        out = sample_precompiled_grid_policies(policies=policies, min_cost=min_cost, max_cost=max_cost, min_len=min_len, max_len=max_len)
+        assert out is None
+
+        min_cost, max_cost, min_len, max_len = 0.5, 0.4, 1, 10
+        out = sample_precompiled_grid_policies(policies=policies, min_cost=min_cost, max_cost=max_cost, min_len=min_len, max_len=max_len)
+        assert out is None
+
 
 if __name__ == '__main__':
     unittest.main()
