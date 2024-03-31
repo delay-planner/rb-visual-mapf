@@ -16,6 +16,8 @@ import numpy as np
 from numba import jit
 from tqdm.auto import tqdm
 
+from typing import Optional, List
+from termcolor import cprint
 
 def init_embedded_dict(D:dict, embeds:list=[]):
     """
@@ -202,3 +204,52 @@ def catalog_precompiled_paths(savedir):
     print("[INFO] loading time of sample policy catalog: {}".format(time.time() - t0))
 
     return data_catalog
+
+def sample_precompiled_grid_policies(
+        policies: dict,
+        min_cost: float,
+        max_cost:float,
+        min_len: float,
+        max_len: float,
+        ps_costs: Optional[List[float]]=None, 
+        ):
+    """
+    load sample files on-demand
+    """
+    # scratch for balanced sampling
+    trajs = policies["trajs"]
+    files = policies["files"]
+    
+    list_costs = list(trajs.keys())
+    if ps_costs is None:
+        # uniform distribution on costs
+        ps_costs = np.ones(len(list_costs)) / float(len(list_costs))
+    bounded_costs, bounded_ps_costs = [], []
+    for i, c in enumerate(list_costs):
+        if c>=min_cost and c<=max_cost:
+            bounded_costs.append(c)
+            bounded_ps_costs.append(ps_costs[i])
+    bounded_ps_costs = np.array(bounded_ps_costs) / np.sum(bounded_ps_costs)
+
+    if len(bounded_costs) == 0:
+        cprint("[ERROR]: cost range is empty", "red")
+        return
+
+    sample_cost = np.random.choice(bounded_costs, p=bounded_ps_costs)
+
+    bounded_lens = [x for x in list(trajs[sample_cost].keys()) if (x >= min_len and x<=max_len)]
+    if len(bounded_lens) == 0:
+        return
+    sample_len = np.random.choice(bounded_lens)
+
+    sample_file_ind = np.random.choice(list(trajs[sample_cost][sample_len].keys()))
+    sample_file_path = files[sample_file_ind]
+    sample_traj_idx = np.random.choice(trajs[sample_cost][sample_len][sample_file_ind])
+
+    traj_f_data = None
+    with open(sample_file_path, 'rb') as f:
+        traj_f_data = pickle.load(f)
+
+    sample_traj = traj_f_data["trajs"][sample_traj_idx]
+    sample_traj_cost = traj_f_data["costs"][sample_traj_idx]
+    return sample_traj, sample_traj_cost
