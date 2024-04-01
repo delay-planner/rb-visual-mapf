@@ -131,12 +131,15 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         with distance cosntraints
         """
         for _ in range(max_attempts):
-
-            out = sample_precompiled_grid_policies(self.pi_cbfs, min_cost=min_cost, max_cost=max_cost, min_len=min_dist, max_len=max_dist)
+            out = sample_precompiled_grid_policies(self.pi_cbfs, 
+                        min_cost=min_cost, 
+                        max_cost=max_cost, 
+                        min_len=min_dist, 
+                        max_len=max_dist)
             if out:
                 traj, traj_cost = out
                 return traj, traj_cost
-        raise Exception("failed to generate a valid grid traj sample")
+        raise Exception("failed to generate a valid grid traj sample for spec: min_dist={}, max_dist={}, min_cost={}, max_cost={}, max_attempts={}".format(min_dist, max_dist, min_cost, max_cost, max_attempts))
         
 
     def _normalize_obs(self, obs):
@@ -152,11 +155,16 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         """
         out = dict()
         if np.random.random() < self._prob_constraint:
-            out = self.cbfs_sample(self._min_dist, self._max_dist, key = self._sample_key)
+            traj, traj_cost = self.cbfs_sample(
+                min_dist=self._min_dist, 
+                max_dist=self._max_dist, 
+                min_cost=self._min_cost,
+                max_cost=self._max_cost,
+                )
+            out["s0"], out["sg"] = np.array(traj[0], dtype=float), np.array(traj[-1], dtype=float)
         else:
             obs, info = self.env.reset()
             (out["s0"], out["sg"]) = self._sample_goal_unconstrained(obs=obs)
-        
         self._goal = out["sg"]
         obs = out["s0"]
         self.state = obs.copy()
