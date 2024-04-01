@@ -7,12 +7,15 @@ import numpy as np
 
 from pud.algos.cbfs_eval import (CBFS, catalog_precompiled_paths,
                                  compile_all_pair_constrained_shortest_trajs,
-                                 sample_precompiled_grid_policies)
+                                 sample_precompiled_grid_policies,
+                                 validate_test_args)
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 
 """
 python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_catalog_precompiled_paths
 python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_sample_grid_traj
+python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_validate_test_args
+
 """
 
 class TestCBFSEval(unittest.TestCase):
@@ -163,6 +166,23 @@ class TestCBFSEval(unittest.TestCase):
         min_cost, max_cost, min_len, max_len = 0.5, 0.4, 1, 10
         out = sample_precompiled_grid_policies(policies=policies, min_cost=min_cost, max_cost=max_cost, min_len=min_len, max_len=max_len)
         assert out is None
+
+    def test_validate_test_args(self):
+        fp = "pud/envs/precompiles/central_obstacle_v2.pkl"
+        policies = None
+        with open(fp, 'rb') as f:
+            policies = pickle.load(f)
+
+        trajs = policies["trajs"]
+
+        target_lens = [2, 5, 10, 20]
+        target_costs = [0.0, 0.3943001329211866, 1.0]
+
+        for l in target_lens:
+            for c in target_costs:
+                assert len(trajs[l][c]) > 0
+
+        validate_test_args(policies, target_costs, target_lens)
 
 
 if __name__ == '__main__':

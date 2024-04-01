@@ -147,6 +147,22 @@ def analyze_precompiled_cost_and_lengths(savedir):
     return set_costs, set_lens
 
 
+def validate_test_args(
+        policies: dict,
+        cost_ranges: List[float],
+        dist_ranges: List[float],
+        terminate=False
+    ):
+    """make sure no empty set for the ranges of target dists and costs"""
+    trajs = policies["trajs"]
+    for d in dist_ranges:
+        for c in cost_ranges:
+            if len(trajs[d][c]) == 0:
+                cprint("invalid targets: dist={}, c={}".format(d, c))
+                if terminate:
+                    assert False
+
+
 def catalog_precompiled_paths(savedir):
     """load all prebuilt policies for balanced sampling
     query policies based on traj distance and cost
