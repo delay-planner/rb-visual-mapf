@@ -4,7 +4,7 @@ from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
 import numpy as np
 
 """
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_possible_fail
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_cbfs_sample
 """
 
 class TestSafeWrapper(unittest.TestCase):
@@ -28,7 +28,10 @@ class TestSafeWrapper(unittest.TestCase):
                     **precompilation_kwargs,
                     cost_f_args=cost_f_kwargs)
         
-        self.w_env = SafeGoalConditionedPointWrapper(self.p_env)
+        self.w_env = SafeGoalConditionedPointWrapper(
+            self.p_env,
+            cbfs_policy_path="pud/envs/precompiles/central_obstacle.pkl",
+            )
 
     def test_sample_start_n_goal(self):
         for i in range(100):
@@ -107,6 +110,9 @@ class TestSafeWrapper(unittest.TestCase):
         self.w_env.reset()
         at = self.w_env.action_space.sample()
         next_state, reward, done, info = self.w_env.step(at)
+
+    def test_cbfs_sample(self):
+        self.w_env.cbfs_sample(min_cost=0, max_cost=1.0, min_dist=1.0, max_dist=10)
 
 if __name__ == '__main__':
     unittest.main()

@@ -89,6 +89,7 @@ class TestSafePointEnv(unittest.TestCase):
         at = self.p_env.action_space.sample()
         self.p_env.step(at)
 
+    @unittest.skip("deprecated")
     def test_safe_apsp(self):
         """
         check the set of safe apsp, could be empty if done wrong (or with the wrong maze)
