@@ -11,6 +11,7 @@ from pud.algos.cbfs_eval import (CBFS, catalog_precompiled_paths,
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 
 """
+python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_catalog_precompiled_paths
 python pud/algos/unit_tests/test_bfs_eval.py TestCBFSEval.test_sample_grid_traj
 """
 
@@ -188,7 +189,7 @@ class TestCBFSEval(unittest.TestCase):
         print("[INFO] sample time: {}".format(time.time() - time_start))
 
     def test_sample_grid_traj(self):
-        fp = "pud/envs/precompiles/central_obstacle.pkl"
+        fp = "pud/envs/precompiles/central_obstacle_v2.pkl"
         policies = None
         with open(fp, 'rb') as f:
             policies = pickle.load(f)

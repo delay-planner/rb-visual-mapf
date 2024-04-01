@@ -164,6 +164,9 @@ def catalog_precompiled_paths(savedir):
     savedir:Path = Path(savedir)
     list_fs = list(savedir.iterdir())
 
+    cost_collections = set()
+    len_collections = set()
+
     all_trajs = {} # based on costs, path lengths and then file index
     for i_f, f in tqdm(enumerate(list_fs), total=len(list_fs), desc="indexing trajs"):
         tmp_data = None
@@ -179,21 +182,27 @@ def catalog_precompiled_paths(savedir):
 
                 init_embedded_dict(
                     all_trajs, 
-                    embeds=[(cost_i, dict),
-                            (len_i, dict), 
+                    embeds=[
+                            (len_i, dict),
+                            (cost_i, dict),
                             (i_f, list),
                             ],
                 )
                 # append according to cost, length, and file index                
-                all_trajs[cost_i][len_i][i_f].append(i)
+                all_trajs[len_i][cost_i][i_f].append(i)
+
+                cost_collections.add(cost_i)
+                len_collections.add(len_i)
 
     ## this pool is huge, save as layered inds
-    with open("pud/envs/precompiles/central_obstacle.pkl", 'wb') as f:
+    with open("pud/envs/precompiles/central_obstacle_v2.pkl", 'wb') as f:
         data_catalog = {
             "files": list_fs,
             "trajs": all_trajs,
             "parent_dir": savedir.as_posix(),
-            "notes": """costs->path_length->file_index->traj_index, file_index starts from 0 based on files""",
+            "notes": """path_length->costs->file_index->traj_index, file_index starts from 0 based on files""",
+            "cost_set": cost_collections,
+            "len_set": len_collections,
         }
         pickle.dump(data_catalog, f)
 
@@ -220,31 +229,21 @@ def sample_precompiled_grid_policies(
     trajs = policies["trajs"]
     files = policies["files"]
     
-    list_costs = list(trajs.keys())
-    if ps_costs is None:
-        # uniform distribution on costs
-        ps_costs = np.ones(len(list_costs)) / float(len(list_costs))
-    bounded_costs, bounded_ps_costs = [], []
-    for i, c in enumerate(list_costs):
-        if c>=min_cost and c<=max_cost:
-            bounded_costs.append(c)
-            bounded_ps_costs.append(ps_costs[i])
-    bounded_ps_costs = np.array(bounded_ps_costs) / np.sum(bounded_ps_costs)
-
-    if len(bounded_costs) == 0:
-        cprint("[ERROR]: cost range is empty", "red")
-        return
-
-    sample_cost = np.random.choice(bounded_costs, p=bounded_ps_costs)
-
-    bounded_lens = [x for x in list(trajs[sample_cost].keys()) if (x >= min_len and x<=max_len)]
+    bounded_lens = [x for x in list(trajs.keys()) if (x >= min_len and x<=max_len)]
     if len(bounded_lens) == 0:
+        cprint("[ERROR]: length range is empty", "red")
         return
     sample_len = np.random.choice(bounded_lens)
 
-    sample_file_ind = np.random.choice(list(trajs[sample_cost][sample_len].keys()))
+    bounded_costs = [x for x in list(trajs[sample_len].keys()) if (x >= min_cost and x<=max_cost)]
+    if len(bounded_costs) == 0:
+        cprint("[ERROR]: cost range is empty", "red")
+        return
+    sample_cost = np.random.choice(bounded_costs)
+    
+    sample_file_ind = np.random.choice(list(trajs[sample_len][sample_cost].keys()))
     sample_file_path = files[sample_file_ind]
-    sample_traj_idx = np.random.choice(trajs[sample_cost][sample_len][sample_file_ind])
+    sample_traj_idx = np.random.choice(trajs[sample_len][sample_cost][sample_file_ind])
 
     traj_f_data = None
     with open(sample_file_path, 'rb') as f:
