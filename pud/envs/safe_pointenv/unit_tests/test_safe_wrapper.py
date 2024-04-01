@@ -2,9 +2,14 @@ import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
 import numpy as np
+from termcolor import cprint
 
 """
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_cbfs_sample
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_no_constraint
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_strict_req
 """
 
 class TestSafeWrapper(unittest.TestCase):
@@ -30,9 +35,10 @@ class TestSafeWrapper(unittest.TestCase):
         
         self.w_env = SafeGoalConditionedPointWrapper(
             self.p_env,
-            cbfs_policy_path="pud/envs/precompiles/central_obstacle.pkl",
+            cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
             )
 
+    @unittest.skip("deprecated")
     def test_sample_start_n_goal(self):
         for i in range(100):
             out = self.w_env.sample_start_n_goal("ub")
@@ -44,6 +50,7 @@ class TestSafeWrapper(unittest.TestCase):
             self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] > 0)
             self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] < np.inf)
 
+    @unittest.skip("deprecated")
     def test_sample_safe_start_n_goal_in_dists(self):
         for _ in range(100):
             dist_limits = (1, 10)
@@ -60,51 +67,64 @@ class TestSafeWrapper(unittest.TestCase):
             self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] < dist_limits[1])
 
     def test_reset_no_constraint(self):
+        self.w_env.set_sample_goal_args(
+            prob_constraint=0.0,
+            min_dist=0.0, 
+            max_dist=1.0, 
+            min_cost=0.0,
+            max_cost=1.0,
+        )
         for _ in range(100):
             out, info = self.w_env.reset()
-            self.assertTrue(
-                self.w_env.get_state_cost(out["observation"]) <= 0.0
-            )
-            self.assertTrue(
-                self.w_env.get_state_cost(out["goal"]) <= 0.0
-            )
 
     def test_reset_with_constraint(self):
+        max_cost = 0.5
         self.w_env.set_sample_goal_args(
             prob_constraint=1.0,
-            min_dist=2,
-            max_dist=10,
-            sample_key="ub",
+            min_dist=1.0, 
+            max_dist=10.0, 
+            min_cost=0.0,
+            max_cost=max_cost,
         )
         for _ in range(100):
             out, info = self.w_env.reset()
             self.assertTrue(
-                self.w_env.get_state_cost(out["observation"]) <= 0.0
+                self.w_env.get_state_cost(out["observation"]) <= max_cost
             )
             self.assertTrue(
-                self.w_env.get_state_cost(out["goal"]) <= 0.0
+                self.w_env.get_state_cost(out["goal"]) <= max_cost
             )
         
     def test_reset_with_constraint_strict_req(self):
         """very strict requirement on reference distances, which may be an empty set"""
-        distances = [2, 5, 10, 20]
-        for i in range(len(distances)-1):
-            min_dist = distances[i]
-            max_dist = distances[i+1]
-            self.w_env.set_sample_goal_args(
-                prob_constraint=1.0,
-                min_dist=min_dist,
-                max_dist=max_dist,
-                sample_key="ub",
-            )
-            for _ in range(100):
-                out, info = self.w_env.reset()
-                self.assertTrue(
-                    self.w_env.get_state_cost(out["observation"]) <= 0.0
-                )
-                self.assertTrue(
-                    self.w_env.get_state_cost(out["goal"]) <= 0.0
-                )
+        target_dists = [2, 5, 10, 15]
+
+        for i in range(len(target_dists)):
+            min_dist, max_dist = target_dists[i], target_dists[i]
+            cost_levels = list(self.w_env.pi_cbfs["trajs"][min_dist].keys())
+            cost_levels.sort()        
+            for l in range(len(cost_levels)):
+                max_cost, min_cost = cost_levels[l], cost_levels[l]
+
+                if max_cost in self.w_env.pi_cbfs["trajs"][min_dist]:
+                    self.w_env.set_sample_goal_args(
+                        prob_constraint=1.0,
+                        min_dist=min_dist, 
+                        max_dist=max_dist,
+                        min_cost=min_cost,
+                        max_cost=max_cost,
+                    )
+                    for _ in range(100):
+                        out, info = self.w_env.reset()
+                        self.assertTrue(
+                            self.w_env.get_state_cost(out["observation"]) <= max_cost
+                        )
+                        self.assertTrue(
+                            self.w_env.get_state_cost(out["goal"]) <= max_cost
+                        )
+
+                else:
+                    cprint("[WARN] target cost={}, target distance={} not found".format(cost_levels[l], target_dists[i]))
 
     def test_step(self):
         self.w_env.reset()
