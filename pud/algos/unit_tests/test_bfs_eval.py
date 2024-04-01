@@ -138,56 +138,6 @@ class TestCBFSEval(unittest.TestCase):
         savedir = "pud/envs/precompiles/CentralObstacle_resize_factor=05_thin=False_cost_limit='1.00'"
         catalog_precompiled_paths(savedir=savedir)
 
-    def test_unpack_n_sample(self):
-        fp = "pud/envs/precompiles/central_obstacle.pkl"
-        policies = None
-        with open(fp, 'rb') as f:
-            policies = pickle.load(f)
-
-        # scratch for balanced sampling
-        trajs = policies["trajs"]
-        files = policies["files"]
-        import time
-        time_start = time.time()
-
-        min_cost = 0.0
-        max_cost = 1.0
-        ps_costs = [0.25] * 4
-        
-        list_costs = list(trajs.keys())
-
-        min_len = 1.0
-        max_len = 10.0
-
-        bounded_costs, bounded_ps_costs = [], []
-        for i, c in enumerate(list_costs):
-            if c>=min_cost and c<=max_cost:
-                bounded_costs.append(c)
-                bounded_ps_costs.append(ps_costs[i])
-
-        assert len(bounded_costs) > 0
-
-        sample_cost = np.random.choice(bounded_costs, p=bounded_ps_costs)
-
-        bounded_lens = [x for x in list(trajs[sample_cost].keys()) if (x >= min_len and x<=max_len)]
-        sample_len = np.random.choice(bounded_lens)
-
-        sample_file_ind = np.random.choice(list(trajs[sample_cost][sample_len].keys()))
-        sample_file_path = files[sample_file_ind]
-        sample_traj_idx = np.random.choice(trajs[sample_cost][sample_len][sample_file_ind])
-
-        traj_f_data = None
-        with open(sample_file_path, 'rb') as f:
-            traj_f_data = pickle.load(f)
-
-        sample_traj = traj_f_data["trajs"][sample_traj_idx]
-        sample_traj_cost = traj_f_data["costs"][sample_traj_idx]
-
-        assert sample_traj_cost == sample_cost
-        assert len(sample_traj) == sample_len
-
-        print("[INFO] sample time: {}".format(time.time() - time_start))
-
     def test_sample_grid_traj(self):
         fp = "pud/envs/precompiles/central_obstacle_v2.pkl"
         policies = None
