@@ -89,26 +89,21 @@ def train_eval(
             tensorboard_writer.add_scalar("Opt/Lagrange_Multiplier", agent.lagrange.lagrangian_multiplier.item(), global_step=i)
 
             if i % eval_interval == 0:
-                for d_ref in eval_info["rewards"]:
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/d_pred".format(d_ref), eval_info["rewards"][d_ref]["d_pred"], global_step=i)
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/d_from_rewards".format(d_ref), -eval_info["rewards"][d_ref]["d_from_rewards"], global_step=i)
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/std_d_pred".format(d_ref), eval_info["rewards"][d_ref]["std_d_pred"], global_step=i)
-                    tensorboard_writer.add_scalar("Eval_{:0>2d}/std_d_from_rewards".format(d_ref), -eval_info["rewards"][d_ref]["std_d_from_rewards"], global_step=i)
+                for d_ref in eval_info:
+                    for c_ref in eval_info[d_ref]:
+                        field_header = "Eval_D={:0>2d} C={:.2f}".format(d_ref, c_ref)
+                        # logging for distance prediction
+                        tensorboard_writer.add_scalar(field_header+"/d_pred_mean", np.mean(eval_info[d_ref][c_ref]["r"]["pred"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/d_pred_std", np.std(eval_info[d_ref][c_ref]["r"]["pred"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/d_true_mean", np.mean(eval_info[d_ref][c_ref]["r"]["true"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/d_true_std", np.std(eval_info[d_ref][c_ref]["r"]["true"]), global_step=i)
 
-                for cost_div in eval_info["grouped_costs"]:
-                    if len(eval_info["grouped_costs"][cost_div]["true"]) > 0:
-                        tensorboard_writer.add_scalar('Costs_{}/pred'.format(cost_div), 
-                            np.mean(eval_info["grouped_costs"][cost_div]["pred"]), 
-                            i)
-                        tensorboard_writer.add_scalar('Costs_{}/std_pred'.format(cost_div), 
-                            np.std(eval_info["grouped_costs"][cost_div]["pred"]), 
-                            i)
-                        tensorboard_writer.add_scalar('Costs_{}/true'.format(cost_div), 
-                            np.mean(eval_info["grouped_costs"][cost_div]["true"]), 
-                            i)
-                        tensorboard_writer.add_scalar('Costs_{}/std_true'.format(cost_div), 
-                            np.std(eval_info["grouped_costs"][cost_div]["true"]), 
-                            i)
+                        # logging for cost prediction
+                        tensorboard_writer.add_scalar(field_header+"/c_pred_mean", np.mean(eval_info[d_ref][c_ref]["c"]["pred"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/c_pred_std", np.std(eval_info[d_ref][c_ref]["c"]["pred"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/c_true_mean", np.mean(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
+                        tensorboard_writer.add_scalar(field_header+"/c_true_std", np.std(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
+
 
 
 def eval_pointenv_cost_constrained_dists(agent, 
