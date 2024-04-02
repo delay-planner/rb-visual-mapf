@@ -21,6 +21,11 @@ env:
     resize_factor: 5
     thin: false
     cost_limit: 1.0
+wrappers:
+    SafeGoalConditionedPointWrapper:
+        # pre-compiled maze-specific estimations on cost and path lengths
+        # to generate, run pud/algos/cbfs_eval.py or pud/algos/cbfs_mp.py
+        cbfs_policy_path: "pud/envs/precompiles/central_obstacle_v2.pkl"
 time_limit:
     max_episode_steps: 20
 cost_function:
@@ -38,6 +43,6 @@ runner:
     opt_steps: 1
     warmup_epochs: 1000
     eval_distances: [2, 5, 10, 20]
-    eval_cost_intervals: [0., 0.2, 0.5, 1.0]
+    eval_cost_intervals: [0.0, 0.3943001329211866, 1.0]
     verbose: false
 seed: 0
