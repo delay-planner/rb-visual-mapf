@@ -1,5 +1,5 @@
 import pickle
-from typing import Union
+from typing import Union, List
 
 import gym
 import numpy as np
@@ -73,16 +73,21 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         #self.start_n_goal_candidates["lb"] = np.column_stack(inds_cands) # x1, y1, x2, y2
 
         # load CBFS sample policies on grid
-        assert len(cbfs_policy_path) > 0, "must provide valid cbfs_policy_path"
-        self.pi_cbfs = None
-        with open(cbfs_policy_path, 'rb') as f:
-            self.pi_cbfs = pickle.load(f)
+        if len(cbfs_policy_path) > 0:
+            self.load_cbfs_grid_policy(cbfs_policy_path)
 
 
         #self.safe_empty_states_ub = self.env.gather_safe_empty_states(cost_limit=0.0)
         #self.safe_empty_states_lb = self.env.gather_safe_empty_states(cost_limit=self.env.cost_limit)
 
         self.env:SafePointEnv
+
+    def load_cbfs_grid_policy(self, file_path):
+        if (not hasattr(self, "pi_cbfs")) or (self.pi_cbfs is None):
+            self.pi_cbfs = None
+            with open(file_path, 'rb') as f:
+                self.pi_cbfs = pickle.load(f)
+        return
 
     deprecation.deprecated(details="revert to naive unconstrained sampling")
     def sample_start_n_goal(self, key:Union[tuple, str]="ub"):
@@ -130,6 +135,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         sampling start and goal states with guaranteed solution
         with distance cosntraints
         """
+        assert hasattr(self, "pi_cbfs"), "cbfs grid policy not loaded"
+
         for _ in range(max_attempts):
             out = sample_precompiled_grid_policies(self.pi_cbfs, 
                         min_cost=min_cost, 
@@ -312,8 +319,9 @@ class SafeTimeLimit (TimeLimit):
 
 def safe_env_load_fn(env_kwargs:dict,
                 cost_f_kwargs:dict,
-                max_episode_steps=None,
+                max_episode_steps=0,
                 gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
+                wrapper_kwargs:List[dict] = [],
                 terminate_on_timeout=False,
                 ):
     """Loads the selected environment and wraps it with the specified wrappers.
@@ -325,6 +333,7 @@ def safe_env_load_fn(env_kwargs:dict,
         to 0 or if there is no timestep_limit set in the environment's spec.
       gym_env_wrappers: Iterable with references to wrapper classes to use
         directly on the gym environment.
+      wrapper_kwargs: args for gym_env_wrappers, empty list or [wrapper_1_arg, wrapper_2_arg, ...], where wrapper_N_arg could be empty tuple as a place holder
       terminate_on_timeout: Whether to set done = True when the max episode
         steps is reached.
 
@@ -336,8 +345,11 @@ def safe_env_load_fn(env_kwargs:dict,
                     cost_f_args=cost_f_kwargs
                 )
 
-    for wrapper in gym_env_wrappers:
-        env = wrapper(env)
+    for idx, wrapper in enumerate(gym_env_wrappers):
+        if idx < len(wrapper_kwargs):
+            env = wrapper(env, **wrapper_kwargs[idx])
+        else:
+            env = wrapper(env)
 
     if max_episode_steps > 0:
         env = SafeTimeLimit(env, max_episode_steps, terminate_on_timeout=terminate_on_timeout)

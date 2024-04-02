@@ -1,6 +1,6 @@
 import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
+from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn
 import numpy as np
 from termcolor import cprint
 
@@ -10,6 +10,8 @@ python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.te
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_strict_req
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
 """
 
 class TestSafeWrapper(unittest.TestCase):
@@ -19,24 +21,48 @@ class TestSafeWrapper(unittest.TestCase):
             #"walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
+            "cost_limit": 1,
         }
         cost_f_kwargs = {
             "name": "cosine",
             "radius": 2.,
         }
-        precompilation_kwargs = {
-            "cost_limit": 1,
-        }
 
         self.p_env = SafePointEnv(
                     **env_kwargs, 
-                    **precompilation_kwargs,
                     cost_f_args=cost_f_kwargs)
         
         self.w_env = SafeGoalConditionedPointWrapper(
             self.p_env,
             cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
             )
+
+        self.env_kwargs = env_kwargs
+        self.cost_f_kwargs = cost_f_kwargs
+
+
+    def test_safe_env_load_fn(self):
+        """load env wrappers with args"""
+        # args for SafeGoalConditionedPointWrapper
+        wrapper_kwargs= [
+            dict(cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl"),
+            ]
+        out_env = safe_env_load_fn(
+            env_kwargs=self.env_kwargs,
+            cost_f_kwargs=self.cost_f_kwargs,
+            gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
+            wrapper_kwargs=wrapper_kwargs,
+            )
+        
+        assert isinstance(out_env, SafeGoalConditionedPointWrapper)
+        out_env.set_sample_goal_args(
+            prob_constraint=1,
+            min_dist=1.0, 
+            max_dist=10.0, 
+            min_cost=0.0,
+            max_cost=1.0,
+        )
+        out_env.reset()
 
     @unittest.skip("deprecated")
     def test_sample_start_n_goal(self):
