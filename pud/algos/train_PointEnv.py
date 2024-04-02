@@ -13,7 +13,7 @@ from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
 from pud.utils import set_env_seed, set_global_seed
-from pud.algos.crl_runner import train_eval, eval_pointenv_cost_constrained_dists
+from pud.algos.crl_runner_v2 import train_eval, eval_pointenv_cost_constrained_dists
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
