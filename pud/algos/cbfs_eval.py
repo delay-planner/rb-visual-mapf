@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from numba import jit
+#from numba import jit
 from tqdm.auto import tqdm
 
 from typing import Optional, List
@@ -41,7 +41,7 @@ def init_embedded_dict(D:dict, embeds:list=[]):
 
 
 #@jit(nopython=True)
-@jit(forceobj=True, looplift=True)
+#@jit(forceobj=True, looplift=True)
 def CBFS(g:dict, root:tuple, cost_limit:float, cost_map:np.ndarray):
     """
     g: dict of dicts, exported from networkx graph
@@ -98,7 +98,7 @@ def CBFS(g:dict, root:tuple, cost_limit:float, cost_map:np.ndarray):
 
     return explored_paths, explored_path_costs
 
-@jit(forceobj=True, looplift=True)
+#@jit(forceobj=True, looplift=True)
 def compile_all_pair_constrained_shortest_trajs(
         gd:dict, 
         cost_limit:float, 
