@@ -23,6 +23,12 @@ env:
     cost_limit: 1.0
 wrappers:
     SafeGoalConditionedPointWrapper:
+        prob_constraint: 0.8
+        min_dist: 0 
+        max_dist: 4
+        min_cost: 0
+        max_cost: 1000
+        threshold_distance: 1.0
         # pre-compiled maze-specific estimations on cost and path lengths
         # to generate, run pud/algos/cbfs_eval.py or pud/algos/cbfs_mp.py
         cbfs_policy_path: "pud/envs/precompiles/central_obstacle_v2.pkl"

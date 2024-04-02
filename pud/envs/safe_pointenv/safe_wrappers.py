@@ -8,9 +8,7 @@ from dotmap import DotMap
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.wrappers import TimeLimit
 import deprecation
-from pud.algos.cbfs_eval import (CBFS, catalog_precompiled_paths,
-                                compile_all_pair_constrained_shortest_trajs,
-                                sample_precompiled_grid_policies)
+from pud.algos.cbfs_eval import (sample_precompiled_grid_policies)
 
 class SafeGoalConditionedPointWrapper(gym.Wrapper):
     """Wrapper that appends goal to observation produced by environment.
@@ -30,6 +28,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
                 prob_constraint:float=0.8,
                 min_dist=0, 
                 max_dist=4,
+                min_cost=0,
+                max_cost=1000,
                 threshold_distance=1.0,
                 cbfs_policy_path:str="", # path to pre-compiled sample policies on grid
                 ):
@@ -50,7 +50,9 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self._prob_constraint = prob_constraint
         self._min_dist = min_dist
         self._max_dist = max_dist
-        self._sample_key = "ub"
+        self._min_cost = min_cost
+        self._max_cost = max_cost
+        #self._sample_key = "ub"
         super(SafeGoalConditionedPointWrapper, self).__init__(env)
         # make sure to use gym, not gymnasium
         self.observation_space = gym.spaces.Dict({
@@ -73,8 +75,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         #self.start_n_goal_candidates["lb"] = np.column_stack(inds_cands) # x1, y1, x2, y2
 
         # load CBFS sample policies on grid
-        if len(cbfs_policy_path) > 0:
-            self.load_cbfs_grid_policy(cbfs_policy_path)
+        self.load_cbfs_grid_policy(cbfs_policy_path)
 
 
         #self.safe_empty_states_ub = self.env.gather_safe_empty_states(cost_limit=0.0)

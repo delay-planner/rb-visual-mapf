@@ -1,0 +1,1 @@
+python pud/algos/train_PointEnv.py --cfg configs/config_SafePointEnv.yaml

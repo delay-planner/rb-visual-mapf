@@ -33,12 +33,21 @@ if __name__ == "__main__":
 
     set_global_seed(cfg.seed)
 
-    gym_env_wrappers = [SafeGoalConditionedPointWrapper]
+    gym_env_wrappers = []
+    gym_env_wrapper_kwargs = []
+    for wrapper_name in cfg.wrappers:
+        if wrapper_name == "SafeGoalConditionedPointWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointWrapper)
+            gym_env_wrapper_kwargs.append(
+                cfg.wrappers[wrapper_name].toDict()
+            )
+
     env = safe_env_load_fn(
                     cfg.env.toDict(),
                     cfg.cost_function.toDict(),
                     max_episode_steps=cfg.time_limit.max_episode_steps,
                     gym_env_wrappers=gym_env_wrappers,
+                    wrapper_kwargs=gym_env_wrapper_kwargs,
                     terminate_on_timeout=False,
                     )
     set_env_seed(env, cfg.seed + 1)
@@ -49,6 +58,7 @@ if __name__ == "__main__":
                     cfg.cost_function.toDict(),
                     max_episode_steps=cfg.time_limit.max_episode_steps,
                     gym_env_wrappers=gym_env_wrappers,
+                    wrapper_kwargs=gym_env_wrapper_kwargs,
                     terminate_on_timeout=True,
                     )
     set_env_seed(eval_env, cfg.seed + 2)
