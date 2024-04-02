@@ -16,6 +16,7 @@ from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_wrappers import \
     SafeGoalConditionedPointWrapper
 from pud.policies import GaussianPolicy
+from pud.algos.data_struct import init_embedded_dict
 
 
 def train_eval(
@@ -126,7 +127,7 @@ def eval_pointenv_cost_constrained_dists(agent,
     for idx_d in range(len(eval_distances)):
         min_dist, max_dist = eval_distances[idx_d], eval_distances[idx_d]
         for idx_c in range(len(cost_intervals)):
-            min_cost, max_cost = cost_intervals[idx_c]
+            min_cost, max_cost = cost_intervals[idx_c], cost_intervals[idx_c]
             eval_env.set_sample_goal_args(
                 prob_constraint=1, 
                 min_dist=min_dist, 
@@ -147,19 +148,26 @@ def eval_pointenv_cost_constrained_dists(agent,
                 dist_from_rewards.append(-eval_outputs[key]["rewards"])
                 ep_costs.append(eval_outputs[key]["costs"])
 
-            import IPython
-            IPython.embed(colors='LightBG')
-
-        
             pred_dist = list(agent.get_dist_to_goal(states))
-            eval_stats["rewards"][min_dist] = {
-                'd_from_rewards': np.mean(dist_from_rewards),
-                'std_d_from_rewards': np.std(dist_from_rewards),
-                'd_pred': np.mean(pred_dist),
-                'std_d_pred': np.std(pred_dist),
-            }
-
             pred_costs = list(agent.get_cost_to_goal(states))
-            eval_stats["costs"]["true"].extend(ep_costs)
-            eval_stats["costs"]["pred"].extend(pred_costs)
+
+
+            init_embedded_dict(eval_stats, 
+                embeds=[
+                    (min_dist, dict), # ref dict
+                    (min_cost, dict), # ref cost
+                    ("r", dict),
+                ])
+            init_embedded_dict(eval_stats, 
+                embeds=[
+                    (min_dist, dict), # ref dict
+                    (min_cost, dict), # ref cost
+                    ("c", dict),
+                ])
+
+            eval_stats[min_dist][min_cost]["r"]["pred"] = pred_dist
+            eval_stats[min_dist][min_cost]["r"]["true"] = dist_from_rewards
+            eval_stats[min_dist][min_cost]["c"]["pred"] = pred_costs
+            eval_stats[min_dist][min_cost]["c"]["true"] = ep_costs
+
     return eval_stats
