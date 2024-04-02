@@ -26,8 +26,8 @@ wrappers:
         prob_constraint: 0.8
         min_dist: 0 
         max_dist: 4
-        min_cost: 0
-        max_cost: 2
+        min_cost: 0.3
+        max_cost: 1.0
         threshold_distance: 1.0
         # pre-compiled maze-specific estimations on cost and path lengths
         # to generate, run pud/algos/cbfs_eval.py or pud/algos/cbfs_mp.py
@@ -48,7 +48,7 @@ runner:
     num_iterations: 300000
     opt_steps: 1
     warmup_epochs: 1000
-    eval_distances: [2, 5, 10, 20]
+    eval_distances: [2, 5, 10]
     eval_cost_intervals: [0.0, 0.3943001329211866, 1.0]
     verbose: false
 seed: 0
