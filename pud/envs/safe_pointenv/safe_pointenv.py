@@ -43,17 +43,29 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
     ax.set_aspect('equal', adjustable='box')
     return ax
 
-def plot_trajs(list_trajs, ax:plt.axes):
+def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
+    walls = walls.T
+    (height, width) = walls.shape
+
+    start_color = "#18aedb"
+    end_color = "#dbbb18"
+    
     """plot a list of trajs, each is a list of tuples (int states)"""
     for traj in list_trajs:
         # randomize colors
         c = np.random.rand(3,)
-        for i in range(len(traj) - 1):
+        for i in range(0, len(traj) - 1):
             pnt = traj[i]
             pnt_next = traj[i+1]
-            x, y = pnt[1], pnt[0]
-            xn, yn = pnt_next[1], pnt_next[0]
+            x, y = pnt[1]/float(width), pnt[0]/float(height)
+            xn, yn = pnt_next[1]/float(width), pnt_next[0]/float(height)
+
             ax.plot([x, xn], [y, yn], color=c, markersize=4)
+
+            if i == 0:
+                ax.plot([x], [y], markersize=8, color=start_color, zorder=5, marker="o", label="start")
+            if i == len(traj) - 2:
+                ax.plot([xn], [yn], markersize=8, color=end_color, zorder=5, marker="x", label="goal")
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T
