@@ -21,6 +21,10 @@ if __name__ == "__main__":
         type=str,
         default="configs/config_SafePointEnv.yaml",
         help='training configuration')
+    parser.add_argument('--logdir',
+        type=str,
+        default="",
+        help='override ckpt dir')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose printing/logging')
     args = parser.parse_args()
 
@@ -29,6 +33,8 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     # for dot completion
     cfg = DotMap(cfg)
+    if len(args.logdir) > 0:
+        cfg.ckpt_dir = args.logdir
     cfg.pprint()
 
     set_global_seed(cfg.seed)
