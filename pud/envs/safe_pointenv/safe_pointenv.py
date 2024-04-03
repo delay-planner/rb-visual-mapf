@@ -51,6 +51,8 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
     end_color = "#dbbb18"
     
     """plot a list of trajs, each is a list of tuples (int states)"""
+    starts = []
+    goals = []
     for traj in list_trajs:
         # randomize colors
         c = np.random.rand(3,)
@@ -63,9 +65,14 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
             ax.plot([x, xn], [y, yn], color=c, markersize=4)
 
             if i == 0:
-                ax.plot([x], [y], markersize=8, color=start_color, zorder=5, marker="o", label="start")
+                starts.append([x,y])
             if i == len(traj) - 2:
-                ax.plot([xn], [yn], markersize=8, color=end_color, zorder=5, marker="x", label="goal")
+                goals.append([xn, yn])
+                
+    starts = np.array(starts)
+    goals = np.array(goals)
+    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="o", label="start")
+    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal")
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T
