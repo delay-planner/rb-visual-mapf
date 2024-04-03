@@ -43,6 +43,18 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
     ax.set_aspect('equal', adjustable='box')
     return ax
 
+def plot_trajs(list_trajs, ax:plt.axes):
+    """plot a list of trajs, each is a list of tuples (int states)"""
+    for traj in list_trajs:
+        # randomize colors
+        c = np.random.rand(3,)
+        for i in range(len(traj) - 1):
+            pnt = traj[i]
+            pnt_next = traj[i+1]
+            x, y = pnt[1], pnt[0]
+            xn, yn = pnt_next[1], pnt_next[0]
+            ax.plot([x, xn], [y, yn], color=c, markersize=4)
+
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T
     (height, width) = walls.shape
@@ -109,6 +121,12 @@ class SafePointEnv (PointEnv):
         self.safe_empty_states = self.gather_safe_empty_states(self.cost_limit)
         self.reset()
         print("[INFO] SafePointEnv setup: {} s".format(time.time() - t0))
+
+    def get_map(self):
+        return self._walls
+    
+    def get_cost_map(self):
+        return self._cost_map
 
     def get_map_width(self):
         return self._width
