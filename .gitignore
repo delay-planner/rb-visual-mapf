@@ -1,6 +1,7 @@
 workdirs
 pud/envs/precompiles/*
 pud/envs/safe_pointenv/unit_tests/outputs/*
+runs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
