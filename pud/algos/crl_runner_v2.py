@@ -46,8 +46,10 @@ def train_eval(
     num_eps = collector.num_eps
     ep_cost = 0.0
     collector.step(collector.initial_collect_steps)
-    
-    for i in tqdm(range(1, num_iterations + 1),total=num_iterations):
+
+    pbar = tqdm(total=num_iterations, disable=not verbose)
+    t_mark = time.time()
+    for i in range(1, num_iterations + 1):
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
@@ -89,6 +91,10 @@ def train_eval(
             tensorboard_writer.add_scalar("Opt/Lagrange_Multiplier", agent.lagrange.lagrangian_multiplier.item(), global_step=i)
 
             if i % eval_interval == 0:
+                pbar.update()
+                rate = float(eval_interval) / (time.time() - t_mark)
+                tensorboard_writer.add_scalar("Opt/Rate(Iter per sec)", rate, global_step=i)
+
                 for d_ref in eval_info:
                     for c_ref in eval_info[d_ref]:
                         field_header = "Eval_D={:0>2d} C={:.2f}".format(d_ref, c_ref)
@@ -103,6 +109,9 @@ def train_eval(
                         tensorboard_writer.add_scalar(field_header+"/c_pred_std", np.std(eval_info[d_ref][c_ref]["c"]["pred"]), global_step=i)
                         tensorboard_writer.add_scalar(field_header+"/c_true_mean", np.mean(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
                         tensorboard_writer.add_scalar(field_header+"/c_true_std", np.std(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
+                
+                # reset timer 
+                t_mark = time.time()
 
 
 

@@ -27,8 +27,6 @@ log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
 echo "project root directory: ${project_root}"
 echo "experiment directory: ${log_dir}"
 
-export TQDM_DISABLE=1
-
 cd "${project_root}"
 python pud/algos/train_PointEnv.py \
     --cfg configs/config_SafePointEnv.yaml \

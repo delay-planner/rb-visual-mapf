@@ -33,8 +33,12 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     # for dot completion
     cfg = DotMap(cfg)
+
+    # override cfs from terminal
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
+    cfg.runner.verbose = args.verbose
+    
     cfg.pprint()
 
     set_global_seed(cfg.seed)
