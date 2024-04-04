@@ -51,6 +51,8 @@ def train_eval(
     pbar = tqdm(total=num_iterations, disable=not pbar)
     t_mark = time.time()
     for i in range(1, num_iterations + 1):
+        pbar.update()
+        
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
@@ -92,7 +94,6 @@ def train_eval(
             tensorboard_writer.add_scalar("Opt/Lagrange_Multiplier", agent.lagrange.lagrangian_multiplier.item(), global_step=i)
 
             if i % eval_interval == 0:
-                pbar.update()
                 rate = float(eval_interval) / (time.time() - t_mark)
                 tensorboard_writer.add_scalar("Opt/Rate(Iter per sec)", rate, global_step=i)
 
@@ -113,7 +114,6 @@ def train_eval(
                 
                 # reset timer 
                 t_mark = time.time()
-
 
 
 def eval_pointenv_cost_constrained_dists(agent, 
