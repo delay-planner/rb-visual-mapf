@@ -1,6 +1,6 @@
 # !/bin/sh
 
-comment=""
+comment="cfg_init"
 SLURM_JOB_ID=local
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
