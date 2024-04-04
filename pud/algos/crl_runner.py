@@ -55,7 +55,7 @@ def train_eval(
             ep_cost = collector.past_eps[-1]["ep_cost"]
             ep_len = collector.past_eps[-1]["ep_len"]
             if verbose:
-                cprint("[INFO] eps Jc='{:.2f}', eps length={}".format(ep_cost, ep_len), "green")
+                cprint("[INFO] eps Jc={:.2f}, eps length={}".format(ep_cost, ep_len), "green")
             num_eps = collector.num_eps
 
             if i > warmup_epochs:
@@ -112,6 +112,66 @@ def train_eval(
                         tensorboard_writer.add_scalar('Costs_{}/std_true'.format(cost_div), 
                             np.std(eval_info["grouped_costs"][cost_div]["true"]), 
                             i)
+
+
+def eval_pointenv_cost_wrt_targets(agent, 
+        eval_env:SafeGoalConditionedPointWrapper, 
+        num_evals=10, 
+        eval_distances=[2, 5, 10, 20],
+        cost_intervals=[0., 0.2, 0.5, 1.0],
+        ):
+    """sample starts and goals that are lower than a preset maximum cost limit (linear interpolation).
+
+    The reference apsp in eval_env are all integers because they are computed from grid distances (no diagonal paths)
+    """
+    eval_stats = {
+        # rewards are organized by reference distances
+        "rewards": {},
+        # cost is not grouped by reference distances but organized afterwards
+        "costs": {
+            "pred": [],
+            "true": [],
+        },
+    } 
+    
+    for idx_d in range(len(eval_distances)):
+        #todo: what if the requested distance is not available?
+        min_dist, max_dist = eval_distances[idx_d], eval_distances[idx_d]
+        for idx_c in range(len(cost_intervals)):
+            min_cost, max_cost = cost_intervals[idx_c]
+            eval_env.set_sample_goal_args(
+                prob_constraint=1, 
+                min_dist=min_dist, 
+                max_dist=max_dist,
+                min_cost=min_cost,
+                max_cost=max_cost,
+                )
+        
+            eval_outputs = Collector.eval_agent_n_record_init_states(agent, eval_env, num_evals)
+
+            # estimate distance-to-goal from initial states
+            states = dict(observation=[], goal=[])
+            dist_from_rewards = [] # not ground truth distance, but should be accurate when policy is trained
+            ep_costs = []
+            for key in eval_outputs.keys():
+                states['observation'].append(eval_outputs[key]["init_states"]['observation'])
+                states['goal'].append(eval_outputs[key]["init_states"]["goal"])
+                dist_from_rewards.append(-eval_outputs[key]["rewards"])
+                ep_costs.append(eval_outputs[key]["costs"])
+
+        
+            pred_dist = list(agent.get_dist_to_goal(states))
+            eval_stats["rewards"][min_dist] = {
+                'd_from_rewards': np.mean(dist_from_rewards),
+                'std_d_from_rewards': np.std(dist_from_rewards),
+                'd_pred': np.mean(pred_dist),
+                'std_d_pred': np.std(pred_dist),
+            }
+
+            pred_costs = list(agent.get_cost_to_goal(states))
+            eval_stats["costs"]["true"].extend(ep_costs)
+            eval_stats["costs"]["pred"].extend(pred_costs)
+    return eval_stats
 
 
 def eval_pointenv_cost_constrained_dists(agent, 

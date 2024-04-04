@@ -51,4 +51,5 @@ runner:
     eval_distances: [2, 5, 10]
     eval_cost_intervals: [0.0, 0.3943001329211866, 1.0]
     verbose: false
+device: "cpu"
 seed: 0

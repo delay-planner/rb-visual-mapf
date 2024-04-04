@@ -277,7 +277,7 @@ class UVFDDPG(DDPG):
                 # NOTE: We want to compute the value of each bin, which is the
                 # negative distance. Without properly negating this, the actor is
                 # optimized to take the *worst* actions.
-                neg_bin_range = -torch.arange(1, self.num_bins + 1, dtype=torch.float)
+                neg_bin_range = -torch.arange(1, self.num_bins + 1, dtype=torch.float).to(q_values.device)
                 tiled_bin_range = neg_bin_range.unsqueeze(0).repeat(batch_size, 1)
                 assert q_probs.shape == tiled_bin_range.shape
                 # Take the inner product between these two tensors
@@ -318,13 +318,13 @@ class UVFDDPG(DDPG):
                 # Compute distributional td targets
                 target_q_probs = F.softmax(target_q, dim=1)
                 batch_size = target_q_probs.shape[0]
-                one_hot = torch.zeros(batch_size, self.num_bins)
+                one_hot = torch.zeros(batch_size, self.num_bins).to(reward.device)
                 one_hot[:, 0] = 1
 
                 # Calculate the shifted probabilities
                 # Fist column: Since episode didn't terminate, probability that the
                 # distance is 1 equals 0.
-                col_1 = torch.zeros((batch_size, 1))
+                col_1 = torch.zeros((batch_size, 1)).to(reward.device)
                 # Middle columns: Simply the shifted probabilities.
                 col_middle = target_q_probs[:, :-2]
                 # Last column: Probability of taking at least n steps is sum of

@@ -38,6 +38,7 @@ def train_eval(
     tensorboard_writer:Optional[SummaryWriter]=None,
     warmup_epochs:int =100,
     num_eval_episodes:int=10,
+    pbar=True,
     verbose=True,
     ):
     """train constrained RL agent"""
@@ -47,7 +48,7 @@ def train_eval(
     ep_cost = 0.0
     collector.step(collector.initial_collect_steps)
 
-    pbar = tqdm(total=num_iterations, disable=not verbose)
+    pbar = tqdm(total=num_iterations, disable=not pbar)
     t_mark = time.time()
     for i in range(1, num_iterations + 1):
         collector.step(collect_steps)
@@ -58,7 +59,7 @@ def train_eval(
             ep_cost = collector.past_eps[-1]["ep_cost"]
             ep_len = collector.past_eps[-1]["ep_len"]
             if verbose:
-                cprint("[INFO] eps Jc='{:.2f}', eps length={}".format(ep_cost, ep_len), "green")
+                cprint("[INFO] eps Jc={:.2f}, eps length={}".format(ep_cost, ep_len), "green")
             num_eps = collector.num_eps
 
             if i > warmup_epochs:

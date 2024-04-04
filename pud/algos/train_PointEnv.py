@@ -25,6 +25,11 @@ if __name__ == "__main__":
         type=str,
         default="",
         help='override ckpt dir')
+    parser.add_argument('--device',
+        type=str,
+        default="cpu",
+        help='cpu or cuda')
+    parser.add_argument('--pbar', action='store_true', help='show progress bar')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose printing/logging')
     args = parser.parse_args()
 
@@ -38,6 +43,7 @@ if __name__ == "__main__":
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
     cfg.runner.verbose = args.verbose
+    cfg.device = args.device
     
     cfg.pprint()
 
@@ -86,8 +92,10 @@ if __name__ == "__main__":
             action_dim,
             max_action,
             CriticCls=GoalConditionedCritic,
+            device=torch.device(cfg.device),
             **cfg.agent,
         )
+    agent.to(torch.device(args.device))
     
     print(agent)
 
@@ -120,6 +128,7 @@ if __name__ == "__main__":
                 eval_env,
                 eval_func=eval_pointenv_cost_constrained_dists,
                 tensorboard_writer=tb,
+                pbar=args.pbar,
                 **cfg.runner,
                 )
         torch.save(agent.state_dict(), os.path.join(cfg.ckpt_dir, 'agent.pth'))

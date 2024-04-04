@@ -1,8 +1,33 @@
 """
 Helper functions for data structures
 """
+from typing import Dict, List, Union
+import torch
+import numpy as np
+def inp_to_device(
+        inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
+        device:torch.device,
+        ):
+    """convert dict inps to torch"""
+    if isinstance(inp, dict):
+        for key in inp:
+            if isinstance(inp[key], np.ndarray):
+                inp[key] = torch.from_numpy(inp[key]).to(device)
+            elif isinstance(inp[key], torch.Tensor):
+                inp[key] = inp[key].to(device)
+            else:
+                raise Exception("data type mismatch")
+        return inp
+    
+    if isinstance(inp, np.ndarray):
+        inp = torch.from_numpy(inp).to(device)
+    elif isinstance(inp, torch.Tensor):
+        inp = inp.to(device)
+    else:
+        raise Exception("data type mismatch")
+    return inp
 
-def init_embedded_dict(D:dict, embeds:list=[]):
+def init_embedded_dict(D:dict, embeds:List[tuple]=[]):
     """
     in-place init of embedded dict
     the init function should be either a list or dict

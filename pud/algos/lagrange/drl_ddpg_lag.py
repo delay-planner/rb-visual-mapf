@@ -10,6 +10,7 @@ from pud.algos.distributional_ops import CategoricalActivation
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import UVFDDPG
 from pud.algos.lagrange.lagrange import Lagrange
+from pud.algos.data_struct import inp_to_device
 
 nn = torch.nn
 F = nn.functional
@@ -49,6 +50,8 @@ class DRLDDPGLag(UVFDDPG):
             cost_limit:float=1.0,
             lambda_lr:float=0.001,
             lambda_optimizer:str="Adam",
+
+            device:torch.device=torch.device("cpu"),
             ):
         super(DRLDDPGLag, self).__init__(
             state_dim=state_dim,
@@ -76,6 +79,7 @@ class DRLDDPGLag(UVFDDPG):
             lambda_lr=lambda_lr,
             lambda_optimizer=lambda_optimizer,
         )
+        self.device = device
 
         # add cost critic
         CostCriticCls = functools.partial(CriticCls, output_dim=cost_N)
@@ -92,6 +96,26 @@ class DRLDDPGLag(UVFDDPG):
             for i in range(1, len(self.cost_critic.critics)): # first copy already added
                 cost_critic_copy = self.cost_critic.critics[i]
                 self.cost_critic_optimizer.add_param_group({'params': cost_critic_copy.parameters()})
+    
+    def select_action(self, state):
+        """enable options on cuda, move input to self.device"""
+        with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation'].reshape(1, -1)),
+                goal=torch.FloatTensor(state['goal'].reshape(1, -1)),
+            )
+            state = inp_to_device(state, self.device)
+            return self.actor(state).cpu().detach().numpy().flatten()
+
+    def get_dist_to_goal(self, state, **kwargs):
+        with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation']),
+                goal=torch.FloatTensor(state['goal']),
+            )
+            state = inp_to_device(state, self.device)
+            q_values = self.get_q_values(state, **kwargs)
+            return -1.0 * q_values.cpu().detach().numpy().squeeze(-1)
 
     def update_cost_critic_target(self):
         for param, target_param in zip(self.cost_critic.parameters(), self.cost_critic_target.parameters()):
@@ -110,7 +134,13 @@ class DRLDDPGLag(UVFDDPG):
 
             # Each of these are batches 
             state, next_state, action, reward, cost, done = replay_buffer.sample_w_cost(batch_size)
-
+            state = inp_to_device(state, self.device)
+            next_state = inp_to_device(next_state, self.device)
+            action = inp_to_device(action, self.device)
+            reward = inp_to_device(reward, self.device)
+            cost = inp_to_device(cost, self.device)
+            done = inp_to_device(done, self.device)
+        
             current_q = self.critic(state, action)
             target_q = self.critic_target(next_state, self.actor_target(next_state))
             critic_loss = self.critic_loss(current_q, target_q, reward, done)
@@ -183,8 +213,7 @@ class DRLDDPGLag(UVFDDPG):
             with torch.no_grad():
                 target_q_probs = F.softmax(target_q, dim=1)
                 batch_size = target_q_probs.shape[0]
-
-                zs = self.F_categorical.zs.tile([batch_size, 1])
+                zs = self.F_categorical.zs.tile([batch_size, 1]).to(self.device)
                 new_zs = cost + ((1 - done) * self.discount * zs) # batch_size, num_classes
                 new_target_probs = self.F_categorical.forward(probs=target_q_probs, new_zs=new_zs)
             # cross entry loss: $$-\sum_{i}m_{i}\log p_{i}\left(x_{t},a_{t}\right)$$
@@ -213,7 +242,7 @@ class DRLDDPGLag(UVFDDPG):
         for q_values in q_values_list:
             q_probs = F.softmax(q_values, dim=1)
             batch_size = q_probs.shape[0]
-            zs = self.F_categorical.zs.tile([batch_size, 1])
+            zs = self.F_categorical.zs.tile([batch_size, 1]).to(self.device)
             # Take the inner product between these two tensors
             expected_q_values = torch.sum(q_probs * zs, dim=1, keepdim=True)
             expected_q_values_list.append(expected_q_values)
@@ -234,6 +263,7 @@ class DRLDDPGLag(UVFDDPG):
                 observation=torch.FloatTensor(state['observation']),
                 goal=torch.FloatTensor(state['goal']),
             )
+            state = inp_to_device(state, self.device)
             q_values = self.get_cost_q_values(state, **kwargs)
             return q_values.cpu().detach().numpy().squeeze(-1)
 
