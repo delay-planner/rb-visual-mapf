@@ -9,7 +9,7 @@ agent:
     # cost configs
     cost_limit: 1.0
     cost_min: 0.0
-    cost_max: 2.0
+    cost_max: 1.0
     cost_N: 20
     cost_critic_lr: 0.001
     lambda_lr: 0.001
