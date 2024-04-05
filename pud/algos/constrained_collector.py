@@ -104,7 +104,8 @@ class ConstrainedCollector (Collector):
     def sample_initial_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
-            rb_vec.append(eval_env.reset())
+            s0, info = eval_env.reset()
+            rb_vec.append(s0)
         rb_vec = np.array([x['observation'] for x in rb_vec])
         return rb_vec
 
