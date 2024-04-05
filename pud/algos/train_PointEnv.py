@@ -129,9 +129,12 @@ if __name__ == "__main__":
                 eval_func=eval_pointenv_cost_constrained_dists,
                 tensorboard_writer=tb,
                 pbar=args.pbar,
+                ckpt_dir=ckpt_dir,
                 **cfg.runner,
                 )
-        torch.save(agent.state_dict(), os.path.join(cfg.ckpt_dir, 'agent.pth'))
+        torch.save(agent.state_dict(), 
+            ckpt_dir.joinpath('agent.pth'),
+            )
     elif False:
         ckpt_file = os.path.join(cfg.ckpt_dir, 'agent.pth')
         agent.load_state_dict(torch.load(ckpt_file))

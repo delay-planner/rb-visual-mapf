@@ -6,17 +6,19 @@ import time
 from typing import Dict, List, Optional, Union
 
 import numpy as np
+import torch
 from termcolor import cprint
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
+from pud.algos.data_struct import init_embedded_dict
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_wrappers import \
     SafeGoalConditionedPointWrapper
 from pud.policies import GaussianPolicy
-from pud.algos.data_struct import init_embedded_dict
+from pathlib import Path
 
 
 def train_eval(
@@ -40,6 +42,7 @@ def train_eval(
     num_eval_episodes:int=10,
     pbar=True,
     verbose=True,
+    ckpt_dir:Path=Path(""),
     ):
     """train constrained RL agent"""
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
@@ -73,6 +76,9 @@ def train_eval(
                 print(f'iteration = {i}, opt_info = {opt_info}')
 
         if i % eval_interval == 0:
+            if isinstance(ckpt_dir, Path):
+                torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
+
             agent.eval()
             if verbose:
                 print(f'evaluating iteration = {i}')
