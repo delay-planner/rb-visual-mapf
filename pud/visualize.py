@@ -3,7 +3,7 @@ from pud.collector import Collector
 from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
 from pud.utils import set_global_seed, set_env_seed
 
-def visualize_trajectory(agent, eval_env, difficulty=0.5):
+def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
     set_env_difficulty(eval_env, difficulty)
 
     plt.figure(figsize=(8, 4))
@@ -24,25 +24,34 @@ def visualize_trajectory(agent, eval_env, difficulty=0.5):
                     color='green', s=200, label='goal')
         if col_index == 0:
             plt.legend(loc='lower left', bbox_to_anchor=(0.3, 1), ncol=3, fontsize=16)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_buffer(rb_vec, eval_env):
+def visualize_buffer(rb_vec, eval_env, outpath:str=""):
     plt.figure(figsize=(6, 6))
     plt.scatter(*rb_vec.T)
     plot_walls(eval_env.walls)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_pairwise_dists(pdist):
+def visualize_pairwise_dists(pdist, outpath=""):
     plt.figure(figsize=(6, 3))
     plt.hist(pdist.flatten(), bins=range(20))
     plt.xlabel('predicted distance')
     plt.ylabel('number of (s, g) pairs')
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8):
+def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     plt.figure(figsize=(6, 6))
     plot_walls(eval_env.walls)
     pdist_combined = np.max(pdist, axis=0)
@@ -52,10 +61,13 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8):
             if count < edges_to_display and pdist_combined[i, j] < cutoff:
                 s_j = rb_vec[j]
                 plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='k', alpha=0.5)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8):
+def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     ensemble_size = pdist.shape[0]
     plt.figure(figsize=(5 * ensemble_size, 4))
     for col_index in range(ensemble_size):
@@ -69,10 +81,13 @@ def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display
                 if count < edges_to_display and pdist[col_index, i, j] < cutoff:
                     s_j = rb_vec[j]
                     plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='k', alpha=0.5)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_full_graph(g, rb_vec, eval_env):
+def visualize_full_graph(g, rb_vec, eval_env, outpath=""):
     plt.figure(figsize=(6, 6))
     plot_walls(eval_env.walls)
     plt.scatter(rb_vec[g.nodes, 0], rb_vec[g.nodes, 1])
@@ -86,10 +101,12 @@ def visualize_full_graph(g, rb_vec, eval_env):
         plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='k', alpha=0.5)
 
     plt.title(f'|V|={g.number_of_nodes()}, |E|={len(edges_to_plot)}')
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
-
-def visualize_search_path(search_policy, eval_env, difficulty=0.5):
+def visualize_search_path(search_policy, eval_env, difficulty=0.5, outpath=""):
     set_env_difficulty(eval_env, difficulty)
 
     if search_policy.open_loop:
@@ -119,10 +136,13 @@ def visualize_search_path(search_policy, eval_env, difficulty=0.5):
                 color='green', s=200, label='goal')
     plt.plot(waypoint_vec[:, 0], waypoint_vec[:, 1], 'y-s', alpha=0.3, label='waypoint')
     plt.legend(loc='lower left', bbox_to_anchor=(-0.1, -0.15), ncol=4, fontsize=16)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
 
 
-def visualize_compare_search(agent, search_policy, eval_env, difficulty=0.5, seed=0):
+def visualize_compare_search(agent, search_policy, eval_env, difficulty=0.5, seed=0, outpath=""):
     set_env_difficulty(eval_env, difficulty)
 
     plt.figure(figsize=(12, 5))
@@ -163,4 +183,7 @@ def visualize_compare_search(agent, search_policy, eval_env, difficulty=0.5, see
         if use_search:
             plt.plot(waypoint_vec[:, 0], waypoint_vec[:, 1], 'y-s', alpha=0.3, label='waypoint')
             plt.legend(loc='lower left', bbox_to_anchor=(-0.8, -0.15), ncol=4, fontsize=16)
-    plt.show()
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
