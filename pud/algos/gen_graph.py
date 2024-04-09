@@ -16,8 +16,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
 from pud.utils import set_env_seed, set_global_seed
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def setup_args_parser(parser:argparse.ArgumentParser):
     parser.add_argument('--cfg',
         type=str,
         default="configs/config_SafePointEnv.yaml",
@@ -31,8 +30,10 @@ if __name__ == "__main__":
         help='cpu or cuda')
     parser.add_argument('--pbar', action='store_true', help='show progress bar')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose printing/logging')
-    args = parser.parse_args()
+    return parser
 
+
+def setup_env(args:argparse.Namespace):
     cfg = {}
     with open(args.cfg, 'r') as f:
         cfg = yaml.safe_load(f)
@@ -99,6 +100,34 @@ if __name__ == "__main__":
     agent.eval()
 
     replay_buffer = ConstrainedReplayBuffer(obs_dim, goal_dim, action_dim, **cfg.replay_buffer)
+    return dict(
+                agent=agent,
+                eval_env=eval_env,
+                cfg=cfg,
+                obs_dim=obs_dim,
+                goal_dim=goal_dim,
+                state_dim=state_dim,
+                action_dim=action_dim,
+                max_action=max_action,
+                replay_buffer=replay_buffer,
+            )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser = setup_args_parser(parser)
+    args = parser.parse_args()
+    
+    setup_ret = setup_env(args)
+    agent = setup_ret["agent"]
+    eval_env = setup_ret["eval_env"]
+    cfg = setup_ret["cfg"]
+    obs_dim = setup_ret["obs_dim"]
+    goal_dim = setup_ret["goal_dim"]
+    state_dim = setup_ret["state_dim"]
+    action_dim = setup_ret["action_dim"]
+    max_action = setup_ret["max_action"]
+    replay_buffer = setup_ret["replay_buffer"]
 
     # from pud.visualize import visualize_trajectory
     # eval_env.duration = 100 # We'll give the agent lots of time to try to find the goal.
@@ -121,13 +150,37 @@ if __name__ == "__main__":
     from pud.visualize import visualize_buffer
     visualize_buffer(rb_vec, eval_env, outpath="temp/vis_buffer.jpg")
 
-    import IPython
-    IPython.embed(colors='LightBG')
-
     pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None) # ensemble, rb_vec, rb_vec
 
-    from scipy.spatial import distance
-    euclidean_dists = distance.pdist(rb_vec)
+
+
+    from pud.visualize import visualize_cost_graph
+    visualize_cost_graph(rb_vec=rb_vec, 
+        eval_env=eval_env, 
+        pcost=pcost, 
+        cost_limit=cfg["agent"]["cost_limit"],
+        outpath="temp/vis_cost_graph.jpg",
+        edges_to_display=10,
+        )
+
+    from pud.visualize import visualize_combined_graph
+    visualize_combined_graph(
+        rb_vec=rb_vec, 
+        eval_env=eval_env, 
+        pdist=pdist,
+        pcost=pcost, 
+        cutoff=7,
+        cost_limit=cfg["agent"]["cost_limit"],
+        outpath="temp/vis_combined_graph.jpg",
+        edges_to_display=10,
+    )
+
+    #from scipy.spatial import distance
+    # what the fuck, why is euclidean_dists needed? 
+    # it has a stupid indexing: The metric dist(u=X[i], v=X[j]) 
+    # is computed and stored in entry m * i + j - ((i + 2) * (i + 1)) // 2.
+    #euclidean_dists = distance.pdist(rb_vec)
 
     # As a sanity check, we'll plot the pairwise distances between all 
     # observations in the replay buffer. We expect to see a range of values 
@@ -135,8 +188,14 @@ if __name__ == "__main__":
     # distance by the largest bin. We've used 20 bins, so the critic 
     # predicts 20 for all states that are at least 20 steps away from one another.
     # 
-    from pud.visualize import visualize_pairwise_dists
+    from pud.visualize import visualize_pairwise_dists, visualize_pairwise_costs
     visualize_pairwise_dists(pdist, outpath="temp/vis_pdist.jpg")
+    visualize_pairwise_costs(pcost, 
+        cost_limit=cfg.agent.cost_limit, 
+        n_bins=cfg.agent.cost_N,
+        outpath="temp/vis_pcost.jpg",
+        )
+    
 
     # With these distances, we can construct a graph. Nodes in the graph are 
     # observations in our replay buffer. We connect observations with edges 

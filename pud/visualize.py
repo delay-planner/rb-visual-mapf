@@ -1,7 +1,12 @@
-from pud.dependencies import *
+from tqdm.auto import tqdm
+
 from pud.collector import Collector
+from pud.dependencies import *
+from pud.envs.safe_pointenv.safe_pointenv import (plot_maze_grid_points,
+                                                  plot_safe_walls, plot_trajs)
 from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
-from pud.utils import set_global_seed, set_env_seed
+from pud.utils import set_env_seed, set_global_seed
+
 
 def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
     set_env_difficulty(eval_env, difficulty)
@@ -50,6 +55,16 @@ def visualize_pairwise_dists(pdist, outpath=""):
     else:
         plt.show()
 
+def visualize_pairwise_costs(pdist, cost_limit:float, n_bins:int=20, outpath=""):
+    plt.figure(figsize=(6, 3))    
+    plt.hist(pdist.flatten(), bins=np.linspace(0, cost_limit, n_bins))
+    plt.xlabel('predicted costs')
+    plt.ylabel('number of (s, g) pairs')
+    if len(outpath) > 0:
+        plt.savefig(outpath, dpi=300)
+    else:
+        plt.show()
+
 
 def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     plt.figure(figsize=(6, 6))
@@ -66,6 +81,74 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpa
     else:
         plt.show()
 
+def visualize_cost_graph(
+            rb_vec, 
+            eval_env, 
+            pcost, 
+            cost_limit:float, 
+            outpath:str="",
+            edges_to_display:int=8,
+        ):
+    # plot the edges that are deemed unsafe
+    pcost_combined = np.max(pcost, axis=0) # rb_vec, rb_vec
+    safe_mask = pcost_combined < cost_limit
+    ind_v, ind_w = np.where(safe_mask)
+    print("ratio of predicted unsafe edges: {:.2f}%".format(100.*len(ind_v)/np.prod(safe_mask.shape)))
+    assert len(ind_v) == len(ind_v)
+    fig, ax = plt.subplots()
+    plot_safe_walls(eval_env.get_map(), 
+            eval_env.get_cost_map(), 
+            cost_limit=cost_limit, 
+            ax=ax)
+    ax.scatter(*rb_vec.T)
+    pbar = tqdm(total=len(rb_vec))
+    for i, s_i in enumerate(rb_vec):
+        for count, j in enumerate(np.argsort(pcost_combined[i])):
+            if count < edges_to_display and pcost_combined[i, j] < cost_limit:
+                s_j = rb_vec[j]
+                ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='g', alpha=0.5)
+        pbar.update()
+    if len(outpath) > 0:
+        fig.savefig(outpath, dpi=300)
+    else:
+        plt.show()
+    plt.close(fig)
+
+def visualize_combined_graph(
+            rb_vec: np.ndarray, # ensemble, N, N 
+            eval_env, 
+            pdist: np.ndarray, # ensemble, N, N 
+            pcost: np.ndarray, # ensemble, N, N 
+            cost_limit:float, 
+            cutoff=7,
+            outpath:str="",
+            edges_to_display:int=8,
+    ):
+    """plot edges that are both within the cutoff distance and cost limit
+    shorter edges are prioritized
+    """
+    fig, ax = plt.subplots()
+    ax.scatter(*rb_vec.T)
+    plot_safe_walls(eval_env.get_map(), 
+            eval_env.get_cost_map(), 
+            cost_limit=cost_limit, 
+            ax=ax)
+    
+    pbar = tqdm(total=len(rb_vec))
+    pdist_combined = np.max(pdist, axis=0)
+    pcost_combined = np.max(pcost, axis=0) # rb_vec, rb_vec
+    for i, s_i in enumerate(rb_vec):
+        for count, j in enumerate(np.argsort(pdist_combined[i])):
+            if count < edges_to_display and pdist_combined[i, j] < cutoff and pcost_combined[i, j] < cost_limit:
+                s_j = rb_vec[j]
+                ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='g', alpha=0.4)
+        pbar.update()
+
+    if len(outpath) > 0:
+        fig.savefig(outpath, dpi=300)
+    else:
+        plt.show()
+    plt.close(fig)
 
 def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     ensemble_size = pdist.shape[0]
