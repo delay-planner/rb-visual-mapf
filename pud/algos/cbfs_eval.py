@@ -144,9 +144,12 @@ def validate_test_args(
                     assert False
 
 
-def catalog_precompiled_paths(savedir):
+def catalog_precompiled_paths(savedir, output_path:str):
     """load all prebuilt policies for balanced sampling
     query policies based on traj distance and cost
+
+    savedir: the directory that contains a set of precompiled grid trajectories
+    output_path: the FULL target path to store the output catalog file for speedy fetch
 
     build a catalog of path
 
@@ -192,7 +195,7 @@ def catalog_precompiled_paths(savedir):
                 len_collections.add(len_i)
 
     ## this pool is huge, save as layered inds
-    with open("pud/envs/precompiles/central_obstacle_v2.pkl", 'wb') as f:
+    with open(output_path, 'wb') as f:
         data_catalog = {
             "files": list_fs,
             "trajs": all_trajs,
@@ -205,7 +208,7 @@ def catalog_precompiled_paths(savedir):
 
     
     t0 = time.time()
-    with open("pud/envs/precompiles/central_obstacle.pkl", 'rb') as f:
+    with open(output_path, 'rb') as f:
         pickle.load(f)
     print("[INFO] loading time of sample policy catalog: {}".format(time.time() - t0))
 
