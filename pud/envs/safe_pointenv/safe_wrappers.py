@@ -30,6 +30,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
                 max_dist=4,
                 min_cost=0,
                 max_cost=1000,
+                reset_blend=0.5,
                 threshold_distance=1.0,
                 cbfs_policy_path:str="", # path to pre-compiled sample policies on grid
                 ):
@@ -52,6 +53,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self._max_dist = max_dist
         self._min_cost = min_cost
         self._max_cost = max_cost
+        self.reset_blend = reset_blend
         #self._sample_key = "ub"
         super(SafeGoalConditionedPointWrapper, self).__init__(env)
         # make sure to use gym, not gymnasium
@@ -157,6 +159,12 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         ])
 
     def reset(self):
+        if np.random.random() < self.reset_blend:
+            return self.reset()
+        else:
+            return self.reset_cost()
+
+    def reset_cost(self):
         """
         P(prob_constraint): sample under length and cost constraint
         P(1-prob_constraint): sample with no constraints
@@ -229,7 +237,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
     #########################################
     # debug, override start and goal sampling
     #########################################
-    def reset_bk(self):
+    def reset(self):
         goal, info = None, {"cost": 0.}
         count = 0
         while goal is None:
