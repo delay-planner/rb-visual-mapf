@@ -4,6 +4,7 @@ from pud.collector import Collector
 from pud.dependencies import *
 from pud.envs.safe_pointenv.safe_pointenv import (plot_maze_grid_points,
                                                   plot_safe_walls, plot_trajs)
+from pud.envs.safe_pointenv.safe_wrappers import set_env_difficulty as set_safe_env_difficulty, SafeGoalConditionedPointWrapper, SafeTimeLimit
 from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
 from pud.utils import set_env_seed, set_global_seed
 
@@ -189,8 +190,15 @@ def visualize_full_graph(g, rb_vec, eval_env, outpath=""):
     else:
         plt.show()
 
-def visualize_search_path(search_policy, eval_env, difficulty=0.5, outpath=""):
-    set_env_difficulty(eval_env, difficulty)
+def visualize_search_path(search_policy, 
+        eval_env, 
+        difficulty=0.5, 
+        outpath="",
+        cost_constraints:dict={}):
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(eval_env, SafeGoalConditionedPointWrapper):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
 
     if search_policy.open_loop:
         state = eval_env.reset()

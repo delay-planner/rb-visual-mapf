@@ -299,8 +299,22 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
 
     @property
     def max_goal_dist(self):
-        apsp = self.env._safe_apsp["ub"]
+        apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
+    
+def set_env_difficulty(eval_env:SafeGoalConditionedPointWrapper, 
+            difficulty:float, 
+            min_cost:float=0.0, 
+            max_cost:float=1.0,
+            ):
+    assert 0 <= difficulty <= 1
+    max_goal_dist = eval_env.max_goal_dist
+    eval_env.set_sample_goal_args(prob_constraint=1,
+            min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
+            max_dist=max_goal_dist * (difficulty + 0.05),
+            min_cost=min_cost,
+            max_cost=max_cost,
+            )
 
 class SafeTimeLimit (TimeLimit):
     def __init__(self, env, duration, terminate_on_timeout=False):

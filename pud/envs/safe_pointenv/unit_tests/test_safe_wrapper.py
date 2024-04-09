@@ -1,6 +1,6 @@
 import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn
+from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn, set_env_difficulty
 import numpy as np
 from termcolor import cprint
 
@@ -12,6 +12,8 @@ python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.te
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_strict_req
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_env_difficulty
 """
 
 class TestSafeWrapper(unittest.TestCase):
@@ -40,6 +42,8 @@ class TestSafeWrapper(unittest.TestCase):
         self.env_kwargs = env_kwargs
         self.cost_f_kwargs = cost_f_kwargs
 
+    def test_set_env_difficulty(self):
+        set_env_difficulty(self.w_env, 0.5)
 
     def test_safe_env_load_fn(self):
         """load env wrappers with args"""
