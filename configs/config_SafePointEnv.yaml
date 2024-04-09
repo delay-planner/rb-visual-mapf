@@ -28,6 +28,7 @@ wrappers:
         max_dist: 4
         min_cost: 0.3
         max_cost: 1.0
+        reset_blend: 0.5
         threshold_distance: 1.0
         # pre-compiled maze-specific estimations on cost and path lengths
         # to generate, run pud/algos/cbfs_eval.py or pud/algos/cbfs_mp.py
