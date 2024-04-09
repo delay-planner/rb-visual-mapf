@@ -30,17 +30,17 @@ def linspace_list(inp_list:list, N:int):
     return inp_list_split
 
 def setup(env_kwargs, cost_f_kwargs):
-    env_kwargs = {
-        "walls": "CentralObstacle",
-        #"walls": "FourRooms",
-        "resize_factor": 5,
-        "thin": False,
-        "cost_limit": 1,
-    }
-    cost_f_kwargs = {
-        "name": "cosine",
-        "radius": 2.,
-    }
+    #env_kwargs = {
+    #    "walls": "CentralObstacle",
+    #    #"walls": "FourRooms",
+    #    "resize_factor": 5,
+    #    "thin": False,
+    #    "cost_limit": 1,
+    #}
+    #cost_f_kwargs = {
+    #    "name": "cosine",
+    #    "radius": 2.,
+    #}
 
     p_env = SafePointEnv(
                 **env_kwargs, 
@@ -101,7 +101,7 @@ def mp_runner(kwargs):
 
 if __name__ == "__main__":
     """
-    python pud/algos/cbfs_mp.py --cfg=configs/config_SafePointEnv.yaml --outdir=pud/envs/precompiles/mptest --use_mp
+    python pud/algos/cbfs_mp.py --cfg=configs/config_SafePointEnv.yaml --outdir=pud/envs/precompiles/mptest2 --use_mp
     """
     parser = argparse.ArgumentParser()
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     cfg = DotMap(cfg)
     cfg.pprint()
 
-    cpu_load_ratio = 0.8
+    cpu_load_ratio = args.load_ratio
     num_procs = int(os.cpu_count()*cpu_load_ratio)
 
     mp_out_dir = Path(args.outdir)
