@@ -1,3 +1,17 @@
+# (Multi-Agent) Hierarchal Constrained Reinforcement Learning
+
+## Precompile Estimates of Accumulated Costs and Rewards (Distance)
+**Step 1**: Run Constrained Breadth First Search on all pairs of maze nodes
+```bash
+# change config file as you see fit, rename output dir to describe the experiment
+# by default use multiprocessing, drop --use_mp for single-process mode
+python pud/algos/cbfs_mp.py --cfg configs/config_SafePointEnv.yaml --outdir FULL_PATH_OUTPUT_DIR --use_mp
+```
+**Step 2**: Build a catalog file for speedy IO
+```bash
+python pud/algos/cbfs_catalog.py --cbfs_dir FULL_PATH_OUTPUT_DIR --output FULL_PATH_TO_CBFS_CATALOG_FILE
+```
+
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
 ## Example usage
@@ -64,3 +78,4 @@ Cleaned SparseSearchPolicy (|V|=202, |E|=955) has success rate 1.00, evaluated i
 [1]: Michael Laskin, Scott Emmons, Ajay Jain, Thanard Kurutach, Pieter Abbeel, Deepak Pathak, ["Sparse Graphical Memory for Robust Planning"](https://arxiv.org/abs/2003.06417), 2020.
 
 [2]: Benjamin Eysenbach, Ruslan Salakhutdinov, Sergey Levine, ["Search on the Replay Buffer: Bridging Planning and Reinforcement Learning"](https://arxiv.org/abs/1906.05253), 2019.
+
