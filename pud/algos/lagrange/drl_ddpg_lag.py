@@ -267,8 +267,39 @@ class DRLDDPGLag(UVFDDPG):
             q_values = self.get_cost_q_values(state, **kwargs)
             return q_values.cpu().detach().numpy().squeeze(-1)
 
-    def get_pairwise_cost(self, obs_vec, goal_vec=None, aggregate='mean', max_search_steps=7, masked=False):
-        pass
+    def get_pairwise_cost(self, obs_vec, goal_vec=None, aggregate='mean'):
+        """Estimates the pairwise costs. Return ensemble_size, obs_vec, goal_vec
+
+          obs_vec: Array containing observations
+          goal_vec: (optional) Array containing a second set of observations. If
+                    not specified, computes the pairwise distances between obs_tensor and
+                    itself.
+          aggregate: (str) How to combine the predictions from the ensemble. Options
+                     are to take the minimum predicted q value (i.e., the maximum distance),
+                     the mean, or to simply return all the predictions.
+          max_search_steps: (int)
+          masked: (bool) Whether to ignore edges that are too long, as defined by
+                  max_search_steps.
+        """
+        if goal_vec is None:
+            goal_vec = obs_vec
+
+        dist_matrix = []
+        for obs_index in range(len(obs_vec)):
+            obs = obs_vec[obs_index]
+            # obs_repeat_tensor = np.ones_like(goal_vec) * np.expand_dims(obs, 0)
+            obs_repeat_tensor = np.repeat([obs], len(goal_vec), axis=0)
+            state = {'observation': obs_repeat_tensor, 'goal': goal_vec}
+            dist = self.get_cost_to_goal(state, aggregate=aggregate)
+            dist_matrix.append(dist)
+
+        pairwise_dist = np.stack(dist_matrix)
+        if aggregate is None:
+            pairwise_dist = np.transpose(pairwise_dist, [1, 0, 2])
+        # else:
+        #     pairwise_dist = np.expand_dims(pairwise_dist, 0)
+
+        return pairwise_dist
 
     def state_dict(self):
         out = super().state_dict()
