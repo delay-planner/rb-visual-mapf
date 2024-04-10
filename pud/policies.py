@@ -310,6 +310,11 @@ class SearchPolicy(BasePolicy):
         self.augmented_waypoint_attempts = np.zeros(len(starts), dtype=int)
         self.augmented_reached_final_waypoints = np.zeros(len(starts), dtype=bool)
         self.augmented_waypoint_stays = np.zeros(len(starts), dtype=bool)
+        self.nodes_to_agents_maps = nodes_to_agents_maps
+        self.start_ids = start_ids
+        self.goal_ids = goal_ids
+        self.starts = starts
+        self.goals = goals
 
     def get_current_waypoint(self):
         waypoint_index = self.waypoint_indices[self.waypoint_counter]
@@ -323,7 +328,13 @@ class SearchPolicy(BasePolicy):
             waypoint_index = self.augmented_waypoint_indices[idx][
                 self.augmented_waypoint_counters[idx]
             ]
-            waypoint = self.rb_vec[waypoint_index]
+            if waypoint_index > self.rb_vec.shape[0]:
+                if waypoint_index == self.start_ids[idx]:
+                    waypoint = self.starts[idx]
+                elif waypoint_index == self.goal_ids[idx]:
+                    waypoint = self.goals[idx]
+            else:
+                waypoint = self.rb_vec[waypoint_index]
             if idx > 0:
                 waypoint_qvals = self.agent.get_pairwise_dist(
                     [waypoint], augmented_waypoints, aggregate=None

@@ -177,9 +177,9 @@ if __name__ == "__main__":
             eval_env, replay_buffer.max_size
         )
 
-        from pud.visualize import visualize_buffer
+        # from pud.visualize import visualize_buffer
 
-        visualize_buffer(rb_vec, eval_env)
+        # visualize_buffer(rb_vec, eval_env)
 
         pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)
         from scipy.spatial import distance
@@ -191,9 +191,9 @@ if __name__ == "__main__":
         # from 1 to 20. Distributional RL implicitly caps the maximum predicted
         # distance by the largest bin. We've used 20 bins, so the critic
         # predicts 20 for all states that are at least 20 steps away from one another.
-        from pud.visualize import visualize_pairwise_dists
+        # from pud.visualize import visualize_pairwise_dists
 
-        visualize_pairwise_dists(pdist)
+        # visualize_pairwise_dists(pdist)
 
         # With these distances, we can construct a graph. Nodes in the graph are
         # observations in our replay buffer. We connect observations with edges
@@ -207,16 +207,16 @@ if __name__ == "__main__":
         # a *risk-averse* manner by using the maximum predicted distance across our
         # ensemble. That is, we act pessimistically, only adding an edge
         # if *all* critics think that this pair of states is nearby.
-        from pud.visualize import visualize_graph
+        # from pud.visualize import visualize_graph
 
-        visualize_graph(rb_vec, eval_env, pdist)
+        # visualize_graph(rb_vec, eval_env, pdist)
 
         # We can also visualize the predictions from each critic.
         # Note that while each critic may make incorrect decisions
         # for distant states, their predictions in aggregate are correct.
-        from pud.visualize import visualize_graph_ensemble
+        # from pud.visualize import visualize_graph_ensemble
 
-        visualize_graph_ensemble(rb_vec, eval_env, pdist)
+        # visualize_graph_ensemble(rb_vec, eval_env, pdist)
 
         from pud.policies import SearchPolicy
 
