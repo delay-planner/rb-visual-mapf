@@ -16,4 +16,5 @@ python pud/algos/train_PointEnv.py \
     --cfg $config \
     --logdir ${log_dir} \
     --device cuda:0 \
+    --train \
     --pbar

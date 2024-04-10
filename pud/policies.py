@@ -1,4 +1,9 @@
-from pud.dependencies import *
+import time
+import scipy
+import numpy as np
+import networkx as nx
+from pud.algos.cbs import CBSSolver
+
 
 class BasePolicy:
     def __init__(self, agent):
@@ -15,23 +20,26 @@ class GaussianPolicy(BasePolicy):
 
     def select_action(self, state):
         action = super().select_action(state)
-        action += np.random.normal(0, self.agent.max_action *
-                                   self.noise_scale, size=self.agent.action_dim)
+        action += np.random.normal(
+            0, self.agent.max_action * self.noise_scale, size=self.agent.action_dim
+        )
         action = action.clip(-self.agent.max_action, self.agent.max_action)
         return action
 
 
 class SearchPolicy(BasePolicy):
-    def __init__(self,
-                 agent,
-                 rb_vec,
-                 pdist=None,
-                 aggregate='min',
-                 max_search_steps=7,
-                 open_loop=False,
-                 weighted_path_planning=False,
-                 no_waypoint_hopping=False,
-                 ):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        pdist=None,
+        aggregate="min",
+        max_search_steps=7,
+        open_loop=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+        no_waypoint_hopping=False,
+    ):
         """
         Args:
             rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
@@ -55,35 +63,44 @@ class SearchPolicy(BasePolicy):
         self.cleanup = False
         self.attempt_cutoff = 3 * max_search_steps
 
+        self.waypoint_consistency_cutoff = waypoint_consistency_cutoff
+
         self.build_rb_graph()
         if not self.open_loop:
-            pdist2 = self.agent.get_pairwise_dist(self.rb_vec,
-                                                  aggregate=self.aggregate,
-                                                  max_search_steps=self.max_search_steps,
-                                                  masked=True)
-            self.rb_distances = scipy.sparse.csgraph.floyd_warshall(pdist2, directed=True)
+            pdist2 = self.agent.get_pairwise_dist(
+                self.rb_vec,
+                aggregate=self.aggregate,
+                max_search_steps=self.max_search_steps,
+                masked=True,
+            )
+            self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
+                pdist2, directed=True
+            )
         self.reset_stats()
 
     def __str__(self):
-        s = f'{self.__class__.__name__} (|V|={self.g.number_of_nodes()}, |E|={self.g.number_of_edges()})'
+        s = f"{self.__class__.__name__} (|V|={self.g.number_of_nodes()}, |E|={self.g.number_of_edges()})"
         return s
 
     def reset_stats(self):
         self.stats = dict(
             path_planning_attempts=0,
             path_planning_fails=0,
-            graph_search_time=0,
+            graph_search_time=0.0,
             localization_fails=0,
         )
 
     def get_stats(self):
         return self.stats
 
-    def set_cleanup(self, cleanup): # if True, will prune edges when fail to reach waypoint after `attempt_cutoff`
+    def set_cleanup(
+        self, cleanup
+    ):  # if True, will prune edges when fail to reach waypoint after `attempt_cutoff`
         self.cleanup = cleanup
 
     def build_rb_graph(self):
         g = nx.DiGraph()
+        assert self.pdist is not None
         pdist_combined = np.max(self.pdist, axis=0)
         for i, s_i in enumerate(self.rb_vec):
             for j, s_j in enumerate(self.rb_vec):
@@ -93,16 +110,20 @@ class SearchPolicy(BasePolicy):
         self.g = g
 
     def get_pairwise_dist_to_rb(self, state, masked=True):
-        start_to_rb_dist = self.agent.get_pairwise_dist([state['observation']],
-                                                        self.rb_vec,
-                                                        aggregate=self.aggregate,
-                                                        max_search_steps=self.max_search_steps,
-                                                        masked=masked)
-        rb_to_goal_dist  = self.agent.get_pairwise_dist(self.rb_vec,
-                                                        [state['goal']],
-                                                        aggregate=self.aggregate,
-                                                        max_search_steps=self.max_search_steps,
-                                                        masked=masked)
+        start_to_rb_dist = self.agent.get_pairwise_dist(
+            [state["observation"]],
+            self.rb_vec,
+            aggregate=self.aggregate,
+            max_search_steps=self.max_search_steps,
+            masked=masked,
+        )
+        rb_to_goal_dist = self.agent.get_pairwise_dist(
+            self.rb_vec,
+            [state["goal"]],
+            aggregate=self.aggregate,
+            max_search_steps=self.max_search_steps,
+            masked=masked,
+        )
         return start_to_rb_dist, rb_to_goal_dist
 
     def get_closest_waypoint(self, state):
@@ -114,11 +135,13 @@ class SearchPolicy(BasePolicy):
         # (B x A), (A x B)
 
         # The search_dist tensor should be (B x A x A)
-        search_dist = sum([
-            np.expand_dims(obs_to_rb_dist, 2),
-            np.expand_dims(self.rb_distances, 0),
-            np.expand_dims(np.transpose(rb_to_goal_dist), 1)
-        ]) # elementwise sum
+        search_dist = sum(
+            [
+                np.expand_dims(obs_to_rb_dist, 2),
+                np.expand_dims(self.rb_distances, 0),
+                np.expand_dims(np.transpose(rb_to_goal_dist), 1),
+            ]
+        )  # elementwise sum
 
         # We assume a batch size of 1.
         min_search_dist = np.min(search_dist)
@@ -127,42 +150,126 @@ class SearchPolicy(BasePolicy):
 
         return waypoint, min_search_dist
 
+    def get_closest_waypoints(self, state):
+
+        augmented_waypoints = []
+        augmented_min_search_dists = []
+        for idx in range(len(state["composite_goals"])):
+
+            state_copy = state.copy()
+            state_copy["observation"] = state["agent_observations"][idx]
+            state_copy["goal"] = state["composite_goals"][idx]
+            obs_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state_copy)
+            # (B x A), (A x B)
+
+            # The search_dist tensor should be (B x A x A)
+            search_dist = sum(
+                [
+                    np.expand_dims(obs_to_rb_dist, 2),
+                    np.expand_dims(self.rb_distances, 0),
+                    np.expand_dims(np.transpose(rb_to_goal_dist), 1),
+                ]
+            )
+
+            min_search_dist = np.min(search_dist)
+            waypoint_index = np.argmin(np.min(search_dist, axis=2), axis=1)[0]
+            waypoint = self.rb_vec[waypoint_index]
+            if waypoint in augmented_waypoints:
+                augmented_waypoints.append(state["agent_waypoints"][idx])
+                augmented_min_search_dists.append(0)
+            else:
+                augmented_waypoints.append(waypoint)
+                augmented_min_search_dists.append(min_search_dist)
+                state["agent_waypoints"][idx] = waypoint
+        return augmented_waypoints, augmented_min_search_dists
+
     def construct_planning_graph(self, state):
         start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
         planning_graph = self.g.copy()
 
-        for i, (dist_from_start, dist_to_goal) in enumerate(zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())):
+        for i, (dist_from_start, dist_to_goal) in enumerate(
+            zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
+        ):
             if dist_from_start < self.max_search_steps:
-                planning_graph.add_edge('start', i, weight=dist_from_start)
+                planning_graph.add_edge("start", i, weight=dist_from_start)
             if dist_to_goal < self.max_search_steps:
-                planning_graph.add_edge(i, 'goal', weight=dist_to_goal)
+                planning_graph.add_edge(i, "goal", weight=dist_to_goal)
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
-                rb_to_goal_dist < self.max_search_steps):
-            self.stats['localization_fails'] += 1
+            rb_to_goal_dist < self.max_search_steps
+        ):
+            self.stats["localization_fails"] += 1
 
         return planning_graph
+
+    def construct_augmented_planning_graph(self, starts, goals):
+        planning_graph = self.g.copy()
+        nodes_to_agent_maps = {}
+        for idx, (start, goal) in enumerate(zip(starts, goals)):
+            start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
+                {"observation": start, "goal": goal}
+            )
+            for i, (dist_from_start, dist_to_goal) in enumerate(
+                zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
+            ):
+                num_nodes = planning_graph.number_of_nodes()
+
+                if (
+                    dist_from_start < self.max_search_steps
+                    and dist_to_goal < self.max_search_steps
+                ):
+                    planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
+                    planning_graph.add_edge(i, num_nodes + 2, weight=dist_to_goal)
+                    nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
+                    nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
+                elif dist_from_start < self.max_search_steps:
+                    planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
+                    nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
+                elif dist_to_goal < self.max_search_steps:
+                    planning_graph.add_edge(i, num_nodes + 1, weight=dist_to_goal)
+                    nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 1
+
+                # if dist_from_start < self.max_search_steps:
+                # planning_graph.add_edge(
+                #     "start" + str(idx), i, weight=dist_from_start
+                # )
+                #     planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
+                # if dist_to_goal < self.max_search_steps:
+                # planning_graph.add_edge(i, "goal" + str(idx), weight=dist_to_goal)
+                # planning_graph.add_edge(i, num_nodes + 2, weight=dist_to_goal)
+                # nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
+                # nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
+
+            if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
+                rb_to_goal_dist < self.max_search_steps
+            ):
+                self.stats["localization_fails"] += 1
+        return planning_graph, nodes_to_agent_maps
 
     def get_path(self, state):
         g2 = self.construct_planning_graph(state)
         try:
-            self.stats['path_planning_attempts'] += 1
+            self.stats["path_planning_attempts"] += 1
             graph_search_start = time.perf_counter()
 
             if self.weighted_path_planning:
-                path = nx.shortest_path(g2, source='start', target='goal', weight='weight')
+                path = nx.shortest_path(
+                    g2, source="start", target="goal", weight="weight"
+                )
             else:
-                path = nx.shortest_path(g2, source='start', target='goal')
-        except:
-            self.stats['path_planning_fails'] += 1
-            raise RuntimeError(f'Failed to find path in graph (|V|={g2.number_of_nodes()}, |E|={g2.number_of_edges()})')
+                path = nx.shortest_path(g2, source="start", target="goal")
+        except Exception as e:
+            self.stats["path_planning_fails"] += 1
+            raise RuntimeError(
+                f"Failed to find path in graph (|V|={g2.number_of_nodes()}, |E|={g2.number_of_edges()})"
+            ) from e
         finally:
             graph_search_end = time.perf_counter()
-            self.stats['graph_search_time'] += graph_search_end - graph_search_start
+            self.stats["graph_search_time"] += graph_search_end - graph_search_start
 
         edge_lengths = []
-        for (i, j) in zip(path[:-1], path[1:]):
-            edge_lengths.append(g2[i][j]['weight'])
+        for i, j in zip(path[:-1], path[1:]):
+            edge_lengths.append(g2[i][j]["weight"])
 
         waypoint_to_goal_dist = np.cumsum(edge_lengths[::-1])[::-1]  # Reverse CumSum
         waypoint_indices = list(path)[1:-1]
@@ -174,24 +281,94 @@ class SearchPolicy(BasePolicy):
         self.waypoint_attempts = 0
         self.reached_final_waypoint = False
 
+    def initialize_paths(self, starts, goals):
+        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
+            starts, goals
+        )
+        start_ids = [
+            nodes_to_agents_maps["start" + str(idx)] for idx in range(len(starts))
+        ]
+        goal_ids = [
+            nodes_to_agents_maps["goal" + str(idx)] for idx in range(len(goals))
+        ]
+        cbs_solver = CBSSolver(graph, start_ids, goal_ids)  # type: ignore
+        paths = cbs_solver.find_paths()
+
+        self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = (
+            [],
+            [],
+        )
+        for path in paths:
+            edge_lengths = []
+            for i, j in zip(path[:-1], path[1:]):
+                edge_lengths.append(graph[i][j]["weight"])
+            waypoint_to_goal_dist = np.cumsum(edge_lengths[::-1])[::-1]
+            waypoint_indices = list(path)[1:-1]
+            self.augmented_waypoint_indices.append(waypoint_indices)
+            self.augmented_waypoint_to_goal_dist_vec.append(waypoint_to_goal_dist[1:])
+        self.augmented_waypoint_counters = np.zeros(len(starts), dtype=int)
+        self.augmented_waypoint_attempts = np.zeros(len(starts), dtype=int)
+        self.augmented_reached_final_waypoints = np.zeros(len(starts), dtype=bool)
+        self.augmented_waypoint_stays = np.zeros(len(starts), dtype=bool)
+
     def get_current_waypoint(self):
         waypoint_index = self.waypoint_indices[self.waypoint_counter]
         waypoint = self.rb_vec[waypoint_index]
         return waypoint, waypoint_index
 
+    def get_current_waypoints(self):
+        augmented_wp_indices = []
+        augmented_waypoints = []
+        for idx in range(self.augmented_waypoint_counters.shape[0]):
+            waypoint_index = self.augmented_waypoint_indices[idx][
+                self.augmented_waypoint_counters[idx]
+            ]
+            waypoint = self.rb_vec[waypoint_index]
+            if idx > 0:
+                waypoint_qvals = self.agent.get_pairwise_dist(
+                    [waypoint], augmented_waypoints, aggregate=None
+                )
+                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
+                    # if waypoint_index in augmented_wp_indices:
+                    if (
+                        self.augmented_waypoint_counters[idx] > 0
+                        and not self.augmented_waypoint_stays[idx]
+                    ):
+                        self.augmented_waypoint_counters[idx] -= 1
+                        self.augmented_waypoint_stays[idx] = True
+                    waypoint_index = self.augmented_waypoint_indices[idx][
+                        self.augmented_waypoint_counters[idx]
+                    ]
+                    waypoint = self.rb_vec[waypoint_index]
+            augmented_wp_indices.append(waypoint_index)
+            augmented_waypoints.append(waypoint)
+        return augmented_waypoints, augmented_wp_indices
+
     def get_waypoints(self):
         waypoints = [self.rb_vec[i] for i in self.waypoint_indices]
         return waypoints
+
+    def get_augmented_waypoints(self):
+        augmented_waypoints = []
+        for i in range(len(self.augmented_waypoint_indices)):
+            augmented_waypoints.append(
+                [self.rb_vec[j] for j in self.augmented_waypoint_indices[i]]
+            )
+        return augmented_waypoints
 
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
         return dist_to_waypoint < self.max_search_steps
 
     def select_action(self, state):
-        goal = state['goal']
-        dist_to_goal = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[0]
+        goal = state["goal"]
+        dist_to_goal = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[
+            0
+        ]
+
         if self.open_loop or self.cleanup:
-            if state.get('first_step', False): self.initialize_path(state)
-            
+            if state.get("first_step", False):
+                self.initialize_path(state)
+
             if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
                 # prune edge and replan
                 if self.waypoint_counter != 0 and not self.reached_final_waypoint:
@@ -201,8 +378,10 @@ class SearchPolicy(BasePolicy):
                 self.initialize_path(state)
 
             waypoint, waypoint_index = self.get_current_waypoint()
-            state['goal'] = waypoint
-            dist_to_waypoint = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[0]
+            state["goal"] = waypoint
+            dist_to_waypoint = self.agent.get_dist_to_goal(
+                {k: [v] for k, v in state.items()}
+            )[0]
 
             if self.reached_waypoint(dist_to_waypoint, state, waypoint_index):
                 if not self.reached_final_waypoint:
@@ -214,59 +393,193 @@ class SearchPolicy(BasePolicy):
                     self.waypoint_counter = len(self.waypoint_indices) - 1
 
                 waypoint, waypoint_index = self.get_current_waypoint()
-                state['goal'] = waypoint
-                dist_to_waypoint = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[0]
+                state["goal"] = waypoint
+                dist_to_waypoint = self.agent.get_dist_to_goal(
+                    {k: [v] for k, v in state.items()}
+                )[0]
 
-            dist_to_goal_via_waypoint = dist_to_waypoint + self.waypoint_to_goal_dist_vec[self.waypoint_counter]
+            dist_to_goal_via_waypoint = (
+                dist_to_waypoint + self.waypoint_to_goal_dist_vec[self.waypoint_counter]
+            )
         else:
             # closed loop, replan waypoint at each step
             waypoint, dist_to_goal_via_waypoint = self.get_closest_waypoint(state)
 
-        if (self.no_waypoint_hopping and not self.reached_final_waypoint) or \
-           (dist_to_goal_via_waypoint < dist_to_goal) or \
-           (dist_to_goal > self.max_search_steps):
-            state['goal'] = waypoint
-            if self.open_loop: self.waypoint_attempts += 1
+        if (
+            (self.no_waypoint_hopping and not self.reached_final_waypoint)
+            or (dist_to_goal_via_waypoint < dist_to_goal)
+            or (dist_to_goal > self.max_search_steps)
+        ):
+            state["goal"] = waypoint
+            if self.open_loop:
+                self.waypoint_attempts += 1
         else:
-            state['goal'] = goal
+            state["goal"] = goal
         return super().select_action(state)
+
+    def select_multiple_actions(self, state):
+        assert "composite_goals" in state.keys()
+
+        composite_goals = state["composite_goals"]
+        dist_to_composite_goals = []
+        for idx, c_goal in enumerate(composite_goals):
+            state_copy = state.copy()
+            state_copy["observation"] = state["agent_observations"][idx]
+            state_copy["goal"] = c_goal
+            dist_to_composite_goals.append(
+                self.agent.get_dist_to_goal({k: [v] for k, v in state_copy.items()})[0]
+            )
+
+        if self.open_loop or self.cleanup:
+            if state.get("first_step", False):
+                self.initialize_paths(
+                    state["composite_starts"], state["composite_goals"]
+                )
+
+            if self.cleanup:
+                for idx, (
+                    waypoint_counter,
+                    waypoint_attempts,
+                    reached_final_waypoint,
+                ) in enumerate(
+                    zip(
+                        self.augmented_waypoint_counters,
+                        self.augmented_waypoint_attempts,
+                        self.augmented_reached_final_waypoints,
+                    )
+                ):
+                    if (
+                        waypoint_attempts >= self.attempt_cutoff
+                        and waypoint_counter != 0
+                        and not reached_final_waypoint
+                    ):
+                        src_node = self.augmented_waypoint_indices[idx][
+                            waypoint_counter - 1
+                        ]
+                        dest_node = self.augmented_waypoint_indices[idx][
+                            waypoint_counter
+                        ]
+                        self.g.remove_edge(src_node, dest_node)
+                self.initialize_paths(
+                    state["composite_starts"], state["composite_goals"]
+                )
+
+            waypoints, waypoint_indices = self.get_current_waypoints()
+
+            dist_to_goal_via_waypoints = []
+            for idx in range(len(composite_goals)):
+                state_copy = state.copy()
+                state_copy["observation"] = state["agent_observations"][idx]
+                state_copy["goal"] = waypoints[idx]
+                dist_to_waypoint = self.agent.get_dist_to_goal(
+                    {k: [v] for k, v in state_copy.items()}
+                )[0]
+
+                if self.reached_waypoint(
+                    dist_to_waypoint, state_copy, waypoint_indices[idx]
+                ):
+                    if not self.augmented_reached_final_waypoints[idx]:
+                        self.augmented_waypoint_attempts[idx] = 0
+
+                    # if (
+                    #     len(self.augmented_waypoint_indices[idx])
+                    #     < self.augmented_waypoint_counters[idx] + 1
+                    #     and self.augmented_waypoint_indices[idx][
+                    #         self.augmented_waypoint_counters[idx] + 1
+                    #     ]
+                    #     not in waypoint_indices[:idx] + waypoint_indices[idx + 1 :]
+                    # ):
+                    #     self.augmented_waypoint_counters[idx] += 1
+                    self.augmented_waypoint_counters[idx] += 1
+                    self.augmented_waypoint_stays[idx] = False
+                    if self.augmented_waypoint_counters[idx] >= len(
+                        self.augmented_waypoint_indices[idx]
+                    ):
+                        self.augmented_reached_final_waypoints[idx] = True
+                        self.augmented_waypoint_counters[idx] = (
+                            len(self.augmented_waypoint_indices[idx]) - 1
+                        )
+
+                    waypoints, waypoint_indices = self.get_current_waypoints()
+                    state_copy["goal"] = waypoints[idx]
+                    dist_to_waypoint = self.agent.get_dist_to_goal(
+                        {k: [v] for k, v in state_copy.items()}
+                    )[0]
+
+                dist_to_goal_via_waypoint = (
+                    dist_to_waypoint
+                    + self.augmented_waypoint_to_goal_dist_vec[idx][
+                        self.augmented_waypoint_counters[idx]
+                    ]
+                )
+                dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
+        else:
+            # closed loop, replan waypoint at each step
+
+            waypoints, dist_to_goal_via_waypoints = self.get_closest_waypoints(state)
+
+        agent_actions = []
+        agent_goals = []
+        for idx in range(len(composite_goals)):
+            state_copy = state.copy()
+            if (
+                (
+                    self.no_waypoint_hopping
+                    and not self.augmented_reached_final_waypoints[idx]
+                )
+                or (dist_to_goal_via_waypoints[idx] < dist_to_composite_goals[idx])
+                or (dist_to_composite_goals[idx] > self.max_search_steps)
+            ):
+                state_copy["goal"] = waypoints[idx]
+                if self.open_loop:
+                    self.augmented_waypoint_attempts[idx] += 1
+            else:
+                state_copy["goal"] = composite_goals[idx]
+            agent_goals.append(state_copy["goal"])
+            state_copy["observation"] = state["agent_observations"][idx]
+            agent_action = super().select_action(state_copy)
+            agent_actions.append(agent_action)
+        return agent_actions, agent_goals
 
 
 class SparseSearchPolicy(SearchPolicy):
-    def __init__(self, *args,
-                 pdist=None,
-                 cache_pdist=True,
-                 beta=0.05,
-                 edge_cutoff=10,
-                 norm_cutoff=0.05,
-                 consistency_cutoff=5,
-                 waypoint_consistency_cutoff=1,
-                 k_nearest=5,
-                 localize_to_nearest=True,
-                 open_loop=True,
-                 no_waypoint_hopping=True,
-                 **kwargs):
+    def __init__(
+        self,
+        *args,
+        pdist=None,
+        cache_pdist=True,
+        beta=0.05,
+        edge_cutoff=10,
+        norm_cutoff=0.05,
+        consistency_cutoff=5,
+        waypoint_consistency_cutoff=1.5,
+        k_nearest=5,
+        localize_to_nearest=True,
+        open_loop=True,
+        no_waypoint_hopping=True,
+        **kwargs,
+    ):
         """
-        Note: If beta!=0 and cache_pdist=False, then dynamic construction of the 
-        state graph will use updated embeddings to compute distances. 
+        Note: If beta!=0 and cache_pdist=False, then dynamic construction of the
+        state graph will use updated embeddings to compute distances.
         Set cache_pdist=True to use the distances of the original observations.
 
         Args:
-            cache_pdist: if True, then uses `pdist` when building graph, 
+            cache_pdist: if True, then uses `pdist` when building graph,
                          otherwise, compute distances with new embeddings
             beta: percentage assigned to newest embedding space observation
                   in exponential moving average / variance calculations
             edge_cutoff: draw directed edges between nodes when their qvalue
                          distance is less than edge_cutoff
-            norm_cutoff: define neighbors if their embedding 
+            norm_cutoff: define neighbors if their embedding
                          norm distance is less than norm_cutoff
             consistency_cutoff: qval consistency cutoff
             waypoint_consistency_cutoff: waypoint qval consistency cutoff
             k_nearest: for filtering the nearest k nodes using edge weight
-            localize_to_nearest: if True, will incrementally add edges with 
+            localize_to_nearest: if True, will incrementally add edges with
                                  incoming start and goal nodes until path
-                                 exists from start to goal; otherwise, adds 
-                                 all edges with incoming start and goal nodes 
+                                 exists from start to goal; otherwise, adds
+                                 all edges with incoming start and goal nodes
                                  that have distance less than `max_search_steps`
         """
         self.cache_pdist = cache_pdist
@@ -277,17 +590,23 @@ class SparseSearchPolicy(SearchPolicy):
         self.waypoint_consistency_cutoff = waypoint_consistency_cutoff
         self.k_nearest = k_nearest
         self.localize_to_nearest = localize_to_nearest
-        super().__init__(*args, pdist=pdist, open_loop=open_loop, no_waypoint_hopping=no_waypoint_hopping, **kwargs)
+        super().__init__(
+            *args,
+            pdist=pdist,
+            open_loop=open_loop,
+            no_waypoint_hopping=no_waypoint_hopping,
+            **kwargs,
+        )
 
     def filter_keep_k_nearest(self):
         """
         For each node in the graph, keeps only the k outgoing edges with lowest weight.
         """
         for node in self.g.nodes():
-            edges = list(self.g.edges(nbunch=node, data='weight', default=np.inf))
+            edges = list(self.g.edges(nbunch=node, data="weight", default=np.inf))  # type: ignore
             edges.sort(key=lambda x: x[2])
             try:
-                edges_to_remove = edges[self.k_nearest:]
+                edges_to_remove = edges[self.k_nearest :]
             except IndexError:
                 edges_to_remove = []
             self.g.remove_edges_from(edges_to_remove)
@@ -297,7 +616,10 @@ class SparseSearchPolicy(SearchPolicy):
             return super().construct_planning_graph(state)
 
         start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
-        start_to_rb_dist, rb_to_goal_dist = start_to_rb_dist.flatten(), rb_to_goal_dist.flatten()
+        start_to_rb_dist, rb_to_goal_dist = (
+            start_to_rb_dist.flatten(),
+            rb_to_goal_dist.flatten(),
+        )
         planning_graph = self.g.copy()
 
         sorted_start_indices = np.argsort(start_to_rb_dist)
@@ -306,25 +628,76 @@ class SparseSearchPolicy(SearchPolicy):
         while neighbors_added < len(start_to_rb_dist):
             i = sorted_start_indices[neighbors_added]
             j = sorted_goal_indices[neighbors_added]
-            planning_graph.add_edge('start', i, weight=start_to_rb_dist[i])
-            planning_graph.add_edge(j, 'goal', weight=rb_to_goal_dist[j])
+            planning_graph.add_edge("start", i, weight=start_to_rb_dist[i])
+            planning_graph.add_edge(j, "goal", weight=rb_to_goal_dist[j])
             try:
-                nx.shortest_path(planning_graph, source='start', target='goal')
+                nx.shortest_path(planning_graph, source="start", target="goal")
                 break
             except nx.NetworkXNoPath:
                 neighbors_added += 1
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
-                rb_to_goal_dist < self.max_search_steps):
-            self.stats['localization_fails'] += 1
+            rb_to_goal_dist < self.max_search_steps
+        ):
+            self.stats["localization_fails"] += 1
 
         return planning_graph
 
+    def construct_augmented_planning_graph(self, starts, goals):
+        if not self.localize_to_nearest:
+            return super().construct_augmented_planning_graph(starts, goals)
+
+        planning_graph = self.g.copy()
+        nodes_to_agent_maps = {}
+        for idx, (start, goal) in enumerate(zip(starts, goals)):
+            start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
+                {"observation": start, "goal": goal}
+            )
+            start_to_rb_dist, rb_to_goal_dist = (
+                start_to_rb_dist.flatten(),
+                rb_to_goal_dist.flatten(),
+            )
+
+            sorted_start_indices = np.argsort(start_to_rb_dist)
+            sorted_goal_indices = np.argsort(rb_to_goal_dist)
+            neighbors_added = 0
+            num_nodes = planning_graph.number_of_nodes()
+            while neighbors_added < len(start_to_rb_dist):
+                i = sorted_start_indices[neighbors_added]
+                j = sorted_goal_indices[neighbors_added]
+                planning_graph.add_edge(
+                    # "start" + str(idx), i, weight=start_to_rb_dist[i]
+                    num_nodes + 1,
+                    i,
+                    weight=start_to_rb_dist[i],
+                )
+                # planning_graph.add_edge(j, "goal" + str(idx), weight=rb_to_goal_dist[j])
+                planning_graph.add_edge(j, num_nodes + 2, weight=rb_to_goal_dist[j])
+                nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
+                nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
+                try:
+                    nx.shortest_path(
+                        planning_graph,
+                        # source="start" + str(idx),
+                        # target="goal" + str(idx),
+                        source=num_nodes + 1,
+                        target=num_nodes + 2,
+                    )
+                    break
+                except nx.NetworkXNoPath:
+                    neighbors_added += 1
+
+            if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
+                rb_to_goal_dist < self.max_search_steps
+            ):
+                self.stats["localization_fails"] += 1
+        return planning_graph, nodes_to_agent_maps
+
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
         waypoint_qvals_combined = np.max(self.pdist, axis=0)[waypoint_index, :]
-        obs_qvals = self.agent.get_pairwise_dist([state['observation']],
-                                                  self.rb_vec,
-                                                  aggregate=None)
+        obs_qvals = self.agent.get_pairwise_dist(
+            [state["observation"]], self.rb_vec, aggregate=None
+        )
         obs_qvals_combined = np.max(obs_qvals, axis=0).flatten()
         qval_diffs = waypoint_qvals_combined - obs_qvals_combined
         qval_inconsistency = np.linalg.norm(qval_diffs, np.inf)
@@ -350,8 +723,11 @@ class SparseSearchPolicy(SearchPolicy):
         self.cache_pdist = False
         self.cached_pdist = None
 
-    def update_graph(self, embedding, cache_index=None): # Merge with existing node or create new node
-        if self.cache_pdist: assert cache_index is not None
+    def update_graph(
+        self, embedding, cache_index=None
+    ):  # Merge with existing node or create new node
+        if self.cache_pdist:
+            assert cache_index is not None
 
         if self.g.number_of_nodes() == 0:
             self.g.add_node(cache_index)
@@ -359,22 +735,35 @@ class SparseSearchPolicy(SearchPolicy):
             self.rb_variances = np.zeros((1))
 
             if self.cache_pdist:
-                self.pdist = self.get_cached_pairwise_dist(np.array([cache_index]), np.array([cache_index]))
+                self.pdist = self.get_cached_pairwise_dist(
+                    np.array([cache_index]), np.array([cache_index])
+                )
             else:
                 self.pdist = self.agent.get_pairwise_dist(self.rb_vec, aggregate=None)
 
-            if self.cache_pdist: self.cache_indices =  np.array([cache_index])
+            if self.cache_pdist:
+                self.cache_indices = np.array([cache_index])
         else:
             # Localize to nearest neighbors in embedding space
-            neighbor_indices = np.arange(len(self.rb_vec))[self.norm_consistency(embedding, self.rb_vec)]
+            neighbor_indices = np.arange(len(self.rb_vec))[
+                self.norm_consistency(embedding, self.rb_vec)
+            ]
 
             # Get maximum distances (i.e., minimum qvalues)
             if self.cache_pdist:
-                embedding_to_rb = self.get_cached_pairwise_dist(np.array([cache_index]), self.cache_indices)
-                rb_to_embedding = self.get_cached_pairwise_dist(self.cache_indices, np.array([cache_index]))
+                embedding_to_rb = self.get_cached_pairwise_dist(
+                    np.array([cache_index]), self.cache_indices
+                )
+                rb_to_embedding = self.get_cached_pairwise_dist(
+                    self.cache_indices, np.array([cache_index])
+                )
             else:
-                embedding_to_rb = self.agent.get_pairwise_dist([embedding], self.rb_vec, aggregate=None)
-                rb_to_embedding = self.agent.get_pairwise_dist(self.rb_vec, [embedding], aggregate=None)
+                embedding_to_rb = self.agent.get_pairwise_dist(
+                    [embedding], self.rb_vec, aggregate=None
+                )
+                rb_to_embedding = self.agent.get_pairwise_dist(
+                    self.rb_vec, [embedding], aggregate=None
+                )
 
             pdist_combined = np.max(self.pdist, axis=0)
             embedding_to_rb_combined = np.max(embedding_to_rb, axis=0).flatten()
@@ -384,11 +773,20 @@ class SparseSearchPolicy(SearchPolicy):
             merged = False
             for neighbor in neighbor_indices:
                 # Merge if qvalues are consistent
-                if self.qvalue_consistency(neighbor, pdist_combined, embedding_to_rb_combined, rb_to_embedding_combined):
+                if self.qvalue_consistency(
+                    neighbor,
+                    pdist_combined,
+                    embedding_to_rb_combined,
+                    rb_to_embedding_combined,
+                ):
                     difference_from_avg = embedding - self.rb_vec[neighbor]
-                    self.rb_vec[neighbor] = self.rb_vec[neighbor] + self.beta * difference_from_avg
-                    self.rb_variances[neighbor] = (1 - self.beta) * \
-                        (self.rb_variances[neighbor] + self.beta * np.sum(difference_from_avg ** 2))
+                    self.rb_vec[neighbor] = (
+                        self.rb_vec[neighbor] + self.beta * difference_from_avg
+                    )
+                    self.rb_variances[neighbor] = (1 - self.beta) * (
+                        self.rb_variances[neighbor]
+                        + self.beta * np.sum(difference_from_avg**2)
+                    )
                     merged = True
                     break
 
@@ -396,30 +794,50 @@ class SparseSearchPolicy(SearchPolicy):
             if not merged:
                 # Add node to graph
                 new_index = self.g.number_of_nodes()
-                in_indices = np.arange(new_index)[rb_to_embedding_combined < self.edge_cutoff]
+                in_indices = np.arange(new_index)[
+                    rb_to_embedding_combined < self.edge_cutoff
+                ]
                 in_weights = rb_to_embedding_combined[in_indices]
-                out_indices = np.arange(new_index)[embedding_to_rb_combined < self.edge_cutoff]
+                out_indices = np.arange(new_index)[
+                    embedding_to_rb_combined < self.edge_cutoff
+                ]
                 out_weights = embedding_to_rb_combined[out_indices]
                 self.g.add_node(new_index)
-                self.g.add_weighted_edges_from(zip(in_indices, [new_index] * len(in_indices), in_weights))
-                self.g.add_weighted_edges_from(zip([new_index] * len(out_indices), out_indices, out_weights))
+                self.g.add_weighted_edges_from(
+                    zip(in_indices, [new_index] * len(in_indices), in_weights)
+                )
+                self.g.add_weighted_edges_from(
+                    zip([new_index] * len(out_indices), out_indices, out_weights)
+                )
 
                 # The only qvalue distance we don't yet have is the new node to itself.
                 # Can concatenate qvalues we already have to save |V|^2 qvalue query.
                 # Used to update sparse_pdist
                 if self.cache_pdist:
-                    embedding_to_embedding = self.get_cached_pairwise_dist(np.array([cache_index]),
-                                                                           np.array([cache_index]))
+                    embedding_to_embedding = self.get_cached_pairwise_dist(
+                        np.array([cache_index]), np.array([cache_index])
+                    )
                 else:
-                    embedding_to_embedding = self.agent.get_pairwise_dist([embedding], [embedding], aggregate=None)
+                    embedding_to_embedding = self.agent.get_pairwise_dist(
+                        [embedding], [embedding], aggregate=None
+                    )
 
                 # Add node to other attributes
                 self.rb_vec = np.concatenate((self.rb_vec, [embedding]), axis=0)
                 self.rb_variances = np.append(self.rb_variances, [0])
                 self.pdist = np.concatenate((self.pdist, embedding_to_rb), axis=1)
                 self.pdist = np.concatenate(
-                    (self.pdist, np.concatenate((rb_to_embedding, embedding_to_embedding), axis=1)), axis=2)
-                if self.cache_pdist: self.cache_indices = np.append(self.cache_indices, cache_index)
+                    (
+                        self.pdist,
+                        np.concatenate(
+                            (rb_to_embedding, embedding_to_embedding), axis=1
+                        ),
+                    ),
+                    axis=2,
+                )
+                if self.cache_pdist:
+                    assert cache_index is not None
+                    self.cache_indices = np.append(self.cache_indices, cache_index)
 
     def get_cached_pairwise_dist(self, row_indices, col_indices):
         assert len(row_indices.shape) == len(col_indices.shape) == 1
@@ -427,19 +845,26 @@ class SparseSearchPolicy(SearchPolicy):
         col_entries = col_indices.shape[0]
         row_advanced_index = np.tile(row_indices, (col_entries, 1)).T
         col_advanced_index = np.tile(col_indices, (row_entries, 1))
+        assert self.cached_pdist is not None
         if len(self.cached_pdist.shape) == 2:
             return self.cached_pdist[row_advanced_index, col_advanced_index]
         elif len(self.cached_pdist.shape) == 3:
             return self.cached_pdist[:, row_advanced_index, col_advanced_index]
         else:
-            raise RuntimeError('Cached pdist has unrecognized shape')
+            raise RuntimeError("Cached pdist has unrecognized shape")
 
     def norm_consistency(self, embedding, embeddings):
         differences = embeddings - embedding
         inconsistency = np.linalg.norm(differences, axis=1)
         return inconsistency < self.norm_cutoff
 
-    def qvalue_consistency(self, neighbor_index, pdist_combined, rb_to_embedding_combined, embedding_to_rb_combined):
+    def qvalue_consistency(
+        self,
+        neighbor_index,
+        pdist_combined,
+        rb_to_embedding_combined,
+        embedding_to_rb_combined,
+    ):
         # Find adjacent nodes
         in_indices = np.array(list(self.g.predecessors(neighbor_index)))
         out_indices = np.array(list(self.g.successors(neighbor_index)))

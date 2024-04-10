@@ -1,4 +1,6 @@
-from pud.dependencies import *
+import gym
+import gym.wrappers
+
 
 # https://www.tensorflow.org/agents/tutorials/2_environments_tutorial#using_standard_environments
 class TimeStep:
@@ -7,7 +9,8 @@ class TimeStep:
 
 
 class TimeLimit(gym.Wrapper):
-    """End episodes after specified number of steps.
+    """
+    End episodes after specified number of steps.
 
     Resets the environment if either these conditions holds:
         1. The base environment returns done = True
@@ -26,19 +29,24 @@ class TimeLimit(gym.Wrapper):
     def reset(self):
         self.step_count = 0
         observation = self.env.reset()
-        observation['first_step'] = True
+        observation["first_step"] = True
         return observation
 
-    def step(self, action):
-        observation, reward, done, info = self.env.step(action)
+    def step(self, action, num_agents=None):
+        observation, reward, done, info = self.env.step(action)  # type: ignore
 
         self.step_count += 1
-        timed_out = self.step_count >= self.duration
+        if num_agents is not None:
+            timed_out = self.step_count >= self.duration // num_agents
+        else:
+            timed_out = self.step_count >= self.duration
         if timed_out or done:
-            info['timed_out'] = timed_out
-            info['terminal_observation'] = observation
-            info['last_step'] = True
+            info["timed_out"] = timed_out
+            info["terminal_observation"] = observation
+            info["last_step"] = True
             done = done if not self.terminate_on_timeout else True
-            observation = self.reset()
+
+            if num_agents is None:
+                observation = self.reset()
 
         return observation, reward, done, info
