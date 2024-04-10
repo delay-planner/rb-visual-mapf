@@ -29,9 +29,11 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
     parser.add_argument("--train", action="store_true", help="Train or test")
+    parser.add_argument("--weights", type=str, default="", help="Weights file to load")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
+
     args = parser.parse_args()
     cfg = {}
     with open(args.cfg, "r") as f:
@@ -155,20 +157,14 @@ if __name__ == "__main__":
             ckpt_dir.joinpath("agent.pth"),
         )
     elif not train:
-        for dirname in os.listdir(cfg.ckpt_dir):
-            ckpt_dir = os.path.join(cfg.ckpt_dir, dirname)
-            ckpt_file = os.path.join(ckpt_dir, "agent.pth")
-            if os.path.exists(ckpt_file):
-                agent.load_state_dict(torch.load(ckpt_file))
-                agent.eval()
-                break
+        agent.load_state_dict(torch.load(args.weights))
+        agent.eval()
+        from pud.visualize import visualize_trajectory
 
-        # from pud.visualize import visualize_trajectory
-
-        # eval_env.duration = (
-        #     100  # We'll give the agent lots of time to try to find the goal.
-        # )
-        # visualize_trajectory(agent, eval_env, difficulty=0.5, constrained=True)
+        eval_env.duration = (
+            100  # We'll give the agent lots of time to try to find the goal.
+        )
+        visualize_trajectory(agent, eval_env, difficulty=0.5, constrained=True)
 
         # We now will implement the search policy, which automatically finds these waypoints via graph search.
         # The first step is to fill the replay buffer with random data.
@@ -181,23 +177,23 @@ if __name__ == "__main__":
             eval_env, replay_buffer.max_size
         )
 
-        # from pud.visualize import visualize_buffer
+        from pud.visualize import visualize_buffer
 
-        # visualize_buffer(rb_vec, eval_env)
+        visualize_buffer(rb_vec, eval_env)
 
         pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)
-        # from scipy.spatial import distance
+        from scipy.spatial import distance
 
-        # euclidean_dists = distance.pdist(rb_vec)
+        euclidean_dists = distance.pdist(rb_vec)
 
         # As a sanity check, we'll plot the pairwise distances between all
         # observations in the replay buffer. We expect to see a range of values
         # from 1 to 20. Distributional RL implicitly caps the maximum predicted
         # distance by the largest bin. We've used 20 bins, so the critic
         # predicts 20 for all states that are at least 20 steps away from one another.
-        # from pud.visualize import visualize_pairwise_dists
+        from pud.visualize import visualize_pairwise_dists
 
-        # visualize_pairwise_dists(pdist)
+        visualize_pairwise_dists(pdist)
 
         # With these distances, we can construct a graph. Nodes in the graph are
         # observations in our replay buffer. We connect observations with edges
@@ -211,16 +207,16 @@ if __name__ == "__main__":
         # a *risk-averse* manner by using the maximum predicted distance across our
         # ensemble. That is, we act pessimistically, only adding an edge
         # if *all* critics think that this pair of states is nearby.
-        # from pud.visualize import visualize_graph
+        from pud.visualize import visualize_graph
 
-        # visualize_graph(rb_vec, eval_env, pdist)
+        visualize_graph(rb_vec, eval_env, pdist)
 
         # We can also visualize the predictions from each critic.
         # Note that while each critic may make incorrect decisions
         # for distant states, their predictions in aggregate are correct.
-        # from pud.visualize import visualize_graph_ensemble
+        from pud.visualize import visualize_graph_ensemble
 
-        # visualize_graph_ensemble(rb_vec, eval_env, pdist)
+        visualize_graph_ensemble(rb_vec, eval_env, pdist)
 
         from pud.policies import SearchPolicy
 
@@ -250,7 +246,12 @@ if __name__ == "__main__":
         # Plot the search path found by the search policy
         from pud.visualize import visualize_search_path
 
-        visualize_search_path(search_policy, eval_env, difficulty=0.9, constrained=True)
+        visualize_search_path(
+            search_policy,
+            eval_env,
+            difficulty=0.9,
+            constrained=True,
+        )
 
         # Now, we'll use that path to guide the agent towards the goal.
         # On the left, we plot rollouts from the baseline goal-conditioned policy.

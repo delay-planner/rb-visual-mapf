@@ -13,9 +13,19 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 
 
 def visualize_trajectory(
-    agent, eval_env, difficulty=0.5, outpath="", constrained=False
+    agent,
+    eval_env,
+    difficulty=0.5,
+    outpath="",
+    cost_constraints: dict = {},
+    constrained=False,
 ):
-    set_env_difficulty(eval_env, difficulty)
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
 
     plt.figure(figsize=(8, 4))
     for col_index in range(2):
@@ -381,10 +391,17 @@ def visualize_compare_search(
     difficulty=0.5,
     seed=0,
     outpath="",
+    cost_constraints: dict = {},
     constrained=False,
     num_agents=None,
 ):
-    set_env_difficulty(eval_env, difficulty)
+
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
 
     plt.figure(figsize=(12, 5))
 
