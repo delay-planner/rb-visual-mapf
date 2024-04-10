@@ -5,6 +5,11 @@ from matplotlib.animation import FuncAnimation
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.constrained_collector import ConstrainedCollector
 from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeTimeLimit,
+    SafeGoalConditionedPointWrapper,
+    set_safe_env_difficulty,
+)
 
 
 def visualize_trajectory(
@@ -138,10 +143,16 @@ def visualize_search_path(
     eval_env,
     difficulty=0.5,
     outpath="",
+    cost_constraints: dict = {},
     constrained=False,
     num_agents=None,
 ):
-    set_env_difficulty(eval_env, difficulty)
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
 
     if search_policy.open_loop:
 

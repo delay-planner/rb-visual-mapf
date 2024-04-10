@@ -1,6 +1,10 @@
 import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn, set_env_difficulty
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointWrapper,
+    safe_env_load_fn,
+    set_safe_env_difficulty,
+)
 import numpy as np
 from termcolor import cprint
 
@@ -13,56 +17,55 @@ python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.te
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
 
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_env_difficulty
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_safe_env_difficulty
 """
+
 
 class TestSafeWrapper(unittest.TestCase):
     def setUp(self):
         env_kwargs = {
             "walls": "CentralObstacle",
-            #"walls": "FourRooms",
+            # "walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
             "cost_limit": 1,
         }
         cost_f_kwargs = {
             "name": "cosine",
-            "radius": 2.,
+            "radius": 2.0,
         }
 
-        self.p_env = SafePointEnv(
-                    **env_kwargs, 
-                    cost_f_args=cost_f_kwargs)
-        
+        self.p_env = SafePointEnv(**env_kwargs, cost_f_args=cost_f_kwargs)
+
         self.w_env = SafeGoalConditionedPointWrapper(
             self.p_env,
             cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
-            )
+        )
 
         self.env_kwargs = env_kwargs
         self.cost_f_kwargs = cost_f_kwargs
 
-    def test_set_env_difficulty(self):
-        set_env_difficulty(self.w_env, 0.5)
+    def test_set_safe_env_difficulty(self):
+        set_safe_env_difficulty(self.w_env, 0.5)
 
     def test_safe_env_load_fn(self):
         """load env wrappers with args"""
         # args for SafeGoalConditionedPointWrapper
-        wrapper_kwargs= [
+        wrapper_kwargs = [
             dict(cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl"),
-            ]
+        ]
         out_env = safe_env_load_fn(
             env_kwargs=self.env_kwargs,
             cost_f_kwargs=self.cost_f_kwargs,
             gym_env_wrappers=(SafeGoalConditionedPointWrapper,),
             wrapper_kwargs=wrapper_kwargs,
-            )
-        
+        )
+
         assert isinstance(out_env, SafeGoalConditionedPointWrapper)
         out_env.set_sample_goal_args(
             prob_constraint=1,
-            min_dist=1.0, 
-            max_dist=10.0, 
+            min_dist=1.0,
+            max_dist=10.0,
             min_cost=0.0,
             max_cost=1.0,
         )
@@ -74,11 +77,15 @@ class TestSafeWrapper(unittest.TestCase):
             out = self.w_env.sample_start_n_goal("ub")
             self.assertTrue(self.w_env.get_state_cost(out["s0"]) <= 0.0)
             self.assertTrue(self.w_env.get_state_cost(out["sg"]) <= 0.0)
-            
+
             key = np.concatenate([out["s0"], out["sg"]], axis=0).astype(int)
             key = tuple(key.tolist())
-            self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] > 0)
-            self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] < np.inf)
+            self.assertTrue(
+                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]] > 0
+            )
+            self.assertTrue(
+                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]] < np.inf
+            )
 
     @unittest.skip("deprecated")
     def test_sample_safe_start_n_goal_in_dists(self):
@@ -87,20 +94,26 @@ class TestSafeWrapper(unittest.TestCase):
             out, info = self.w_env.sample_safe_start_n_goal_in_dists(
                 min_dist=dist_limits[0],
                 max_dist=dist_limits[1],
-                )
+            )
             self.assertTrue(self.w_env.get_state_cost(out["s0"]) <= 0.0)
             self.assertTrue(self.w_env.get_state_cost(out["sg"]) <= 0.0)
-            
+
             key = np.concatenate([out["s0"], out["sg"]], axis=0).astype(int)
             key = tuple(key.tolist())
-            self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] > dist_limits[0])
-            self.assertTrue(self.p_env._safe_apsp["ub"][key[0],key[1],key[2],key[3]] < dist_limits[1])
+            self.assertTrue(
+                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]]
+                > dist_limits[0]
+            )
+            self.assertTrue(
+                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]]
+                < dist_limits[1]
+            )
 
     def test_reset_no_constraint(self):
         self.w_env.set_sample_goal_args(
             prob_constraint=0.0,
-            min_dist=0.0, 
-            max_dist=1.0, 
+            min_dist=0.0,
+            max_dist=1.0,
             min_cost=0.0,
             max_cost=1.0,
         )
@@ -111,20 +124,16 @@ class TestSafeWrapper(unittest.TestCase):
         max_cost = 0.5
         self.w_env.set_sample_goal_args(
             prob_constraint=1.0,
-            min_dist=1.0, 
-            max_dist=10.0, 
+            min_dist=1.0,
+            max_dist=10.0,
             min_cost=0.0,
             max_cost=max_cost,
         )
         for _ in range(100):
             out, info = self.w_env.reset()
-            self.assertTrue(
-                self.w_env.get_state_cost(out["observation"]) <= max_cost
-            )
-            self.assertTrue(
-                self.w_env.get_state_cost(out["goal"]) <= max_cost
-            )
-        
+            self.assertTrue(self.w_env.get_state_cost(out["observation"]) <= max_cost)
+            self.assertTrue(self.w_env.get_state_cost(out["goal"]) <= max_cost)
+
     def test_reset_with_constraint_strict_req(self):
         """very strict requirement on reference distances, which may be an empty set"""
         target_dists = [2, 5, 10, 15]
@@ -132,14 +141,14 @@ class TestSafeWrapper(unittest.TestCase):
         for i in range(len(target_dists)):
             min_dist, max_dist = target_dists[i], target_dists[i]
             cost_levels = list(self.w_env.pi_cbfs["trajs"][min_dist].keys())
-            cost_levels.sort()        
+            cost_levels.sort()
             for l in range(len(cost_levels)):
                 max_cost, min_cost = cost_levels[l], cost_levels[l]
 
                 if max_cost in self.w_env.pi_cbfs["trajs"][min_dist]:
                     self.w_env.set_sample_goal_args(
                         prob_constraint=1.0,
-                        min_dist=min_dist, 
+                        min_dist=min_dist,
                         max_dist=max_dist,
                         min_cost=min_cost,
                         max_cost=max_cost,
@@ -154,7 +163,11 @@ class TestSafeWrapper(unittest.TestCase):
                         )
 
                 else:
-                    cprint("[WARN] target cost={}, target distance={} not found".format(cost_levels[l], target_dists[i]))
+                    cprint(
+                        "[WARN] target cost={}, target distance={} not found".format(
+                            cost_levels[l], target_dists[i]
+                        )
+                    )
 
     def test_step(self):
         self.w_env.reset()
@@ -164,5 +177,6 @@ class TestSafeWrapper(unittest.TestCase):
     def test_cbfs_sample(self):
         self.w_env.cbfs_sample(min_cost=0, max_cost=1.0, min_dist=1.0, max_dist=10)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
