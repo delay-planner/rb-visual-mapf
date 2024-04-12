@@ -6,6 +6,11 @@ from typing import Optional
 from pud.collector import Collector
 from pud.algos.constrained_collector import ConstrainedCollector
 from torch.utils.tensorboard.writer import SummaryWriter
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointWrapper,
+    SafeTimeLimit,
+    set_safe_env_difficulty,
+)
 from pud.envs.simple_navigation_env import set_env_difficulty
 from pud.algos.constrained_collector import ConstrainedCollector
 
@@ -131,8 +136,19 @@ def eval_search_policy(search_policy, eval_env, num_evals=10, constrained=False)
     return success_rate, eval_time
 
 
-def take_cleanup_steps(search_policy, eval_env, num_cleanup_steps, constrained=False):
-    set_env_difficulty(eval_env, 0.95)
+def take_cleanup_steps(
+    search_policy,
+    eval_env,
+    num_cleanup_steps,
+    cost_constraints: dict = {},
+    constrained=False,
+):
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, 0.95, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, 0.95)
 
     search_policy.set_cleanup(True)
     cleanup_start = time.perf_counter()
@@ -150,9 +166,21 @@ def take_cleanup_steps(search_policy, eval_env, num_cleanup_steps, constrained=F
 
 
 def cleanup_and_eval_search_policy(
-    search_policy, eval_env, num_evals=10, difficulty=0.5, constrained=False
+    search_policy,
+    eval_env,
+    num_evals=10,
+    difficulty=0.5,
+    cost_constraints: dict = {},
+    constrained=False,
 ):
-    set_env_difficulty(eval_env, difficulty)
+
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
+
     search_policy.reset_stats()
     success_rate, eval_time = eval_search_policy(
         search_policy, eval_env, num_evals=num_evals, constrained=constrained
@@ -167,7 +195,13 @@ def cleanup_and_eval_search_policy(
     # Filter search policy
     search_policy.filter_keep_k_nearest()
 
-    set_env_difficulty(eval_env, difficulty)
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
+
     search_policy.reset_stats()
     success_rate, eval_time = eval_search_policy(
         search_policy, eval_env, num_evals=num_evals, constrained=constrained
@@ -184,7 +218,13 @@ def cleanup_and_eval_search_policy(
     )
     print(f"Took {num_cleanup_steps} cleanup steps in {cleanup_time:.2f} seconds")
 
-    set_env_difficulty(eval_env, difficulty)
+    if isinstance(eval_env, SafeTimeLimit) or isinstance(
+        eval_env, SafeGoalConditionedPointWrapper
+    ):
+        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
+    else:
+        set_env_difficulty(eval_env, difficulty)
+
     search_policy.reset_stats()
     success_rate, eval_time = eval_search_policy(
         search_policy, eval_env, num_evals=num_evals, constrained=constrained

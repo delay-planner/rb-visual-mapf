@@ -303,9 +303,7 @@ def visualize_search_path(
         visualize_path(wp_paths, eval_env, "multi_agent_search.gif", save_fig=True)
 
 
-def visualize_path(
-    paths, eval_env, filename: str, save_fig: bool = False, waypoints=False
-):
+def visualize_path(paths, eval_env, filename: str, save_fig: bool = False, wps=None):
     fig, ax = plt.subplots(figsize=(6, 6))
     walls = eval_env.walls.T
     (height, width) = walls.shape
@@ -319,7 +317,7 @@ def visualize_path(
     # ax.xticks([])
     # ax.yticks([])
 
-    if waypoints:
+    if wps is not None:
         marker = "s"
     else:
         marker = "o"
@@ -337,6 +335,8 @@ def visualize_path(
     num_of_agents = len(paths)
 
     lines = []
+    if wps is not None:
+        wps_lines = []
     starts = []
     ends = []
     for agent in range(num_of_agents):
@@ -346,15 +346,26 @@ def visualize_path(
             lw=2,
             color=agent_colors[agent][1],
             ls="-",
-            marker=marker,
+            marker="o",
             alpha=0.7,
         )
         (start,) = ax.plot(
             [], [], lw=2, color=agent_colors[agent][0], marker="x", alpha=0.7
         )
         (end,) = ax.plot(
-            [], [], lw=2, color=agent_colors[agent][0], marker="o", alpha=0.7
+            [], [], lw=2, color=agent_colors[agent][0], marker="*", alpha=0.7
         )
+        if wps is not None:
+            (wps_line,) = ax.plot(
+                [],
+                [],
+                lw=2,
+                color=agent_colors[agent][1],
+                ls="-",
+                marker="s",
+                alpha=0.7,
+            )
+            wps_lines.append(wps_line)
         lines.append(line)
         starts.append(start)
         ends.append(end)
@@ -362,6 +373,7 @@ def visualize_path(
     def init():
         for i, path in enumerate(paths):
             starts[i].set_data(path[0][0], path[0][1])
+            ends[i].set_data(path[-1][0], path[-1][1])
         return starts
 
     def update(frame):
@@ -371,8 +383,14 @@ def visualize_path(
             x_data = [point[0] for point in path[: frame + 1]]
             y_data = [point[1] for point in path[: frame + 1]]
             lines[i].set_data(x_data, y_data)
-            ends[i].set_data(path[frame][0], path[frame][1])
-        return lines
+            if wps is not None:
+                wps_x_data = [point[0] for point in wps[i][: frame + 1]]
+                wps_y_data = [point[1] for point in wps[i][: frame + 1]]
+                wps_lines[i].set_data(wps_x_data, wps_y_data)
+        if wps is not None:
+            return lines + wps_lines
+        else:
+            return lines
 
     frames = max(len(path) for path in paths)
     ani = FuncAnimation(
@@ -572,21 +590,16 @@ def visualize_compare_search(
     plt.show()
 
     if num_agents is not None:
-        visualize_path(
-            no_search_obs,
-            eval_env,
-            "no_search.gif",
-            save_fig=True,
-        )
+        # visualize_path(
+        #     no_search_obs,
+        #     eval_env,
+        #     "no_search.gif",
+        #     save_fig=True,
+        # )
         visualize_path(
             search_obs,
             eval_env,
             "search.gif",
             save_fig=True,
-        )
-        visualize_path(
-            search_wps,
-            eval_env,
-            "search_wps.gif",
-            save_fig=True,
+            wps=search_wps,
         )

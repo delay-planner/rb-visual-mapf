@@ -280,6 +280,7 @@ class ConstrainedCollector(Collector):
         num_agents,
         input_starts: Union[List[Tuple[float, float]], None] = None,
         input_goals: Union[List[Tuple[float, float]], None] = None,
+        threshold: float = 0.05,
     ) -> Tuple[
         List[Tuple[float, float]],
         List[Tuple[float, float]],
@@ -416,6 +417,20 @@ class ConstrainedCollector(Collector):
                         info["terminal_observation"]["observation"]
                     )
                     agent_done[agent_id] = True
+
+            # Check if any of the agent's positions are within some threshold
+            for agent_id in range(num_agents):
+                for other_agent_id in range(num_agents):
+                    if agent_id == other_agent_id:
+                        continue
+                    if (
+                        np.linalg.norm(
+                            np.array(state["agent_observations"][agent_id])
+                            - np.array(state["agent_observations"][other_agent_id])
+                        )
+                        < threshold
+                    ):
+                        print("Collision!!!")
 
             all_done = all(agent_done)
 

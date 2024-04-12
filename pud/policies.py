@@ -204,30 +204,28 @@ class SearchPolicy(BasePolicy):
 
     def construct_augmented_planning_graph(self, starts, goals):
         planning_graph = self.g.copy()
+        print("Initial graph size = ", self.g.number_of_nodes())
+
         nodes_to_agent_maps = {}
         for idx, (start, goal) in enumerate(zip(starts, goals)):
+
+            num_nodes = planning_graph.number_of_nodes() - 1
+            start_id = num_nodes + 1
+            goal_id = num_nodes + 2
+            nodes_to_agent_maps["start" + str(idx)] = start_id
+            nodes_to_agent_maps["goal" + str(idx)] = goal_id
+
             start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
                 {"observation": start, "goal": goal}
             )
             for i, (dist_from_start, dist_to_goal) in enumerate(
                 zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
             ):
-                num_nodes = planning_graph.number_of_nodes()
 
-                if (
-                    dist_from_start < self.max_search_steps
-                    and dist_to_goal < self.max_search_steps
-                ):
-                    planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
-                    planning_graph.add_edge(i, num_nodes + 2, weight=dist_to_goal)
-                    nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
-                    nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
-                elif dist_from_start < self.max_search_steps:
-                    planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
-                    nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
-                elif dist_to_goal < self.max_search_steps:
-                    planning_graph.add_edge(i, num_nodes + 1, weight=dist_to_goal)
-                    nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 1
+                if dist_from_start < self.max_search_steps:
+                    planning_graph.add_edge(start_id, i, weight=dist_from_start)
+                if dist_to_goal < self.max_search_steps:
+                    planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
 
                 # if dist_from_start < self.max_search_steps:
                 # planning_graph.add_edge(
@@ -244,6 +242,7 @@ class SearchPolicy(BasePolicy):
                 rb_to_goal_dist < self.max_search_steps
             ):
                 self.stats["localization_fails"] += 1
+        print("Final graph size = ", planning_graph.number_of_nodes())
         return planning_graph, nodes_to_agent_maps
 
     def get_path(self, state):
@@ -291,8 +290,28 @@ class SearchPolicy(BasePolicy):
         goal_ids = [
             nodes_to_agents_maps["goal" + str(idx)] for idx in range(len(goals))
         ]
-        cbs_solver = CBSSolver(graph, start_ids, goal_ids)  # type: ignore
+
+        augmented_wps = self.rb_vec.copy()
+        for idx, (start, goal) in enumerate(zip(starts, goals)):
+            augmented_wps = np.vstack([augmented_wps, start, goal])
+
+        cbs_solver = CBSSolver(graph, augmented_wps, start_ids, goal_ids)  # type: ignore
         paths = cbs_solver.find_paths()
+
+        self.debug_graph = graph
+
+        print("Printing the paths")
+        for id, path in enumerate(paths):
+            print("--" * 10)
+            print("Path for agent ", id)
+            for vertex in path:
+                if vertex in start_ids or vertex in goal_ids:
+                    if vertex in start_ids:
+                        print("Start: ", starts[id])
+                    else:
+                        print("Goal: ", goals[id])
+                else:
+                    print("Vertex: ", self.rb_vec[vertex])
 
         self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = (
             [],
@@ -368,7 +387,8 @@ class SearchPolicy(BasePolicy):
         return augmented_waypoints
 
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
-        return dist_to_waypoint < self.max_search_steps
+        # return dist_to_waypoint < self.max_search_steps
+        return dist_to_waypoint < 2
 
     def select_action(self, state):
         goal = state["goal"]
@@ -443,6 +463,8 @@ class SearchPolicy(BasePolicy):
 
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
+                print("Composite starts: ", state["composite_starts"])
+                print("Composite goals: ", state["composite_goals"])
                 self.initialize_paths(
                     state["composite_starts"], state["composite_goals"]
                 )
@@ -651,7 +673,6 @@ class SparseSearchPolicy(SearchPolicy):
             rb_to_goal_dist < self.max_search_steps
         ):
             self.stats["localization_fails"] += 1
-
         return planning_graph
 
     def construct_augmented_planning_graph(self, starts, goals):
@@ -659,6 +680,7 @@ class SparseSearchPolicy(SearchPolicy):
             return super().construct_augmented_planning_graph(starts, goals)
 
         planning_graph = self.g.copy()
+        print("Initial graph size = ", self.g.number_of_nodes())
         nodes_to_agent_maps = {}
         for idx, (start, goal) in enumerate(zip(starts, goals)):
             start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
@@ -672,7 +694,7 @@ class SparseSearchPolicy(SearchPolicy):
             sorted_start_indices = np.argsort(start_to_rb_dist)
             sorted_goal_indices = np.argsort(rb_to_goal_dist)
             neighbors_added = 0
-            num_nodes = planning_graph.number_of_nodes()
+            num_nodes = planning_graph.number_of_nodes() - 1
             while neighbors_added < len(start_to_rb_dist):
                 i = sorted_start_indices[neighbors_added]
                 j = sorted_goal_indices[neighbors_added]
@@ -702,6 +724,7 @@ class SparseSearchPolicy(SearchPolicy):
                 rb_to_goal_dist < self.max_search_steps
             ):
                 self.stats["localization_fails"] += 1
+        print("Final graph size = ", planning_graph.number_of_nodes())
         return planning_graph, nodes_to_agent_maps
 
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):

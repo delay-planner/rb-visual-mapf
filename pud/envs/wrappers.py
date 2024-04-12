@@ -36,10 +36,7 @@ class TimeLimit(gym.Wrapper):
         observation, reward, done, info = self.env.step(action)  # type: ignore
 
         self.step_count += 1
-        if num_agents is not None:
-            timed_out = self.step_count >= self.duration // num_agents
-        else:
-            timed_out = self.step_count >= self.duration
+        timed_out = self.step_count >= self.duration
         if timed_out or done:
             info["timed_out"] = timed_out
             info["terminal_observation"] = observation

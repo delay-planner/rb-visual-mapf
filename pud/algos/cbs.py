@@ -1,6 +1,9 @@
 import heapq
 import random
-from networkx import DiGraph
+import numpy as np
+import networkx as nx
+from networkx import Graph
+from numpy.typing import NDArray
 from typing import List, Union, Tuple, Dict
 from pud.algos.single_agent_planner import (
     a_star,
@@ -10,8 +13,10 @@ from pud.algos.single_agent_planner import (
 
 
 def detect_collision(
-    pathA: List[int], pathB: List[int]
-) -> Union[Tuple[List, int, str], None]:
+    pathA: List[int], pathB: List[int], graph_waypoints: NDArray
+) -> Union[List[Tuple[List, int, str]], None]:
+
+    collisions = []
     path1 = pathA.copy()
     path2 = pathB.copy()
     if len(path1) >= len(path2):
@@ -25,36 +30,83 @@ def detect_collision(
         short_path.append(short_path[-1])
 
     for timestep in range(len(path1)):
-        if path1[timestep] == path2[timestep]:
-            return [path1[timestep]], timestep, "vertex"
+        # if path1[timestep] == path2[timestep]:
+        #     collisions.append(([path1[timestep]], timestep, "vertex"))
+        #     # return [path1[timestep]], timestep, "vertex"
+        # if timestep < len(path1) - 1:
+        #     if (
+        #         path1[timestep] == path2[timestep + 1]
+        #         and path1[timestep + 1] == path2[timestep]
+        #     ):
+        #         collisions.append(
+        #             ([path1[timestep], path1[timestep + 1]], timestep + 1, "edge")
+        #         )
+        #         # return (
+        #         #     [path1[timestep], path1[timestep + 1]],
+        #         #     timestep + 1,
+        #         #     "edge",
+        #         # )
+        if (
+            np.linalg.norm(
+                graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
+            )
+            <= 0.5
+        ):
+            print("Colliding the low-level space")
+            collisions.append(([path1[timestep]], timestep, "vertex"))
+            # return [path1[timestep]], timestep, "vertex"
         if timestep < len(path1) - 1:
             if (
-                path1[timestep] == path2[timestep + 1]
-                and path1[timestep + 1] == path2[timestep]
-            ):
-                return (
-                    [path1[timestep], path1[timestep + 1]],
-                    timestep + 1,
-                    "edge",
+                np.linalg.norm(
+                    graph_waypoints[path1[timestep]]
+                    - graph_waypoints[path2[timestep + 1]]
                 )
+                <= 0.5
+                and np.linalg.norm(
+                    graph_waypoints[path1[timestep + 1]]
+                    - graph_waypoints[path2[timestep]]
+                )
+                <= 0.5
+            ):
+                collisions.append(
+                    (
+                        [
+                            path1[timestep],
+                            path1[timestep + 1],
+                            path2[timestep],
+                            path2[timestep + 1],
+                        ],
+                        timestep + 1,
+                        "edge",
+                    )
+                )
+                # return (
+                #     [path1[timestep], path1[timestep + 1], path2[timestep], path2[timestep + 1]],
+                #     timestep + 1,
+                #     "edge",
+                # )
+
     return None
 
 
-def detect_collisions(paths: List[List[int]]) -> List[Dict]:
-    collisions = []
+def detect_collisions(paths: List[List[int]], graph_waypoints: NDArray) -> List[Dict]:
+    agg_collisions = []
     for i in range(len(paths)):
         for j in range(i + 1, len(paths)):
-            collision = detect_collision(paths[i], paths[j])
-            if collision is not None:
-                collision_info = {
-                    "agent_A": i,
-                    "agent_B": j,
-                    "location": collision[0],
-                    "timestep": collision[1],
-                    "type": collision[2],
-                }
-                collisions.append(collision_info)
-    return collisions
+            collisions = detect_collision(paths[i], paths[j], graph_waypoints)
+            # collision = detect_collision(paths[i], paths[j])
+            if collisions is not None:
+                for collision in collisions:
+                    agg_collisions.append(
+                        {
+                            "agent_A": i,
+                            "agent_B": j,
+                            "location": collision[0],
+                            "timestep": collision[1],
+                            "type": collision[2],
+                        }
+                    )
+    return agg_collisions
 
 
 def standard_split(collision: Dict) -> List[Dict]:
@@ -116,7 +168,7 @@ def disjoint_split(collision: Dict) -> List[Dict]:
             "agent_id": agent,
             "location": location,
             "timestep": collision["timestep"],
-            "positive": False,
+            "positive": True,
             "final": False,
         },
         {
@@ -129,11 +181,36 @@ def disjoint_split(collision: Dict) -> List[Dict]:
     ]
 
 
+def to_inflate(
+    constraint: Dict,
+    graph: Graph,
+    paths: List[List[int]],
+    radius: int = 3,
+):
+
+    for idx, other_agent_path in enumerate(paths):
+        if idx == constraint["agent_id"]:
+            continue
+
+        nearest_nodes = nx.ego_graph(
+            graph, constraint["location"][0], radius=radius
+        ).nodes
+        for node in nearest_nodes:
+            test_path = nx.shortest_path(
+                graph, source=constraint["location"][0], target=node
+            )
+            for i in range(len(test_path) - 1):
+                if test_path[i + 1] in other_agent_path[constraint["timestep"] :]:
+                    return True
+    return False
+
+
 class CBSSolver(object):
 
     def __init__(
         self,
-        graph: DiGraph,
+        graph: Graph,
+        graph_waypoints: NDArray,
         starts: List[int],
         goals: List[int],
         disjoint: bool = False,
@@ -148,6 +225,7 @@ class CBSSolver(object):
         self.starts = starts
         self.disjoint = disjoint
         self.num_agents = len(starts)
+        self.graph_waypoints = graph_waypoints
 
         self.open_list = []
         self.heuristics = []
@@ -181,7 +259,7 @@ class CBSSolver(object):
             root["paths"].append(agent_path)
 
         root["cost"] = compute_sum_of_costs(root["paths"], self.graph)
-        root["collisions"] = detect_collisions(root["paths"])
+        root["collisions"] = detect_collisions(root["paths"], self.graph_waypoints)
 
         print(root["collisions"])
         for collision in root["collisions"]:
@@ -216,12 +294,29 @@ class CBSSolver(object):
                     "collisions": [],
                     "constraints": [*current_node["constraints"], constraint],
                 }
+
+                # radius = 3
+                # inflate = to_inflate(constraint, self.graph, successor["paths"], radius)
+                # if inflate:
+                #     print("Inflated!!")
+                #     print("---" * 50)
+
+                # update_h = self.heuristics[constraint["agent_id"]].copy()
+                # if inflate:
+                #     for key, value in update_h.items():
+                #         if value < radius:
+                #             update_h[key] = value + 10
+
                 agent_path = a_star(
                     constraint["agent_id"],
                     self.graph,
                     self.starts[constraint["agent_id"]],
                     self.goals[constraint["agent_id"]],
-                    self.heuristics[constraint["agent_id"]],
+                    (
+                        self.heuristics[constraint["agent_id"]]
+                        # if not inflate
+                        # else update_h
+                    ),
                     successor["constraints"],
                 )
 
@@ -285,7 +380,9 @@ class CBSSolver(object):
                                 successor["paths"][agent] = agent_path
 
                     if not skip:
-                        successor["collisions"] = detect_collisions(successor["paths"])
+                        successor["collisions"] = detect_collisions(
+                            successor["paths"], self.graph_waypoints
+                        )
                         successor["cost"] = compute_sum_of_costs(
                             successor["paths"], self.graph
                         )

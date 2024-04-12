@@ -1,9 +1,9 @@
 import heapq
-from networkx import DiGraph
+from networkx import Graph
 from typing import Dict, List, Union
 
 
-def compute_sum_of_costs(paths: List[List[int]], graph: DiGraph) -> float:
+def compute_sum_of_costs(paths: List[List[int]], graph: Graph) -> float:
     """
     Compute the sum of costs of the paths
     """
@@ -15,7 +15,7 @@ def compute_sum_of_costs(paths: List[List[int]], graph: DiGraph) -> float:
     return sum_of_costs
 
 
-def compute_heuristics(graph: DiGraph, goal: int) -> Dict[int, float]:
+def compute_heuristics(graph: Graph, goal: int) -> Dict[int, float]:
     """
     Compute the heuristic for each node in the graph
     """
@@ -128,7 +128,7 @@ def extract_path(goal_node: Dict) -> List[int]:
 
 def a_star(
     agent_id: int,
-    graph: DiGraph,
+    graph: Graph,
     start: int,
     goal: int,
     heuristics: Dict[int, float],
@@ -173,7 +173,7 @@ def a_star(
             if successor_location == current_node["location"]:
                 successor = {
                     "location": successor_location,
-                    "g_value": current_node["g_value"] + 1,
+                    "g_value": current_node["g_value"] + 10,
                     "h_value": current_node["h_value"],
                     "parent": current_node,
                     "timestep": current_node["timestep"] + 1,
