@@ -45,6 +45,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             least this far from the initial observation.
           max_dist: (float) When the constraint is enforced, ensure the goal is at
             most this far from the initial observation.
+          reset_blend: (float) the probability of running the reset with balanced sampling, 0 means only running the original reset, 1 means running only the balanced reset
           threshold_distance: (float) States are considered equivalent if they are
             at most this far away from one another.
         """
@@ -68,7 +69,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         )
 
         # Load CBFS sample policies on grid
-        self.load_cbfs_grid_policy(cbfs_policy_path)
+        if reset_blend > 0:
+            self.load_cbfs_grid_policy(cbfs_policy_path)
 
         # self.safe_empty_states_ub = self.env.gather_safe_empty_states(cost_limit=0.0)
         # self.safe_empty_states_lb = self.env.gather_safe_empty_states(cost_limit=self.env.cost_limit)
@@ -83,7 +85,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         return
 
     deprecation.deprecated(details="Revert to naive unconstrained sampling")
-
     def sample_start_n_goal(self, key: Union[tuple, str] = "ub"):
         """
         Sample start and goal without distance constraint,
@@ -101,7 +102,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         }
 
     deprecation.deprecated(details="Replaced with cbfs")
-
     def sample_safe_start_n_goal_in_dists(
         self, min_dist: float, max_dist: float, key="ub"
     ):
@@ -158,9 +158,9 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
 
     def reset(self):  # type: ignore
         if np.random.random() < self.reset_blend:
-            return self.reset()
-        else:
             return self.reset_cost()
+        else:
+            return self.reset()
 
     def reset_cost(self):
         """
