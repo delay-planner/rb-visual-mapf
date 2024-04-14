@@ -1,3 +1,4 @@
+from __future__ import annotations
 import heapq
 from networkx import Graph
 from typing import Dict, List, Union
