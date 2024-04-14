@@ -1,12 +1,11 @@
 import unittest
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper,
-    safe_env_load_fn,
-    set_safe_env_difficulty,
-)
+
 import numpy as np
 from termcolor import cprint
+
+from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointWrapper, safe_env_load_fn, set_safe_env_difficulty)
 
 """
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_no_constraint
