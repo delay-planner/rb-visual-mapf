@@ -4,6 +4,8 @@ Helper functions for data structures
 from typing import Dict, List, Union
 import torch
 import numpy as np
+
+
 def inp_to_device(
         inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
         device:torch.device,
@@ -45,4 +47,57 @@ def init_embedded_dict(D:dict, embeds:List[tuple]=[]):
         
         assert isinstance(tmp_D[next_key], init_f)
         tmp_D = tmp_D[next_key]
-    return 
+    return
+
+# group values into groups/partitions
+def find_group_ind(val: float, divs: List[float]):
+    # find the group index for the smallest val
+    assert len(divs) >= 2, "length of divs needs >= 2"
+    
+    group_ind = -1
+    for ig in range(0, len(divs)-1):
+        div_start = divs[ig]
+        div_end = divs[ig+1]
+        if val >= div_start and val < div_end:
+            group_ind = ig
+            break
+    if group_ind >= 0:
+        return group_ind
+    return
+
+def arg_group_vals(vals: List[float], divs: List[float]):
+    divs = np.sort(divs)
+    assert len(divs) >= 2, "length of divs needs >= 2"
+    inds = np.argsort(vals)
+    assert vals[inds[-1]] < divs[-1], "values out of division upper bound"
+    assert vals[inds[0]] >= divs[0], "values out of division lower bound" 
+
+    groups = {}
+    for i in range(0, len(divs)-1):
+        groups[i] = {"inds": [], 
+                     "vals": [], 
+                     "start": divs[i], 
+                     "end": divs[i+1],
+                     }
+
+    # assign groups and group indices
+    group_ind = find_group_ind(val=vals[inds[0]], divs=divs)
+    div_end = divs[group_ind+1]
+    ind_start = 0
+    for i in range(len(inds)):
+        i_sort = inds[i]
+        if vals[i_sort] >= div_end:
+            g_inds = list(range(ind_start, i))
+            g_vals = [vals[inds[j]] for j in g_inds ]
+            groups[group_ind]["inds"].extend(g_inds)
+            groups[group_ind]["vals"].extend(g_vals)
+            # setup for next div
+            ind_start = i
+            group_ind = find_group_ind(val=vals[i_sort], divs=divs)
+            div_end = divs[group_ind+1]
+
+    g_inds = list(range(ind_start, i+1))
+    g_vals = [vals[inds[j]] for j in g_inds ]
+    groups[group_ind]["inds"].extend(g_inds)
+    groups[group_ind]["vals"].extend(g_vals)
+    return groups
