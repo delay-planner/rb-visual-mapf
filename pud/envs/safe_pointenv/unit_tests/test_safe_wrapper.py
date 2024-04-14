@@ -71,44 +71,6 @@ class TestSafeWrapper(unittest.TestCase):
         )
         out_env.reset()
 
-    @unittest.skip("deprecated")
-    def test_sample_start_n_goal(self):
-        for i in range(100):
-            out = self.w_env.sample_start_n_goal("ub")
-            self.assertTrue(self.w_env.get_state_cost(out["s0"]) <= 0.0)
-            self.assertTrue(self.w_env.get_state_cost(out["sg"]) <= 0.0)
-
-            key = np.concatenate([out["s0"], out["sg"]], axis=0).astype(int)
-            key = tuple(key.tolist())
-            self.assertTrue(
-                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]] > 0
-            )
-            self.assertTrue(
-                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]] < np.inf
-            )
-
-    @unittest.skip("deprecated")
-    def test_sample_safe_start_n_goal_in_dists(self):
-        for _ in range(100):
-            dist_limits = (1, 10)
-            out, info = self.w_env.sample_safe_start_n_goal_in_dists(
-                min_dist=dist_limits[0],
-                max_dist=dist_limits[1],
-            )
-            self.assertTrue(self.w_env.get_state_cost(out["s0"]) <= 0.0)
-            self.assertTrue(self.w_env.get_state_cost(out["sg"]) <= 0.0)
-
-            key = np.concatenate([out["s0"], out["sg"]], axis=0).astype(int)
-            key = tuple(key.tolist())
-            self.assertTrue(
-                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]]
-                > dist_limits[0]
-            )
-            self.assertTrue(
-                self.p_env._safe_apsp["ub"][key[0], key[1], key[2], key[3]]
-                < dist_limits[1]
-            )
-
     def test_reset_no_constraint(self):
         self.w_env.set_sample_goal_args(
             prob_constraint=0.0,

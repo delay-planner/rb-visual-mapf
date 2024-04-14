@@ -49,7 +49,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
           threshold_distance: (float) States are considered equivalent if they are
             at most this far away from one another.
         """
-        self._sample_key = "ub"
         self._min_dist = min_dist
         self._max_dist = max_dist
         self._min_cost = min_cost
@@ -57,7 +56,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self.reset_blend = reset_blend
         self._prob_constraint = prob_constraint
         self._threshold_distance = threshold_distance
-        # self._sample_key = "ub"
         super(SafeGoalConditionedPointWrapper, self).__init__(env)
 
         # Make sure to use gym, not gymnasium
@@ -67,13 +65,9 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
                 "goal": env.observation_space,
             }
         )
-
         # Load CBFS sample policies on grid
         if reset_blend > 0:
             self.load_cbfs_grid_policy(cbfs_policy_path)
-
-        # self.safe_empty_states_ub = self.env.gather_safe_empty_states(cost_limit=0.0)
-        # self.safe_empty_states_lb = self.env.gather_safe_empty_states(cost_limit=self.env.cost_limit)
 
         self.env: SafePointEnv
 
@@ -83,42 +77,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             with open(file_path, "rb") as f:
                 self.pi_cbfs = pickle.load(f)
         return
-
-    deprecation.deprecated(details="Revert to naive unconstrained sampling")
-    def sample_start_n_goal(self, key: Union[tuple, str] = "ub"):
-        """
-        Sample start and goal without distance constraint,
-        "ub": viable solutions are guaranteed to exist
-        "lb": viable solutions are NOT guarantee to exist
-        """
-        ind = np.random.randint(len(self.start_n_goal_candidates[key]))
-        self.start_n_goal_candidates[key][ind]
-
-        start = self.start_n_goal_candidates[key][ind, 0:2]
-        goal = self.start_n_goal_candidates[key][ind, 2:]
-        return {
-            "s0": start,
-            "sg": goal,
-        }
-
-    deprecation.deprecated(details="Replaced with cbfs")
-    def sample_safe_start_n_goal_in_dists(
-        self, min_dist: float, max_dist: float, key="ub"
-    ):
-        """
-        Sampling start and goal states with guaranteed solution with distance constraints
-        """
-        cand_key = (key, min_dist, max_dist)
-        if not (cand_key in self.start_n_goal_candidates.keys()):
-            mask_lb = self.env._safe_apsp[key] > min_dist  # type: ignore
-            mask_ub = self.env._safe_apsp[key] < max_dist  # type: ignore
-            mask_candidates = mask_lb * mask_ub
-            indices_candidates = np.where(mask_candidates)
-            assert len(indices_candidates[0]) > 0, "Candidate set is empty"
-            self.start_n_goal_candidates[cand_key] = np.column_stack(
-                indices_candidates
-            )  # x1, y1, x2, y2
-        return self.sample_start_n_goal(key=cand_key)
 
     def cbfs_sample(
         self,
@@ -220,7 +178,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         max_dist=None,
         min_cost=None,
         max_cost=None,
-        sample_key="ub",
     ):
         assert prob_constraint is not None
         assert min_dist is not None
@@ -235,8 +192,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self._max_dist = max_dist
         self._min_cost = min_cost
         self._max_cost = max_cost
-        self._sample_key = sample_key
-
+    
     def _is_done(self, obs, goal):
         """
         Determines whether observation equals goal
