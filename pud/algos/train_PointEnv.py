@@ -91,15 +91,6 @@ if __name__ == "__main__":
 
     agent = DRLDDPGLag(
         # DDPG args
-        state_dim,  # Concatenating observation and goal
-        action_dim,
-        max_action,
-        CriticCls=GoalConditionedCritic,
-        **cfg.agent,
-    )
-
-    agent = DRLDDPGLag(
-        # DDPG args
         state_dim,  # concatenating obs and goal
         action_dim,
         max_action,
