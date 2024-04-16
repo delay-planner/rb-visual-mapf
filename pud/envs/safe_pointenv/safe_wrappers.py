@@ -118,7 +118,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         if np.random.random() < self.reset_blend:
             return self.reset_cost()
         else:
-            return self.reset()
+            return self.reset_orig()
 
     def reset_cost(self):
         """
@@ -202,7 +202,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
     #########################################
     # Debug, override start and goal sampling
     #########################################
-    def reset(self):
+    def reset_orig(self):
         goal, info = None, {"cost": 0.0}
         count = 0
         while goal is None:
