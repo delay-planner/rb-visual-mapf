@@ -5,7 +5,8 @@ from termcolor import cprint
 
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper, safe_env_load_fn, set_safe_env_difficulty)
+    SafeGoalConditionedPointWrapper, SafeGoalConditionedPointBlendWrapper, safe_env_load_fn, set_safe_env_difficulty)
+from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent
 
 """
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_no_constraint
@@ -17,6 +18,8 @@ python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.te
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_safe_env_difficulty
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_type_checking
 """
 
 
@@ -38,11 +41,21 @@ class TestSafeWrapper(unittest.TestCase):
 
         self.w_env = SafeGoalConditionedPointWrapper(
             self.p_env,
-            cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
         )
 
         self.env_kwargs = env_kwargs
         self.cost_f_kwargs = cost_f_kwargs
+
+    def test_type_checking(self):
+        blend_env = SafeGoalConditionedPointBlendWrapper(
+                    env=self.p_env,
+                    reset_blend=1.0,
+                    cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
+                )
+        blend_env.reset()
+        assert isinstance(blend_env, SafeGoalConditionedPointBlendWrapper)
+        assert isinstance(blend_env, SafeGoalConditionedPointWrapper)
+        print("inherited class also belongs to its parent class")
 
     def test_set_safe_env_difficulty(self):
         set_safe_env_difficulty(self.w_env, 0.5)

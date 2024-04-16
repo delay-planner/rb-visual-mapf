@@ -9,7 +9,6 @@ from pud.envs.wrappers import TimeLimit
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.algos.cbfs_eval import sample_precompiled_grid_policies
 
-
 class SafeGoalConditionedPointWrapper(gym.Wrapper):
     """
     Wrapper that appends goal to observation produced by environment.
@@ -22,7 +21,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         Perhaps only good for training
         Distance constraints, but there may not exist viable solutions, but trajectories whose step cost < cost limit
     """
-
     def __init__(
         self,
         env: SafePointEnv,
@@ -31,7 +29,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         max_dist=4,
         min_cost=0,
         max_cost=1000,
-        reset_blend=1.0,
         threshold_distance=1.0,
         cbfs_policy_path: str = "",  # path to pre-compiled sample policies on grid
     ):
@@ -53,7 +50,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         self._max_dist = max_dist
         self._min_cost = min_cost
         self._max_cost = max_cost
-        self.reset_blend = reset_blend
         self._prob_constraint = prob_constraint
         self._threshold_distance = threshold_distance
         super(SafeGoalConditionedPointWrapper, self).__init__(env)
@@ -66,90 +62,12 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             }
         )
         # Load CBFS sample policies on grid
-        if reset_blend > 0:
-            self.load_cbfs_grid_policy(cbfs_policy_path)
-
-        self.env: SafePointEnv
-
-    def load_cbfs_grid_policy(self, file_path):
-        if (not hasattr(self, "pi_cbfs")) or (self.pi_cbfs is None):
-            self.pi_cbfs = None
-            with open(file_path, "rb") as f:
-                self.pi_cbfs = pickle.load(f)
-        return
-
-    def cbfs_sample(
-        self,
-        min_dist: float,
-        max_dist: float,
-        min_cost: float,
-        max_cost: float,
-        max_attempts: int = 100,
-    ):
-        """
-        Sampling start and goal states with guaranteed solution with distance constraints
-        """
-        assert hasattr(self, "pi_cbfs"), "cbfs grid policy not loaded"
-
-        for _ in range(max_attempts):
-            out = sample_precompiled_grid_policies(
-                self.pi_cbfs,  # type: ignore
-                min_cost=min_cost,
-                max_cost=max_cost,
-                min_len=min_dist,
-                max_len=max_dist,
-            )
-            if out:
-                traj, traj_cost = out
-                return traj, traj_cost
-        raise Exception(
-            "Failed to generate a valid grid trajectory sample for spec:"
-            "min_dist={}, max_dist={}, min_cost={}, max_cost={}, max_attempts={}".format(
-                min_dist, max_dist, min_cost, max_cost, max_attempts
-            )
-        )
+        self.env: SafePointEnv # for auto-complete
 
     def _normalize_obs(self, obs):
         return np.array(
             [obs[0] / float(self.env._height), obs[1] / float(self.env._width)]
         )
-
-    def reset(self):  # type: ignore
-        if np.random.random() < self.reset_blend:
-            return self.reset_cost()
-        else:
-            return self.reset_orig()
-
-    def reset_cost(self):
-        """
-        P(prob_constraint): sample under length and cost constraint
-        P(1-prob_constraint): sample with no constraints
-        """
-        out = dict()
-        if np.random.random() < self._prob_constraint:
-            traj, traj_cost = self.cbfs_sample(
-                min_dist=self._min_dist,
-                max_dist=self._max_dist,
-                min_cost=self._min_cost,
-                max_cost=self._max_cost,
-            )
-            out["s0"], out["sg"] = np.array(traj[0], dtype=float), np.array(
-                traj[-1], dtype=float
-            )
-        else:
-            obs, info = self.env.reset()  # type: ignore
-            (out["s0"], out["sg"]) = self._sample_goal_unconstrained(obs=obs)
-        self._goal = out["sg"]
-        obs = out["s0"]
-        self.state = obs.copy()
-        cost = self.env.get_state_cost(self._goal)
-
-        new_state = {
-            "observation": self._normalize_obs(obs),
-            "goal": self._normalize_obs(self._goal),
-        }
-        info = {"cost": cost}
-        return new_state, info
 
     def step(self, action):
         """
@@ -199,8 +117,11 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         """
         return np.linalg.norm(obs - goal) < self._threshold_distance
 
+    def reset(self):
+        return self.reset_orig()
+
     #########################################
-    # Debug, override start and goal sampling
+    # original sampling functions, verified to work well on policy training
     #########################################
     def reset_orig(self):
         goal, info = None, {"cost": 0.0}
@@ -279,6 +200,123 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
 
+class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
+    def __init__(
+        self,
+        env: SafePointEnv,
+        prob_constraint: float = 0.8,
+        min_dist=0,
+        max_dist=4,
+        min_cost=0,
+        max_cost=1000,
+        reset_blend=1.0,
+        threshold_distance=1.0,
+        cbfs_policy_path: str = "",  # path to pre-compiled sample policies on grid
+    ):
+        """Initialize the environment.
+
+        Args:
+          env: An environment.
+          prob_constraint: (float) Probability that the distance constraint is
+            followed after resetting.
+          min_dist: (float) When the constraint is enforced, ensure the goal is at
+            least this far from the initial observation.
+          max_dist: (float) When the constraint is enforced, ensure the goal is at
+            most this far from the initial observation.
+          reset_blend: (float) the probability of running the reset with balanced sampling, 0 means only running the original reset, 1 means running only the balanced reset
+          threshold_distance: (float) States are considered equivalent if they are
+            at most this far away from one another.
+        """
+        self.reset_blend = reset_blend
+        super(SafeGoalConditionedPointBlendWrapper, self).__init__(
+                env=env,
+                prob_constraint=prob_constraint,
+                min_dist=min_dist,
+                max_dist=max_dist,
+                min_cost=min_cost,
+                max_cost=max_cost,
+                threshold_distance=threshold_distance,
+                )
+
+        # Load CBFS sample policies on grid
+        self.load_cbfs_grid_policy(cbfs_policy_path)
+
+        self.env: SafePointEnv
+
+    def load_cbfs_grid_policy(self, file_path):
+        if (not hasattr(self, "pi_cbfs")) or (self.pi_cbfs is None):
+            self.pi_cbfs = None
+            with open(file_path, "rb") as f:
+                self.pi_cbfs = pickle.load(f)
+        return
+
+    def cbfs_sample(
+        self,
+        min_dist: float,
+        max_dist: float,
+        min_cost: float,
+        max_cost: float,
+        max_attempts: int = 100,
+    ):
+        """
+        Sampling start and goal states with guaranteed solution with distance constraints
+        """
+        assert hasattr(self, "pi_cbfs"), "cbfs grid policy not loaded"
+
+        for _ in range(max_attempts):
+            out = sample_precompiled_grid_policies(
+                self.pi_cbfs,  # type: ignore
+                min_cost=min_cost,
+                max_cost=max_cost,
+                min_len=min_dist,
+                max_len=max_dist,
+            )
+            if out:
+                traj, traj_cost = out
+                return traj, traj_cost
+        raise Exception(
+            "Failed to generate a valid grid trajectory sample for spec:"
+            "min_dist={}, max_dist={}, min_cost={}, max_cost={}, max_attempts={}".format(
+                min_dist, max_dist, min_cost, max_cost, max_attempts
+            )
+        )
+
+    def reset(self):  # type: ignore
+        if np.random.random() < self.reset_blend:
+            return self.reset_cost()
+        else:
+            return self.reset_orig()
+
+    def reset_cost(self):
+        """
+        P(prob_constraint): sample under length and cost constraint
+        P(1-prob_constraint): sample with no constraints
+        """
+        out = dict()
+        if np.random.random() < self._prob_constraint:
+            traj, traj_cost = self.cbfs_sample(
+                min_dist=self._min_dist,
+                max_dist=self._max_dist,
+                min_cost=self._min_cost,
+                max_cost=self._max_cost,
+            )
+            out["s0"], out["sg"] = np.array(traj[0], dtype=float), np.array(
+                traj[-1], dtype=float
+            )
+        else:
+            obs, info = self.env.reset()  # type: ignore
+            (out["s0"], out["sg"]) = self._sample_goal_unconstrained(obs=obs)
+        self._goal = out["sg"]
+        obs = out["s0"]
+        self.state = obs.copy()
+        cost = self.env.get_state_cost(self._goal)
+
+        new_state = {
+            "observation": self._normalize_obs(obs),
+            "goal": self._normalize_obs(self._goal),
+        }
+        info = {"cost": cost}
+        return new_state, info
 
 def set_safe_env_difficulty(
     eval_env: SafeGoalConditionedPointWrapper,
