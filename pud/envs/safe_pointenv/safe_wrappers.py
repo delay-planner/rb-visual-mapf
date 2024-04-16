@@ -200,6 +200,38 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
 
+class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
+    def __init__(
+        self,
+        env: SafePointEnv,
+        prob_constraint: float = 0.8,
+        min_dist=0,
+        max_dist=4,
+        min_cost=0,
+        max_cost=1000,
+        threshold_distance=1.0,
+    ):
+        """Reset using problems (start-goal pairs) from an external queue. If the queue is empty, use the default reset method
+        """
+        super(SafeGoalConditionedPointQueueWrapper, self).__init__(
+                env=env,
+                prob_constraint=prob_constraint,
+                min_dist=min_dist,
+                max_dist=max_dist,
+                min_cost=min_cost,
+                max_cost=max_cost,
+                threshold_distance=threshold_distance,
+                )
+        self.pb_Q = []
+
+    def get_Q_size(self):
+        return len(self.pb_Q)
+
+    def append_pbs(self, pb_list:List[tuple]):
+        self.pb_Q.extend(pb_list)
+    
+
+
 class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
     def __init__(
         self,
@@ -213,19 +245,7 @@ class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
         threshold_distance=1.0,
         cbfs_policy_path: str = "",  # path to pre-compiled sample policies on grid
     ):
-        """Initialize the environment.
-
-        Args:
-          env: An environment.
-          prob_constraint: (float) Probability that the distance constraint is
-            followed after resetting.
-          min_dist: (float) When the constraint is enforced, ensure the goal is at
-            least this far from the initial observation.
-          max_dist: (float) When the constraint is enforced, ensure the goal is at
-            most this far from the initial observation.
-          reset_blend: (float) the probability of running the reset with balanced sampling, 0 means only running the original reset, 1 means running only the balanced reset
-          threshold_distance: (float) States are considered equivalent if they are
-            at most this far away from one another.
+        """Balance the expected accumulated costs by blending reset with a precompiled sample policy on grid. 
         """
         self.reset_blend = reset_blend
         super(SafeGoalConditionedPointBlendWrapper, self).__init__(
