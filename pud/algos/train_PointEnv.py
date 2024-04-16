@@ -1,4 +1,3 @@
-import os
 import yaml
 import torch
 import argparse
@@ -11,7 +10,9 @@ from pud.ddpg import GoalConditionedCritic
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper,
+    SafeGoalConditionedPointWrapper, 
+    SafeGoalConditionedPointQueueWrapper,
+    SafeGoalConditionedPointBlendWrapper,
     safe_env_load_fn,
 )
 from pud.utils import set_env_seed, set_global_seed
@@ -53,6 +54,12 @@ if __name__ == "__main__":
     for wrapper_name in cfg.wrappers:
         if wrapper_name == "SafeGoalConditionedPointWrapper":
             gym_env_wrappers.append(SafeGoalConditionedPointWrapper)
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointBlendWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointBlendWrapper)
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointQueueWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointQueueWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
     env = safe_env_load_fn(
