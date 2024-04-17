@@ -101,3 +101,45 @@ def arg_group_vals(vals: List[float], divs: List[float]):
     groups[group_ind]["inds"].extend(g_inds)
     groups[group_ind]["vals"].extend(g_vals)
     return groups
+
+def arg_topk(A: np.ndarray, topK:int):
+    """return the inds and vals of top K values
+    A: multi-dim array of size (M,N,...), s.t. A[m,n,...] = val
+    return: 
+        inds along each dim of A, e.g., (i0,j0, ...), (i1,j1,...)
+
+    reference: https://stackoverflow.com/questions/6910641/how-do-i-get-indices-of-n-maximum-values-in-a-numpy-array
+    """
+    # flatten the array
+    A_f = A.flatten()
+    f_inds = np.argpartition(A_f, kth=-topK, axis=None)
+    top_k_inds = f_inds[-topK:]
+    top_k_nd_inds = np.unravel_index(top_k_inds, shape=A.shape)
+    return top_k_nd_inds
+
+def get_nd_inds_set(inds: np.ndarray):
+    """
+    inds are output of arg_topk, a tuple of indices along each dim
+    return:
+    [(ids of all dim of 1st point), (ids of all dim of 2nd point), ...]
+    """
+    set_inds = [None] * len(inds[0])
+    for i in range(len(inds[0])):
+        k_ind = [None] * len(inds)
+        for n in range(len(inds)):
+            k_ind[n] = inds[n][i]
+        set_inds[i] = tuple(k_ind)
+    return set_inds
+
+def test_topk(A, topK):
+    inds = arg_topk(-A, topK=topK) # find K minimum entries
+    inds_set = get_nd_inds_set(inds)
+    s0, s1 = A.shape
+    for i in range(s0):
+        for j in range(s1):
+            if (i,j) not in inds_set:
+                for ks in inds_set:
+                    ki, kj = ks
+                    # check A[ki, kj] is smaller than 
+                    # other entries not included in top K set
+                    assert A[ki, kj] <= A[i,j]
