@@ -145,6 +145,8 @@ if __name__ == "__main__":
         min_cost=0.,
         max_cost=1.0,
         )
+    
+    # rb_vec is normalized between 0 and 1
     rb_vec = Collector.sample_initial_states(eval_env, replay_buffer.max_size)
 
     from pud.visualize import visualize_buffer

@@ -69,6 +69,15 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             [obs[0] / float(self.env._height), obs[1] / float(self.env._width)]
         )
 
+    def de_normalize_obs(self, obs:np.ndarray):
+        """reverse of _normalize_obs"""
+        return np.array(
+            [
+                obs[0] * float(self.env._height), 
+                obs[1] * float(self.env._width),
+            ]
+        )
+
     def step(self, action):
         """
         The safe_pointenv does NOT use normalized observations, the goal-conditioned env does
@@ -230,6 +239,21 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
     def append_pbs(self, pb_list:List[tuple]):
         self.pb_Q.extend(pb_list)
     
+    def reset(self):
+        if len(self.pb_Q)>0 and np.random.rand()<self._prob_constraint:
+            new_pb = self.pb_Q.pop()
+            return self.reset_alt(**new_pb)
+        return self.reset_orig()
+
+    def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
+        """reset using alternative source, start and goal are assumed to be de-normalized"""
+        self._goal = goal
+        obs, new_info = self.env.reset_manual(start_state=start)
+        new_info.update(info)
+        return {
+            "observation": self._normalize_obs(obs),
+            "goal": self._normalize_obs(self._goal),
+        }, new_info
 
 
 class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):

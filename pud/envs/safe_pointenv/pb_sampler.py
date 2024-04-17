@@ -20,7 +20,7 @@ def sample_pbs_by_agent(
         target_val:List[float]=None,
         pval_f = None, # function to generate pairwise values (e.g., dists, cost, ...) 
         K:int=5, # num of samples nearest to the target metric
-        ):
+        ) -> List[dict]:
     """sample problems with target metrics according to the predictions of the agent
 
     Args:
@@ -41,11 +41,14 @@ def sample_pbs_by_agent(
 
     diff = np.abs(pvals - target_val)
     inds = arg_topk(-diff, topK=K) # find K minimum entries
-    inds_set = get_nd_inds_set(inds)
+    #inds_set = get_nd_inds_set(inds)
 
-    nearest_samples = {
-        "starts": rb_vec[inds[0]],
-        "goals": rb_vec[inds[1]],
-        "predictions": pvals[inds],
-    }
-    return nearest_samples
+    nearest_pbs = [None] * K
+    for n in range(K):
+        i,j = inds[0][n], inds[1][n]
+        nearest_pbs[n] = {
+            "start": env.de_normalize_obs(rb_vec[i]),
+            "goal": env.de_normalize_obs(rb_vec[j]),
+            "info": {"prediction": pvals[i,j]},
+        }
+    return nearest_pbs
