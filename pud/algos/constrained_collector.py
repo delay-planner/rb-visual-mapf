@@ -229,6 +229,62 @@ class ConstrainedCollector(Collector):
                 r, co, max_co, cum_co = [0.0] * 4
         return records
 
+
+    @classmethod
+    def eval_agent_from_Q(cls, policy, eval_env):
+        """
+        Run evaluation and records the initial states for each episode
+        until the pb Q from the env is empty
+        """
+        # verify the eval_env has an non-empty Q of pbs
+        assert hasattr(eval_env, "pb_Q") and len(getattr(eval_env, "pb_Q")) > 0
+        
+        records = {}
+
+        def new_record(init_state: Union[np.ndarray, dict], info:dict={}):
+            key = len(records.keys())
+            records[key] = {
+                "rewards": 0.0,
+                "costs": 0.0,
+                "max_step_cost": 0.0,
+                "init_states": init_state,
+                "steps": 0,
+                "init_info": info,
+            }
+            return key
+
+        c = 0  # count
+        n = eval_env.get_Q_size()
+
+        r, co, max_co, cum_co = [0.0] * 4
+        state, info = eval_env.reset()
+        cur_key = new_record(state, info)
+        while c < n:
+            action = policy.select_action(state)
+            state, reward, done, info = eval_env.step(np.copy(action))
+            records[cur_key]["steps"] += 1
+
+            r += reward
+
+            co = info.get("cost", 0.0)
+            if co > max_co:
+                max_co = co
+            cum_co += co
+
+            if done:
+                records[cur_key]["rewards"] = r
+                records[cur_key]["costs"] = co
+                records[cur_key]["max_step_cost"] = max_co
+
+                c += 1
+                if c < n:
+                    cur_key = new_record(state, state["first_info"])
+                    assert state["first_step"]
+
+                r, co, max_co, cum_co = [0.0] * 4
+
+        return records
+
     @classmethod
     def step_cleanup(cls, search_policy, eval_env, num_steps):
         # cls stands for class

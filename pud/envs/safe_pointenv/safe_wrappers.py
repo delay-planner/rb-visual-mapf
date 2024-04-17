@@ -240,9 +240,11 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
         self.pb_Q.extend(pb_list)
     
     def reset(self):
-        if len(self.pb_Q)>0 and np.random.rand()<self._prob_constraint:
-            new_pb = self.pb_Q.pop()
-            return self.reset_alt(**new_pb)
+        if np.random.rand()<self._prob_constraint:
+            if len(self.pb_Q)>0:
+                new_pb = self.pb_Q.pop()
+                return self.reset_alt(**new_pb)
+            print("[WARN]: queue from goal conditioned env is empty")
         return self.reset_orig()
 
     def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
@@ -394,8 +396,10 @@ class SafeTimeLimit(TimeLimit):
         new_obs = observation
         if isinstance(observation, tuple):
             # A reset happens, separate the obs and info
+            # store the first step info in the new obs
+            # discard the last obs
             new_obs, new_info = observation
-            new_obs["first_cost"] = new_info["cost"]
+            new_obs["first_info"] = new_info
         return new_obs, reward, done, info
 
     def reset(self):
