@@ -44,10 +44,13 @@ def train_eval(
     num_eval_episodes:int=10,
     pbar=True,
     sample_size:int=100,
+    num_train_pbs_per_ref:int=10,
     verbose=True,
     ckpt_dir:Path=Path(""),
     ):
     """train constrained RL agent"""
+    env.set_verbose(False) # too much warn msgs due to empty queue
+    
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
     num_eps = collector.num_eps
@@ -85,6 +88,16 @@ def train_eval(
             agent.eval()
             if verbose:
                 print(f'evaluating iteration = {i}')
+
+            # inject diverse training pbs according to self-evaluation
+            update_train_pbs_by_metric(
+                agent=agent,
+                env=env,
+                num_pbs_per_ref=num_train_pbs_per_ref,
+                sample_size=sample_size,
+                ref_cost_intervals=eval_cost_intervals,
+                ref_distances=eval_distances,
+            )
 
             #eval_func = eval_pointenv_cost_constrained_dists
             eval_info = eval_func(
@@ -128,6 +141,38 @@ def train_eval(
                 # reset timer 
                 t_mark = time.time()
 
+def update_train_pbs_by_metric(
+        agent: DRLDDPGLag,
+        env: SafeGoalConditionedPointQueueWrapper,
+        num_pbs_per_ref:int,
+        sample_size:int,
+        ref_distances=[2, 5, 10], # reference grouping based on estimated distances
+        ref_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
+    ):
+    # update pbs in the train eval
+    new_train_pbs = []
+    for dd in ref_distances:
+        pbs_i = sample_pbs_by_agent(env=env, 
+                agent=agent, 
+                num_states=sample_size,
+                target_val=dd,
+                pval_f=calc_pairwise_dist,
+                K=num_pbs_per_ref,
+                ensemble_agg="mean",
+                )
+        new_train_pbs.extend(pbs_i)
+
+    for cc in ref_cost_intervals:
+        pbs_i = sample_pbs_by_agent(env=env, 
+                agent=agent, 
+                num_states=sample_size,
+                target_val=cc,
+                pval_f=calc_pairwise_cost,
+                K=num_pbs_per_ref,
+                ensemble_agg="max",
+                )
+        new_train_pbs.extend(pbs_i)
+    env.set_pbs(pb_list=new_train_pbs)
 
 def eval_agent_by_metric(
         agent: DRLDDPGLag,
@@ -176,7 +221,6 @@ def eval_pointenv_cost_constrained_dists(agent,
     eval_env.set_prob_constraint(1.0)
     
     dist_eval_stats = dict()
-    eval_env.eval()
 
     for ii_d in range(len(eval_distances)):
         dist_eval_i = eval_agent_by_metric(

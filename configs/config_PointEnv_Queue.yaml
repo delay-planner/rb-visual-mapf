@@ -35,7 +35,7 @@ cost_function:
     name: "cosine"
     radius: 2.0
 replay_buffer:
-    max_size: 1000
+    max_size: 5000
 runner:
     batch_size_opt: 64
     collect_steps: 2
@@ -49,5 +49,6 @@ runner:
     eval_cost_intervals: [0.0, 0.25, 0.5, 1.0]
     verbose: false
     sample_size: 500
+    num_train_pbs_per_ref: 10
 device: "cpu"
 seed: 0

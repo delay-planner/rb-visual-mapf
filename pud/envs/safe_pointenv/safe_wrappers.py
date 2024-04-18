@@ -246,18 +246,18 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
 
     def append_pbs(self, pb_list:List[tuple]):
         self.pb_Q.extend(pb_list)
+    
+    def set_pbs(self, pb_list:List[tuple]):
+        """replace the problem Q with a new one, 
+        intended for update pbs for training"""
+        assert isinstance(pb_list, list)
+        self.pb_Q = pb_list
 
     def set_verbose(self, new_verbose:bool):
         self.verbose = new_verbose
     
-    def eval(self):
-        self.eval_mode = True
-    
-    def train(self):
-        self.eval_mode = False
-    
     def reset(self):
-        if self.eval_mode and np.random.rand()<self._prob_constraint:
+        if np.random.rand()<self._prob_constraint:
             if len(self.pb_Q)>0:
                 new_pb = self.pb_Q.pop()
                 return self.reset_alt(**new_pb)
