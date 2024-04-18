@@ -1,6 +1,6 @@
 # !/bin/sh
 
-comment="cfg_init"
+comment="self_eval"
 SLURM_JOB_ID=local
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
@@ -8,7 +8,8 @@ log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
 echo "project root directory: ${project_root}"
 echo "experiment directory: ${log_dir}"
 
-config="configs/config_SafePointEnv.yaml"
+#config="configs/config_SafePointEnv.yaml"
+config="configs/config_PointEnv_Queue.yaml"
 #config="configs/config_SafePointEnv_debug.yaml"
 
 cd "${project_root}"
