@@ -1,6 +1,6 @@
 # !/bin/sh
 
-comment="self_eval"
+comment="self_train_eval"
 SLURM_JOB_ID=local
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
