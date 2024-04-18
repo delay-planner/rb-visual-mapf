@@ -239,12 +239,16 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
                 )
         self.pb_Q = []
         self.eval_mode = False
+        self.verbose = True
 
     def get_Q_size(self):
         return len(self.pb_Q)
 
     def append_pbs(self, pb_list:List[tuple]):
         self.pb_Q.extend(pb_list)
+
+    def set_verbose(self, new_verbose:bool):
+        self.verbose = new_verbose
     
     def eval(self):
         self.eval_mode = True
@@ -257,7 +261,8 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
             if len(self.pb_Q)>0:
                 new_pb = self.pb_Q.pop()
                 return self.reset_alt(**new_pb)
-            print("[WARN]: queue from goal conditioned env is empty")
+            if self.verbose:
+                print("[WARN]: queue from goal conditioned env is empty")
         return self.reset_orig()
 
     def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
