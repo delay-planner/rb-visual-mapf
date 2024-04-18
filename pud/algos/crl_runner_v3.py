@@ -43,6 +43,7 @@ def train_eval(
     warmup_epochs:int =100,
     num_eval_episodes:int=10,
     pbar=True,
+    sample_size:int=100,
     verbose=True,
     ckpt_dir:Path=Path(""),
     ):
@@ -92,6 +93,7 @@ def train_eval(
                 eval_distances=eval_distances,
                 num_evals=num_eval_episodes,
                 cost_intervals=eval_cost_intervals,
+                sample_size=sample_size,
                 )
             if verbose:
                 print('-' * 10)

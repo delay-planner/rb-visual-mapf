@@ -48,5 +48,6 @@ runner:
     eval_distances: [2, 5, 10]
     eval_cost_intervals: [0.0, 0.25, 0.5, 1.0]
     verbose: false
+    sample_size: 500
 device: "cpu"
 seed: 0
