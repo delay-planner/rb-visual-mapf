@@ -30,7 +30,6 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         min_cost=0,
         max_cost=1000,
         threshold_distance=1.0,
-        cbfs_policy_path: str = "",  # path to pre-compiled sample policies on grid
     ):
         """Initialize the environment.
 
@@ -63,6 +62,12 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         )
         # Load CBFS sample policies on grid
         self.env: SafePointEnv # for auto-complete
+
+    def get_prob_constraint(self):
+        return self._prob_constraint
+
+    def set_prob_constraint(self, other_pc:float):
+        self._prob_constraint = other_pc
 
     def _normalize_obs(self, obs):
         return np.array(
@@ -148,11 +153,12 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         }, info
 
     def _sample_goal(self, obs):
-        """Sampled a goal observation."""
-        if np.random.random() < self._prob_constraint:
-            return self._sample_goal_constrained(obs, self._min_dist, self._max_dist)
-        else:
-            return self._sample_goal_unconstrained(obs)
+        """Sampled a goal observation. 
+        use only unconstrained samples"""
+        #if np.random.random() < self._prob_constraint:
+        #    return self._sample_goal_constrained(obs, self._min_dist, self._max_dist)
+        #else:
+        return self._sample_goal_unconstrained(obs)
 
     def _sample_goal_constrained(self, obs, min_dist, max_dist):
         """
@@ -232,6 +238,7 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
                 threshold_distance=threshold_distance,
                 )
         self.pb_Q = []
+        self.eval_mode = False
 
     def get_Q_size(self):
         return len(self.pb_Q)
@@ -239,8 +246,14 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
     def append_pbs(self, pb_list:List[tuple]):
         self.pb_Q.extend(pb_list)
     
+    def eval(self):
+        self.eval_mode = True
+    
+    def train(self):
+        self.eval_mode = False
+    
     def reset(self):
-        if np.random.rand()<self._prob_constraint:
+        if self.eval_mode and np.random.rand()<self._prob_constraint:
             if len(self.pb_Q)>0:
                 new_pb = self.pb_Q.pop()
                 return self.reset_alt(**new_pb)
