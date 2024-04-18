@@ -88,15 +88,30 @@ if __name__ == "__main__":
     print(agent)
 
     from pud.algos.constrained_collector import ConstrainedCollector as Collector
-    from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, max_pairwise_cost
+    from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost
 
     pbs = sample_pbs_by_agent(
         env=eval_env,
         agent=agent,
         num_states=100,
         target_val=1.0,
-        pval_f=max_pairwise_cost,
+        pval_f=calc_pairwise_cost,
         K=5,
+        ensemble_agg="max"
     )
+
     eval_env.append_pbs(pbs)
-    Collector.eval_agent_from_Q(policy=policy, eval_env=eval_env)
+    eval_stats = Collector.eval_agent_from_Q(policy=policy, eval_env=eval_env)
+
+    ## logging
+    attr = "costs"
+    attr_vals = []
+    attr_pred = []
+    for id in eval_stats:
+        attr_vals.append(
+            eval_stats[id][attr]
+        )
+        attr_pred.append(
+            eval_stats[id]["init_info"]["prediction"]
+        )
+        
