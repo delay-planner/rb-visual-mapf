@@ -106,20 +106,22 @@ def train_eval(
                 rate = float(eval_interval) / (time.time() - t_mark)
                 tensorboard_writer.add_scalar("Opt/Rate(Iter per sec)", rate, global_step=i)
 
-                for d_ref in eval_info:
-                    for c_ref in eval_info[d_ref]:
-                        field_header = "Eval_D={:0>2d} C={:.2f}".format(d_ref, c_ref)
-                        # logging for distance prediction
-                        tensorboard_writer.add_scalar(field_header+"/d_pred_mean", np.mean(eval_info[d_ref][c_ref]["r"]["pred"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/d_pred_std", np.std(eval_info[d_ref][c_ref]["r"]["pred"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/d_true_mean", np.mean(eval_info[d_ref][c_ref]["r"]["true"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/d_true_std", np.std(eval_info[d_ref][c_ref]["r"]["true"]), global_step=i)
+                # for dists
+                field_header = "Eval Dist ~ "
+                for ii in eval_info["dists"]:
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_mean".format(eval_info["dists"][ii]["ref"]), np.mean(eval_info["dists"][ii]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["pred"]), global_step=i)
 
-                        # logging for cost prediction
-                        tensorboard_writer.add_scalar(field_header+"/c_pred_mean", np.mean(eval_info[d_ref][c_ref]["c"]["pred"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/c_pred_std", np.std(eval_info[d_ref][c_ref]["c"]["pred"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/c_true_mean", np.mean(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
-                        tensorboard_writer.add_scalar(field_header+"/c_true_std", np.std(eval_info[d_ref][c_ref]["c"]["true"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_mean".format(eval_info["dists"][ii]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["vals"]), global_step=i)
+
+                field_header = "Eval Cost ~ "
+                for ii in eval_info["costs"]:
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["pred"]), global_step=i)
+
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["vals"]), global_step=i)
                 
                 # reset timer 
                 t_mark = time.time()
@@ -204,7 +206,7 @@ def eval_pointenv_cost_constrained_dists(agent,
         cost_eval_stats[ii] = {
             "vals": attr_vals,
             "pred": attr_pred,
-            "ref": eval_distances[ii],
+            "ref": cost_intervals[ii],
         }
 
     eval_stats = {}
