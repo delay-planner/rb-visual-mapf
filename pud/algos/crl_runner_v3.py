@@ -233,25 +233,11 @@ def eval_agent_by_metric(
     eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
     return eval_stats
 
-def gather_log(eval_stats:dict, attr:str):
-    attr_vals = []
-    attr_pred = []
-    success_hist = []
-    for id in eval_stats:
-        attr_vals.append(
-            eval_stats[id][attr]
-        )
-        attr_pred.append(
-            eval_stats[id]["init_info"]["prediction"]
-        )
-        success_hist.append(
-            eval_stats[id]["success"]
-        )
-    return attr_vals, attr_pred, success_hist
-
-def gather_log_v2(eval_stats:dict, names_n_keys:Dict[str, list]):
+def gather_log(eval_stats:dict, names_n_keys:Dict[str, list]):
     """
-    names_n_keys
+    eval_stats has the form of eval_stats[order_id][rest of keys]
+    names_n_keys offers the list of keys to read data from eval_stats[id], and
+        defines a convenient name, e.g.,
         "name", ["init_info","prediction"]
     """
     logs = {}
@@ -290,8 +276,7 @@ def eval_pointenv_cost_constrained_dists(agent,
                     target_val=eval_distances[ii_d], 
                     pval_f=calc_pairwise_dist,
                     ensemble_agg="mean")
-        #attr_vals, attr_pred, success_hist = gather_log(dist_eval_i, attr="rewards")
-        dist_logs = gather_log_v2(eval_stats=dist_eval_i, 
+        dist_logs = gather_log(eval_stats=dist_eval_i, 
                       names_n_keys={
                           "attr_vals": ["rewards"],
                           "attr_pred": ["init_info", "prediction"],
@@ -326,12 +311,17 @@ def eval_pointenv_cost_constrained_dists(agent,
             #            target_val=cost_intervals[ii], 
             #            pval_f=calc_pairwise_cost,
             #            ensemble_agg="mean")
-            attr_vals, attr_pred, success_hist = gather_log(cost_eval_i, attr="cum_costs")
-            cost_eval_stats[ii] = {
-                "vals": attr_vals,
-                "pred": attr_pred,
-                "ref": cost_intervals[ii],
-                "success": success_hist,
+            cost_logs = gather_log(eval_stats=cost_eval_i, 
+                        names_n_keys={
+                            "attr_vals": ["cum_costs"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            cost_eval_stats[ii_d] = {
+                "vals": cost_logs["attr_vals"],
+                "pred": cost_logs["attr_pred"],
+                "ref": cost_intervals[ii_d],
+                "success": cost_logs["success_hist"],
             }
 
     eval_stats = {}
