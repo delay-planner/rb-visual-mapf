@@ -49,7 +49,7 @@ def eval_agent_from_Q(policy, eval_env):
         key = len(records.keys())
         records[key] = {
             "rewards": 0.0,
-            "costs": 0.0,
+            "cum_costs": info["cost"],
             "max_step_cost": 0.0,
             "init_states": init_state,
             "steps": 0,
@@ -60,34 +60,33 @@ def eval_agent_from_Q(policy, eval_env):
     c = 0  # count
     n = eval_env.get_Q_size()
 
-    r, co, max_co, cum_co = [0.0] * 4
+
     state, info = eval_env.reset()
     cur_key = new_record(state, info)
 
     while c < n:
         action = policy.select_action(state)
+        """when episode ends:
+        - state is the new state of the new epsiode
+        - reward, done, info are from the last step of the terminated epsiode
+        """
         state, reward, done, info = eval_env.step(np.copy(action))
 
         records[cur_key]["steps"] += 1
-
-        r += reward
+        records[cur_key]["rewards"] += reward
 
         co = info.get("cost", 0.0)
-        if co > max_co:
-            max_co = co
-        cum_co += co
+        if co > records[cur_key]["max_step_cost"]:
+            records[cur_key]["max_step_cost"] = co
+        records[cur_key]["cum_costs"] += co
 
         if done:
-            records[cur_key]["rewards"] = r
-            records[cur_key]["costs"] = co
-            records[cur_key]["max_step_cost"] = max_co
+            records[cur_key]["success"] = info["success"]
 
             c += 1
             if c < n:
                 cur_key = new_record(state, state["first_info"])
                 assert state["first_step"]
-
-            r, co, max_co, cum_co = [0.0] * 4
     
     eval_env.set_verbose(True)
     return records
