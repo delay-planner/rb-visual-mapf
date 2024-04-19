@@ -19,7 +19,7 @@ from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_wrappers import \
     SafeGoalConditionedPointWrapper, SafeGoalConditionedPointQueueWrapper
 from pud.policies import GaussianPolicy
-from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost, calc_pairwise_dist
+from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost, calc_pairwise_dist, sample_cost_pbs_by_agent
 from pathlib import Path
 
 
@@ -45,6 +45,8 @@ def train_eval(
     pbar=True,
     sample_size:int=100,
     num_train_pbs_per_ref:int=10,
+    cost_min_dist:float = 1.0,
+    cost_max_dist:float = 10.0,
     verbose=True,
     ckpt_dir:Path=Path(""),
     ):
@@ -107,6 +109,8 @@ def train_eval(
                 num_evals=num_eval_episodes,
                 cost_intervals=eval_cost_intervals,
                 sample_size=sample_size,
+                cost_min_dist=cost_min_dist,
+                cost_max_dist=cost_max_dist,
                 )
             if verbose:
                 print('-' * 10)
@@ -153,6 +157,8 @@ def update_train_pbs_uniform_distribution(
         env: SafeGoalConditionedPointQueueWrapper,
         num_pbs_per_metric:int,
         sample_size:int,
+        cost_min_dist:float = 0.0,
+        cost_max_dist:float = 10.0,
     ):
     """uniformly generate samples for each distributional metric"""
     new_train_pbs = []
@@ -246,6 +252,8 @@ def eval_pointenv_cost_constrained_dists(agent,
         sample_size:int=100,
         eval_distances=[2, 5, 10, 20],
         cost_intervals=[0., 0.2, 0.5, 1.0],
+        cost_min_dist:float = 0.0,
+        cost_max_dist:float = 10.0,
         ):
     
     eval_env.set_prob_constraint(1.0)
@@ -271,21 +279,33 @@ def eval_pointenv_cost_constrained_dists(agent,
 
     cost_eval_stats = dict()
     for ii in range(len(cost_intervals)):
-        cost_eval_i = eval_agent_by_metric(
-                    agent=agent, 
-                    eval_env=eval_env, 
-                    num_evals=num_evals, 
-                    sample_size=sample_size, 
-                    target_val=cost_intervals[ii], 
-                    pval_f=calc_pairwise_cost,
-                    ensemble_agg="mean")
-        attr_vals, attr_pred, success_hist = gather_log(cost_eval_i, attr="cum_costs")
-        cost_eval_stats[ii] = {
-            "vals": attr_vals,
-            "pred": attr_pred,
-            "ref": cost_intervals[ii],
-            "success": success_hist,
-        }
+        cost_eval_pbs = sample_cost_pbs_by_agent(
+                        env=eval_env,
+                        agent=agent,
+                        num_states=sample_size,
+                        K=num_evals,
+                        target_val=cost_intervals[ii],
+                        min_dist=cost_min_dist,
+                        max_dist=cost_max_dist,
+                        ensemble_agg="mean",)
+        if len(cost_eval_pbs) > 0:
+            eval_env.append_pbs(pb_list=cost_eval_pbs)
+            cost_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+            #cost_eval_i = eval_agent_by_metric(
+            #            agent=agent, 
+            #            eval_env=eval_env, 
+            #            num_evals=num_evals, 
+            #            sample_size=sample_size, 
+            #            target_val=cost_intervals[ii], 
+            #            pval_f=calc_pairwise_cost,
+            #            ensemble_agg="mean")
+            attr_vals, attr_pred, success_hist = gather_log(cost_eval_i, attr="cum_costs")
+            cost_eval_stats[ii] = {
+                "vals": attr_vals,
+                "pred": attr_pred,
+                "ref": cost_intervals[ii],
+                "success": success_hist,
+            }
 
     eval_stats = {}
     eval_stats["dists"] = dist_eval_stats
