@@ -101,6 +101,7 @@ def sample_cost_pbs_by_agent(
         pcosts = calc_pairwise_cost(agent, rb_vec, ensemble_agg) # num_states x num_states
         pcosts_gInds = pcosts[gInds]
         diff = np.abs(pcosts_gInds - target_val)
+        K = min(K, len(diff))
         mInds = arg_topk(-diff, topK=K) # find K minimum entries
         gmInds = (gInds[0][mInds], gInds[1][mInds])
 
