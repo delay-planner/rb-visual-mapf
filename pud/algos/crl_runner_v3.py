@@ -151,6 +151,7 @@ def train_eval(
                     N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
                     success_rate = np.sum(N_success) / len(N_success)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
                 
                 # reset timer 
                 t_mark = time.time()
