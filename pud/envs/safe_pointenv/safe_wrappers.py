@@ -93,6 +93,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         obs, _, _, info = self.env.step(action)
         rew = -1.0
         done = self._is_done(obs, self._goal)
+        info["success"] = done
         return (
             {
                 "observation": self._normalize_obs(obs),

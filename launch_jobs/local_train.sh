@@ -10,6 +10,7 @@ echo "experiment directory: ${log_dir}"
 
 #config="configs/config_SafePointEnv.yaml"
 config="configs/config_PointEnv_Queue.yaml"
+#config="configs/config_PointEnv_Queue_debug.yaml"
 #config="configs/config_SafePointEnv_debug.yaml"
 
 cd "${project_root}"

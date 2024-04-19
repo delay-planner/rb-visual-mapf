@@ -50,7 +50,7 @@ def train_eval(
     ):
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
-    
+
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
     num_eps = collector.num_eps
@@ -120,7 +120,6 @@ def train_eval(
             if i % eval_interval == 0:
                 rate = float(eval_interval) / (time.time() - t_mark)
                 tensorboard_writer.add_scalar("Opt/Rate(Iter per sec)", rate, global_step=i)
-
                 # for dists
                 field_header = "Eval Dist ~ "
                 for ii in eval_info["dists"]:
@@ -130,6 +129,10 @@ def train_eval(
                     tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_mean".format(eval_info["dists"][ii]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["vals"]), global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["vals"]), global_step=i)
 
+                    N_success = np.array(eval_info["dists"][ii]["success"], dtype=float)
+                    success_rate = np.sum(N_success) / len(N_success)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
+
                 field_header = "Eval Cost ~ "
                 for ii in eval_info["costs"]:
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["pred"]), global_step=i)
@@ -137,9 +140,32 @@ def train_eval(
 
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["vals"]), global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["vals"]), global_step=i)
+
+                    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
+                    success_rate = np.sum(N_success) / len(N_success)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
                 
                 # reset timer 
                 t_mark = time.time()
+
+def update_train_pbs_uniform_distribution(
+        agent: DRLDDPGLag,
+        env: SafeGoalConditionedPointQueueWrapper,
+        num_pbs_per_metric:int,
+        sample_size:int,
+    ):
+    """uniformly generate samples for each distributional metric"""
+    new_train_pbs = []
+    for dd in np.random.uniform(low=env._min_dist, high=env._max_dist, size=num_pbs_per_metric):
+        pbs_i = sample_pbs_by_agent(env=env, 
+                agent=agent, 
+                num_states=sample_size,
+                target_val=dd,
+                pval_f=calc_pairwise_dist,
+                K=2,
+                ensemble_agg="mean",
+                )
+        new_train_pbs.extend(pbs_i)
 
 def update_train_pbs_by_metric(
         agent: DRLDDPGLag,
@@ -200,6 +226,7 @@ def eval_agent_by_metric(
 def gather_log(eval_stats:dict, attr:str):
     attr_vals = []
     attr_pred = []
+    success_hist = []
     for id in eval_stats:
         attr_vals.append(
             eval_stats[id][attr]
@@ -207,7 +234,10 @@ def gather_log(eval_stats:dict, attr:str):
         attr_pred.append(
             eval_stats[id]["init_info"]["prediction"]
         )
-    return attr_vals, attr_pred
+        success_hist.append(
+            eval_stats[id]["success"]
+        )
+    return attr_vals, attr_pred, success_hist
         
 
 def eval_pointenv_cost_constrained_dists(agent, 
@@ -231,11 +261,12 @@ def eval_pointenv_cost_constrained_dists(agent,
                     target_val=eval_distances[ii_d], 
                     pval_f=calc_pairwise_dist,
                     ensemble_agg="mean")
-        attr_vals, attr_pred = gather_log(dist_eval_i, attr="rewards")
+        attr_vals, attr_pred, success_hist = gather_log(dist_eval_i, attr="rewards")
         dist_eval_stats[ii_d] = {
             "vals": attr_vals,
             "pred": attr_pred,
             "ref": eval_distances[ii_d],
+            "success": success_hist,
         }
 
     cost_eval_stats = dict()
@@ -248,11 +279,12 @@ def eval_pointenv_cost_constrained_dists(agent,
                     target_val=cost_intervals[ii], 
                     pval_f=calc_pairwise_cost,
                     ensemble_agg="mean")
-        attr_vals, attr_pred = gather_log(cost_eval_i, attr="costs")
+        attr_vals, attr_pred, success_hist = gather_log(cost_eval_i, attr="cum_costs")
         cost_eval_stats[ii] = {
             "vals": attr_vals,
             "pred": attr_pred,
             "ref": cost_intervals[ii],
+            "success": success_hist,
         }
 
     eval_stats = {}
