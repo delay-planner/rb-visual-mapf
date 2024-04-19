@@ -25,7 +25,7 @@ wrappers:
     SafeGoalConditionedPointQueueWrapper:
         prob_constraint: 0.5
         min_dist: 0 
-        max_dist: 4
+        max_dist: 20
         min_cost: 0.3
         max_cost: 1.0
         threshold_distance: 1.0
@@ -35,7 +35,7 @@ cost_function:
     name: "cosine"
     radius: 2.0
 replay_buffer:
-    max_size: 5000
+    max_size: 1000
 runner:
     batch_size_opt: 64
     collect_steps: 2
