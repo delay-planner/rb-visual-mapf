@@ -48,7 +48,7 @@ runner:
     eval_distances: [2, 5, 10]
     eval_cost_intervals: [0.0, 0.25, 0.5, 1.0]
     verbose: false
-    sample_size: 500
+    sample_size: 50
     num_train_pbs_per_ref: 10
     cost_min_dist: 1.0
     cost_max_dist: 10.0

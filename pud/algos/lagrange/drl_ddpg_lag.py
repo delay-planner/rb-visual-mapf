@@ -163,8 +163,8 @@ class DRLDDPGLag(UVFDDPG):
             if self.optimize_iterations % self.actor_update_interval == 0:
                 # Compute actor loss
                 actor_loss_r = -self.get_q_values(state)
-                #actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
-                #actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
+                actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
+                actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
                 actor_loss = actor_loss_r.mean() # debug training, drop lagrange
 
                 # Optimize the actor 
