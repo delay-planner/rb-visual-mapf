@@ -3,6 +3,7 @@ Evaluate the accuracy and reliability of reward and cost critics
 """
 
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -14,13 +15,15 @@ from tqdm.auto import tqdm
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.data_struct import init_embedded_dict
+from pud.algos.data_struct import dict_expand, init_embedded_dict
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.envs.safe_pointenv.safe_wrappers import \
-    SafeGoalConditionedPointWrapper, SafeGoalConditionedPointQueueWrapper
+from pud.envs.safe_pointenv.pb_sampler import (calc_pairwise_cost,
+                                               calc_pairwise_dist,
+                                               sample_cost_pbs_by_agent,
+                                               sample_pbs_by_agent)
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper)
 from pud.policies import GaussianPolicy
-from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost, calc_pairwise_dist, sample_cost_pbs_by_agent
-from pathlib import Path
 
 
 def train_eval(
@@ -244,6 +247,23 @@ def gather_log(eval_stats:dict, attr:str):
             eval_stats[id]["success"]
         )
     return attr_vals, attr_pred, success_hist
+
+def gather_log_v2(eval_stats:dict, names_n_keys:Dict[str, list]):
+    """
+    names_n_keys
+        "name", ["init_info","prediction"]
+    """
+    logs = {}
+    for n in names_n_keys.keys():
+        logs[n] = []
+
+    for id in eval_stats.keys():
+        for n in names_n_keys.keys():
+            k = names_n_keys[n]
+            logs[n].append(
+                dict_expand(D=eval_stats[id], keys=names_n_keys[n])
+            )
+    return logs
         
 
 def eval_pointenv_cost_constrained_dists(agent, 
@@ -269,12 +289,18 @@ def eval_pointenv_cost_constrained_dists(agent,
                     target_val=eval_distances[ii_d], 
                     pval_f=calc_pairwise_dist,
                     ensemble_agg="mean")
-        attr_vals, attr_pred, success_hist = gather_log(dist_eval_i, attr="rewards")
+        #attr_vals, attr_pred, success_hist = gather_log(dist_eval_i, attr="rewards")
+        dist_logs = gather_log_v2(eval_stats=dist_eval_i, 
+                      names_n_keys={
+                          "attr_vals": ["rewards"],
+                          "attr_pred": ["init_info", "prediction"],
+                          "success_hist": ["success"],
+                          })
         dist_eval_stats[ii_d] = {
-            "vals": attr_vals,
-            "pred": attr_pred,
+            "vals": dist_logs["attr_vals"],
+            "pred": dist_logs["attr_pred"],
             "ref": eval_distances[ii_d],
-            "success": success_hist,
+            "success": dist_logs["success_hist"],
         }
 
     cost_eval_stats = dict()

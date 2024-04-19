@@ -5,6 +5,22 @@ from typing import Dict, List, Union
 import torch
 import numpy as np
 
+def dict_expand(D:dict, keys:list):
+    """query multi-level keys from a dict
+    keys = ["a", "b"] is the same as 
+    D["a"]["b"]
+    """
+    d = D
+
+    if len(keys) == 0:
+        return d
+    
+    for i, k in enumerate(keys):
+        assert k in d, "{} of keys:{} not in dict".format(k, keys)
+        if i == len(keys)-1:
+            return d[k]
+
+        d = d[k]
 
 def inp_to_device(
         inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
