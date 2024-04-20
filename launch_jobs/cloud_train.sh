@@ -20,9 +20,9 @@ project_root=/home/gridsan/mfeng1/git_repos/cc-sorb
 export PYTHONPATH=$project_root:$PYTHONPATH
 
 env="FourRooms"
+#env="CentralObstacle"
 
-comment="self_train_eval_with_lag"
-SLURM_JOB_ID=local
+comment="cost_eval_max_dist_6"
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
@@ -42,5 +42,4 @@ python pud/algos/train_PointEnv.py \
     --cfg $config \
     --env $env \
     --logdir ${log_dir} \
-    --device ${device} \
-    --pbar
+    --device ${device}
