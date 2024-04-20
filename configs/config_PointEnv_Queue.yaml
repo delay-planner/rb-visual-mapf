@@ -17,7 +17,8 @@ agent:
 ckpt_dir: ./workdirs/train_CentralObstacle/
 #ckpt_dir: ./workdirs/debug_FourRooms/
 env:
-    walls: CentralObstacle
+    #walls: CentralObstacle
+    walls: FourRooms
     resize_factor: 5
     thin: false
     cost_limit: 1.0
