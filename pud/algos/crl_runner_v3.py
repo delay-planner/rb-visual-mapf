@@ -102,6 +102,8 @@ def train_eval(
                 sample_size=sample_size,
                 ref_cost_intervals=eval_cost_intervals,
                 ref_distances=eval_distances,
+                cost_min_dist=cost_min_dist,
+                cost_max_dist=cost_max_dist,
             )
 
             #eval_func = eval_pointenv_cost_constrained_dists
@@ -184,6 +186,8 @@ def update_train_pbs_by_metric(
         sample_size:int,
         ref_distances=[2, 5, 10], # reference grouping based on estimated distances
         ref_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
+        cost_min_dist:float = 1.0,
+        cost_max_dist:float = 10.0,
     ):
     # update pbs in the train eval
     new_train_pbs = []
@@ -199,15 +203,24 @@ def update_train_pbs_by_metric(
         new_train_pbs.extend(pbs_i)
 
     for cc in ref_cost_intervals:
-        pbs_i = sample_pbs_by_agent(env=env, 
-                agent=agent, 
-                num_states=sample_size,
-                target_val=cc,
-                pval_f=calc_pairwise_cost,
-                K=num_pbs_per_ref,
-                ensemble_agg="max",
-                )
-        new_train_pbs.extend(pbs_i)
+        #pbs_i = sample_pbs_by_agent(env=env, 
+        #        agent=agent, 
+        #        num_states=sample_size,
+        #        target_val=cc,
+        #        pval_f=calc_pairwise_cost,
+        #        K=num_pbs_per_ref,
+        #        ensemble_agg="max",
+        #        )
+        cost_eval_pbs = sample_cost_pbs_by_agent(
+                        env=env,
+                        agent=agent,
+                        num_states=sample_size,
+                        K=num_pbs_per_ref,
+                        target_val=cc,
+                        min_dist=cost_min_dist,
+                        max_dist=cost_max_dist,
+                        ensemble_agg="mean",)
+        new_train_pbs.extend(cost_eval_pbs)
     env.set_pbs(pb_list=new_train_pbs)
 
 def eval_agent_by_metric(
