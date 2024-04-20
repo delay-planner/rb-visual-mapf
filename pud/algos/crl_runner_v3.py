@@ -317,10 +317,10 @@ def eval_pointenv_cost_constrained_dists(agent,
                             "attr_pred": ["init_info", "prediction"],
                             "success_hist": ["success"],
                             })
-            cost_eval_stats[ii_d] = {
+            cost_eval_stats[ii] = {
                 "vals": cost_logs["attr_vals"],
                 "pred": cost_logs["attr_pred"],
-                "ref": cost_intervals[ii_d],
+                "ref": cost_intervals[ii],
                 "success": cost_logs["success_hist"],
             }
 
