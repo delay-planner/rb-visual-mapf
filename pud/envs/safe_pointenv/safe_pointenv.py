@@ -235,6 +235,10 @@ class SafePointEnv (PointEnv):
         new_state_cost = self.get_state_cost(xy=self.state)
         info = {"cost": new_state_cost}
         return self.state.copy(), info
+
+    def reset_base(self):
+        """sample directly in un-normalized state space"""
+        return self.reset()
     
     def reset_manual(self, start_state:np.ndarray):
         "manually set the start state"
