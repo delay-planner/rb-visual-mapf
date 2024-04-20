@@ -26,10 +26,13 @@ if __name__ == "__main__":
         default="configs/config_SafePointEnv.yaml",
         help="Training configuration",
     )
+    parser.add_argument('--env',
+        type=str,
+        default="",
+        help="terminal override of training env")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
-    parser.add_argument("--train", action="store_true", help="Train or test")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -41,6 +44,8 @@ if __name__ == "__main__":
     cfg = DotMap(cfg)
 
     # Override cfs from terminal
+    if len(args.env) > 0:
+        cfg.env.walls = args.env
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
     cfg.runner.verbose = args.verbose
