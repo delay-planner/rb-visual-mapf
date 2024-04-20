@@ -19,15 +19,28 @@ export PYTHONUSERBASE=$MYPYTHONUSERBASE
 project_root=/home/gridsan/mfeng1/git_repos/cc-sorb
 export PYTHONPATH=$project_root:$PYTHONPATH
 
-comment="short_range"
+env="FourRooms"
 
+comment="self_train_eval_with_lag"
+SLURM_JOB_ID=local
 experiment_dir="runs/results"
-log_dir=${experiment_dir}/job_${SLURM_JOB_ID}_${comment}
+log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
 echo "project root directory: ${project_root}"
 echo "experiment directory: ${log_dir}"
 
+#config="configs/config_SafePointEnv.yaml"
+config="configs/config_PointEnv_Queue.yaml"
+#config="configs/config_PointEnv_Queue_debug.yaml"
+#config="configs/config_SafePointEnv_debug.yaml"
+
+device="cpu"
+#device="cuda:0"
+
 cd "${project_root}"
 python pud/algos/train_PointEnv.py \
-    --cfg configs/config_SafePointEnv.yaml \
-    --logdir ${log_dir}
+    --cfg $config \
+    --env $env \
+    --logdir ${log_dir} \
+    --device ${device} \
+    --pbar
