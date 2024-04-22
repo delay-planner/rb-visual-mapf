@@ -1,10 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 from pud.collector import Collector
 from matplotlib.animation import FuncAnimation
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.constrained_collector import ConstrainedCollector
 from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
+from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeTimeLimit,
     SafeGoalConditionedPointWrapper,
