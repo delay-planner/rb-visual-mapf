@@ -88,8 +88,26 @@ if __name__ == "__main__":
     print(agent)
 
     from pud.algos.constrained_collector import ConstrainedCollector as Collector
+    from pud.algos.constrained_collector import eval_agent_from_Q
     from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost
 
+    eval_env.set_use_q(True)
+    eval_env.set_verbose(True)
+
+    # test one special problem
+    pb_list = [{'start': np.array([0, 0]),
+                'goal': np.array([0, 0]),
+                'info': {'prediction': 1.0}},]
+    eval_env.set_pbs(pb_list=pb_list)
+    target_init_states = {
+        "observation": eval_env.normalize_obs(pb_list[0]["start"]),
+        "goal": eval_env.normalize_obs(pb_list[0]["goal"]),
+    }
+    assert eval_env.get_Q_size() == 1
+    eval_env.set_prob_constraint(1.0)
+    eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+    assert eval_env.get_Q_size() == 0
+    
     pbs = sample_pbs_by_agent(
         env=eval_env,
         agent=agent,
@@ -99,12 +117,22 @@ if __name__ == "__main__":
         K=5,
         ensemble_agg="max"
     )
-
     eval_env.append_pbs(pbs)
-    eval_stats = Collector.eval_agent_from_Q(policy=policy, eval_env=eval_env)
+    eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+
+    for i in range(len(pbs)):
+        np.allclose(
+            eval_stats[i]["init_states"]["observation"],
+            eval_env.normalize_obs(pbs[i]["start"]),
+        )
+        np.allclose(
+            eval_stats[i]["init_states"]["goal"],
+            eval_env.normalize_obs(pbs[i]["goal"]),
+        )
+        
 
     ## logging
-    attr = "costs"
+    attr = "cum_costs"
     attr_vals = []
     attr_pred = []
     for id in eval_stats:

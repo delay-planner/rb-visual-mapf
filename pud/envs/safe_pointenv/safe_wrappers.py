@@ -1,7 +1,6 @@
 import gym
 import pickle
 import gym.spaces
-import deprecation
 import numpy as np
 from typing import Union, List
 
@@ -73,6 +72,10 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         return np.array(
             [obs[0] / float(self.env._height), obs[1] / float(self.env._width)]
         )
+
+    def normalize_obs(self, obs):
+        """publicly accessible hook"""
+        return self._normalize_obs(obs)
 
     def de_normalize_obs(self, obs:np.ndarray):
         """reverse of _normalize_obs"""
@@ -239,11 +242,16 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
                 threshold_distance=threshold_distance,
                 )
         self.pb_Q = []
-        self.eval_mode = False
+        # by default, don't pop from Q because there are many 
+        # redundant reset from parent classes
+        self.use_q = False  
         self.verbose = True
 
     def get_Q_size(self):
         return len(self.pb_Q)
+
+    def set_use_q(self, status: bool):
+        self.use_q = status
 
     def append_pbs(self, pb_list:List[tuple]):
         self.pb_Q.extend(pb_list)
@@ -258,9 +266,9 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
         self.verbose = new_verbose
     
     def reset(self):
-        if np.random.rand()<self._prob_constraint:
+        if self.use_q and np.random.rand()<self._prob_constraint:
             if len(self.pb_Q)>0:
-                new_pb = self.pb_Q.pop()
+                new_pb = self.pb_Q.pop(0)
                 return self.reset_alt(**new_pb)
             if self.verbose:
                 print("[WARN]: queue from goal conditioned env is empty")
