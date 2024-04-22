@@ -8,19 +8,26 @@ from dotmap import DotMap
 
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
-from pud.algos.crl_runner_v2 import (eval_pointenv_cost_constrained_dists,
+from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
                                      train_eval)
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
+from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent,
+                                               sample_pbs_by_agent)
 from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
 from pud.utils import set_env_seed, set_global_seed
+
 
 def setup_args_parser(parser:argparse.ArgumentParser):
     parser.add_argument('--cfg',
         type=str,
         default="configs/config_SafePointEnv.yaml",
         help='training configuration')
+    parser.add_argument('--figsavedir',
+        type=str,
+        help='directory to save figures')
     parser.add_argument('--ckpt',
         type=str,
         help='the path to ckpt file')
@@ -46,6 +53,9 @@ def setup_env(args:argparse.Namespace):
     
     cfg.pprint()
 
+    figdir = Path(args.figsavedir)
+    figdir.mkdir(parents=True, exist_ok=True)
+
     set_global_seed(cfg.seed)
 
     gym_env_wrappers = []
@@ -53,29 +63,24 @@ def setup_env(args:argparse.Namespace):
     for wrapper_name in cfg.wrappers:
         if wrapper_name == "SafeGoalConditionedPointWrapper":
             gym_env_wrappers.append(SafeGoalConditionedPointWrapper)
-            gym_env_wrapper_kwargs.append(
-                cfg.wrappers[wrapper_name].toDict()
-            )
-
-    #env = safe_env_load_fn(
-    #                cfg.env.toDict(),
-    #                cfg.cost_function.toDict(),
-    #                max_episode_steps=cfg.time_limit.max_episode_steps,
-    #                gym_env_wrappers=gym_env_wrappers,
-    #                wrapper_kwargs=gym_env_wrapper_kwargs,
-    #                terminate_on_timeout=False,
-    #                )
-    #set_env_seed(env, cfg.seed + 1)
-
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointBlendWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointBlendWrapper)
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointQueueWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointQueueWrapper)
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
     eval_env = safe_env_load_fn(
-                    cfg.env.toDict(),
-                    cfg.cost_function.toDict(),
-                    max_episode_steps=cfg.time_limit.max_episode_steps,
-                    gym_env_wrappers=gym_env_wrappers,
-                    wrapper_kwargs=gym_env_wrapper_kwargs,
-                    terminate_on_timeout=True,
-                    )
+        cfg.env.toDict(),
+        cfg.cost_function.toDict(),
+        max_episode_steps=cfg.time_limit.max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,
+        wrapper_kwargs=gym_env_wrapper_kwargs,
+        terminate_on_timeout=True,
+        )
+    eval_env.set_prob_constraint(1.0)
+
     set_env_seed(eval_env, cfg.seed + 2)
 
     obs_dim = eval_env.observation_space['observation'].shape[0]
@@ -103,6 +108,7 @@ def setup_env(args:argparse.Namespace):
     return dict(
                 agent=agent,
                 eval_env=eval_env,
+                figsavedir=figdir,
                 cfg=cfg,
                 obs_dim=obs_dim,
                 goal_dim=goal_dim,
@@ -128,6 +134,7 @@ if __name__ == "__main__":
     action_dim = setup_ret["action_dim"]
     max_action = setup_ret["max_action"]
     replay_buffer = setup_ret["replay_buffer"]
+    figdir = setup_ret["figsavedir"]
 
     # from pud.visualize import visualize_trajectory
     # eval_env.duration = 100 # We'll give the agent lots of time to try to find the goal.
@@ -150,19 +157,17 @@ if __name__ == "__main__":
     rb_vec = Collector.sample_initial_states(eval_env, replay_buffer.max_size)
 
     from pud.visualize import visualize_buffer
-    visualize_buffer(rb_vec, eval_env, outpath="temp/vis_buffer.jpg")
+    visualize_buffer(rb_vec, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())
 
     pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None) # ensemble, rb_vec, rb_vec
-
-
 
     from pud.visualize import visualize_cost_graph
     visualize_cost_graph(rb_vec=rb_vec, 
         eval_env=eval_env, 
         pcost=pcost, 
         cost_limit=cfg["agent"]["cost_limit"],
-        outpath="temp/vis_cost_graph.jpg",
+        outpath=figdir.joinpath("vis_cost_graph.jpg").as_posix(),
         edges_to_display=10,
         )
 
@@ -174,7 +179,7 @@ if __name__ == "__main__":
         pcost=pcost, 
         cutoff=7,
         cost_limit=cfg["agent"]["cost_limit"],
-        outpath="temp/vis_combined_graph.jpg",
+        outpath=figdir.joinpath("vis_combined_graph.jpg").as_posix(),
         edges_to_display=10,
     )
 
@@ -190,12 +195,14 @@ if __name__ == "__main__":
     # distance by the largest bin. We've used 20 bins, so the critic 
     # predicts 20 for all states that are at least 20 steps away from one another.
     # 
-    from pud.visualize import visualize_pairwise_dists, visualize_pairwise_costs
-    visualize_pairwise_dists(pdist, outpath="temp/vis_pdist.jpg")
+    from pud.visualize import (visualize_pairwise_costs,
+                               visualize_pairwise_dists)
+    visualize_pairwise_dists(pdist, 
+        outpath=figdir.joinpath("vis_pdist.jpg").as_posix())
     visualize_pairwise_costs(pcost, 
         cost_limit=cfg.agent.cost_limit, 
         n_bins=cfg.agent.cost_N,
-        outpath="temp/vis_pcost.jpg",
+        outpath=figdir.joinpath("vis_pcost.jpg").as_posix(),
         )
     
 
@@ -213,14 +220,22 @@ if __name__ == "__main__":
     # if *all* critics think that this pair of states is nearby.
     #
     from pud.visualize import visualize_graph
-    visualize_graph(rb_vec, eval_env, pdist, outpath="temp/vis_graph.jpg")
+    visualize_graph(rb_vec, 
+        eval_env, 
+        pdist, 
+        outpath=figdir.joinpath("vis_graph.jpg").as_posix(),
+        )
 
     # We can also visualize the predictions from each critic. 
     # Note that while each critic may make incorrect decisions 
     # for distant states, their predictions in aggregate are correct.
     # 
     from pud.visualize import visualize_graph_ensemble
-    visualize_graph_ensemble(rb_vec, eval_env, pdist, outpath="temp/vis_graph_ensemble.jpg")
+    visualize_graph_ensemble(rb_vec, 
+        eval_env, 
+        pdist, 
+        outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix(),
+        )
 
     # from pud.policies import SearchPolicy
     # search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True)
