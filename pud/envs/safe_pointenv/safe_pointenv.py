@@ -43,7 +43,8 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
     ax.set_aspect('equal', adjustable='box')
     return ax
 
-def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
+def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes, 
+        starts:list=[], goals:list=[]):
     walls = walls.T
     (height, width) = walls.shape
 
@@ -51,8 +52,8 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
     end_color = "#dbbb18"
     
     """plot a list of trajs, each is a list of tuples (int states)"""
-    starts = []
-    goals = []
+    traj_starts = []
+    traj_goals = []
     for traj in list_trajs:
         # randomize colors
         c = np.random.rand(3,)
@@ -65,13 +66,18 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes):
             ax.plot([x, xn], [y, yn], color=c, markersize=4)
 
             if i == 0:
-                starts.append([x,y])
+                traj_starts.append([x,y])
             if i == len(traj) - 2:
-                goals.append([xn, yn])
-                
-    starts = np.array(starts)
-    goals = np.array(goals)
+                traj_goals.append([xn, yn])
+
+    if len(starts) == 0:
+        starts = traj_starts 
+    starts = np.array(starts)     
     ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="o", label="start")
+
+    if len(goals) == 0:
+        goals = traj_goals
+    goals = np.array(goals)
     ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal")
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
@@ -231,14 +237,10 @@ class SafePointEnv (PointEnv):
             return
 
         # todo: perhaps suffer from label inbalance?
-        self.state = self._sample_safe_empty_state(cost_limit=self.cost_limit)
+        self.state = self.sample_safe_empty_state(cost_limit=self.cost_limit)
         new_state_cost = self.get_state_cost(xy=self.state)
         info = {"cost": new_state_cost}
         return self.state.copy(), info
-
-    def reset_base(self):
-        """sample directly in un-normalized state space"""
-        return self.reset()
     
     def reset_manual(self, start_state:np.ndarray):
         "manually set the start state"
@@ -264,7 +266,7 @@ class SafePointEnv (PointEnv):
         safe_empty_states = np.column_stack(safe_empty_states) # N,d
         return safe_empty_states
     
-    def _sample_safe_empty_state(self, cost_limit:float):
+    def sample_safe_empty_state(self, cost_limit:float):
         """
         must take intersection with the empty states because state cost is computed from the center of the block?
         """
