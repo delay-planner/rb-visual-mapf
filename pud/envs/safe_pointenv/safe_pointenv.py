@@ -354,11 +354,11 @@ class SafePointEnv (PointEnv):
             for axis in range(num_axis):
                 new_state = self.state.copy()
                 new_state[axis] += dt * action[axis]
-                new_cost = self.get_state_cost(new_state)
-                if cost < new_cost:
-                    cost = new_cost
                 if not self._is_blocked(new_state):
                     self.state = new_state
+                    new_cost = self.get_state_cost(new_state)
+                    if cost < new_cost:
+                        cost = new_cost
 
         done = False
         rew = -1.0 * np.linalg.norm(self.state)
