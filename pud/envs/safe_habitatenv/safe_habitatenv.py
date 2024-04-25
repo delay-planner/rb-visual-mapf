@@ -2,6 +2,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.typing import NDArray
+from matplotlib.axes import Axes
 from typing import Tuple, Dict, Union
 
 from pud.envs.habitat_navigation_env import HabitatNavigationEnv
@@ -58,7 +59,29 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         for cx, cy in zip(*empty_states):
             # Only sample states whose costs are lower than an upper bound
-            if self._cost_map[cx, cy] < cost_limit:
+
+            # NOTE: Need to check that the neighbors of this cell are also safe as the functions that
+            # map from discrete to continuous state space are not accurate!
+            unsafe_neighbors = False
+            neighbors = [
+                (cx - 1, cy - 1),
+                (cx - 1, cy),
+                (cx - 1, cy + 1),
+                (cx, cy - 1),
+                (cx, cy + 1),
+                (cx + 1, cy - 1),
+                (cx + 1, cy),
+                (cx + 1, cy + 1),
+            ]
+            for ncx, ncy in neighbors:
+                if ncx < 0 or ncx >= self._wall_height:
+                    continue
+                if ncy < 0 or ncy >= self._wall_width:
+                    continue
+                if self._cost_map[ncx, ncy] >= cost_limit:
+                    unsafe_neighbors = True
+                    break
+            if self._cost_map[cx, cy] < cost_limit and not unsafe_neighbors:
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
 
@@ -245,11 +268,10 @@ def display_map(
     scene_name: str,
     cost_map: NDArray,
     cost_limit: float,
+    ax: Axes,
     key_points: Union[NDArray, None] = None,
-):
-    plt.figure(figsize=(12, 8))
-    plt.title(scene_name)
-    ax = plt.subplot(1, 1, 1)
+) -> Axes:
+    ax.set_title(scene_name)
     ax.axis("off")
 
     height, width = topdown_map.shape
@@ -272,7 +294,14 @@ def display_map(
     if key_points is not None:
         for point in key_points:
             plt.plot(point[0], point[1], marker="o", markersize=10, alpha=0.8)
-    plt.show()
+
+    ax.set_xlim((0, 1))
+    ax.set_ylim((0, 1))
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect("equal", adjustable="box")
+
+    return ax
 
 
 if __name__ == "__main__":
@@ -287,5 +316,7 @@ if __name__ == "__main__":
         cost_fn_args={"name": "cosine", "radius": 2.0},
         cost_limit=1.0,
     )
-    print(env)
-    display_map(env.walls, "Skokloster Castle", env.cost_map, env.cost_limit)  # type: ignore
+    plt.figure(figsize=(12, 8))
+    ax = plt.subplot(1, 1, 1)
+    ax = display_map(env.walls, "Skokloster Castle", env.cost_map, env.cost_limit, ax=ax)  # type: ignore
+    plt.show()

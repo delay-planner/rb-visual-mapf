@@ -1,15 +1,25 @@
-from pud.dependencies import *
-
+import gym
+import time
+import gym.spaces
+import numpy as np
+import networkx as nx
+import matplotlib.pyplot as plt
 
 import habitat_sim
 from numpy.typing import NDArray
 from typing import Tuple, Dict, Union
 
+from pud.envs.wrappers import TimeLimit
+
 
 class HabitatNavigationEnv(gym.Env):
 
     def __init__(
-        self, scene: str, action_noise: float = 1.0, simulator_settings: dict = {}
+        self,
+        scene: str,
+        height: Union[float, None] = None,
+        action_noise: float = 1.0,
+        simulator_settings: dict = {},
     ):
 
         self._scene = scene
@@ -37,7 +47,7 @@ class HabitatNavigationEnv(gym.Env):
         self._width = self._simulator_settings["width"]
         self._height = self._simulator_settings["height"]
 
-        self._configuration = self.make_habitat_configuration()
+        self._configuration = self._make_habitat_configuration()
         self._simulator = habitat_sim.Simulator(self._configuration)
 
         self._agent = self._simulator.initialize_agent(
@@ -45,15 +55,10 @@ class HabitatNavigationEnv(gym.Env):
         )
 
         self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(4, self._height, self._width, 4), dtype=np.uint8
+            low=0, high=255, shape=(4, self._height, self._width, 4), dtype=np.uint8  # type: ignore
         )
         # The last 4 is there because the default camera sensor returns 4 channels for some reason. Not sure why
 
-        self.observation_space = gym.spaces.Dict(
-            {
-                **self._simulator.sensor_suite.observation_spaces.spaces,
-            }
-        )
         self.action_space = gym.spaces.Box(
             low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32
         )
@@ -63,12 +68,26 @@ class HabitatNavigationEnv(gym.Env):
 
         # Simulator's top-down visualizer's parameters
         self._meters_per_pixel = 0.1
-        self._vertical_slice = self._simulator.pathfinder.get_bounds()[0][1]
-        self._walls = self._simulator.get_topdown_view(
+        if height is not None:
+            self._vertical_slice = height
+        else:
+            self._vertical_slice = self._simulator.pathfinder.get_bounds()[0][1]
+        self._walls = self._simulator.pathfinder.get_topdown_view(
             self._meters_per_pixel, self._vertical_slice
-        )
+        ).astype(np.uint8)
         self._wall_height, self._wall_width = self._walls.shape
-        self._apsp = self._compute_apsp(self._walls)
+
+        print("Calling the APSP construction function")
+        t0 = time.time()
+        # self._apsp = self._compute_apsp(self._walls)
+        import pickle
+
+        with open(
+            "/home/mers-pluto/Desktop/Work/cc-sorb-rev/pud/envs/safe_habitatenv/apsp.pkl",
+            "rb",
+        ) as f:
+            self._apsp = pickle.load(f)
+        print("APSP construction time in (s): ", time.time() - t0)
 
         self.reset()
 
@@ -76,7 +95,7 @@ class HabitatNavigationEnv(gym.Env):
     def walls(self):
         return self._walls
 
-    def make_habitat_configuration(self):
+    def _make_habitat_configuration(self):
 
         simulator_cfg = habitat_sim.SimulatorConfiguration()
         simulator_cfg.scene_id = self._simulator_settings["scene"]
@@ -93,7 +112,7 @@ class HabitatNavigationEnv(gym.Env):
         ]
 
         rgb_sensor_spec_right = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_right.uuid = "color_sensor_forward"
+        rgb_sensor_spec_right.uuid = "color_sensor_right"
         rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.COLOR
         rgb_sensor_spec_right.resolution = [self._height, self._width]
         rgb_sensor_spec_right.position = [
@@ -104,7 +123,7 @@ class HabitatNavigationEnv(gym.Env):
         rgb_sensor_spec_right.orientation = [0.0, -np.pi / 2, 0.0]
 
         rgb_sensor_spec_backward = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_backward.uuid = "color_sensor_forward"
+        rgb_sensor_spec_backward.uuid = "color_sensor_backward"
         rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.COLOR
         rgb_sensor_spec_backward.resolution = [self._height, self._width]
         rgb_sensor_spec_backward.position = [
@@ -115,7 +134,7 @@ class HabitatNavigationEnv(gym.Env):
         rgb_sensor_spec_backward.orientation = [0.0, np.pi, 0.0]
 
         rgb_sensor_spec_left = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_left.uuid = "color_sensor_forward"
+        rgb_sensor_spec_left.uuid = "color_sensor_left"
         rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.COLOR
         rgb_sensor_spec_left.resolution = [self._height, self._width]
         rgb_sensor_spec_left.position = [
@@ -133,53 +152,41 @@ class HabitatNavigationEnv(gym.Env):
             rgb_sensor_spec_left,
         ]
 
-        return habitat_sim.Configuration(simulator_cfg, agent_cfg)
+        return habitat_sim.Configuration(simulator_cfg, [agent_cfg])
 
-    def reset(self):
-        self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
-        observations = self._simulator.reset()
-        for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)
-            self.state[idx] = value
-        return self.state.copy()
+    def _get_distance(self, position: NDArray, goal: NDArray) -> float:
+        """Compute the shortest path distance.
 
-    def step(self, action: NDArray):
-        if self._action_noise > 0:
-            action += np.random.normal(0, self._action_noise)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        assert self.action_space.contains(action)
+        NOTE: This distance is *not* used for training."""
+        (i1, j1) = self._discretize_state(
+            position, (self._wall_height, self._wall_width)
+        )
+        (i2, j2) = self._discretize_state(goal, (self._wall_height, self._wall_width))
+        return self._apsp[i1, j1, i2, j2]
 
-        num_substeps = 10
-        dt = 1.0 / num_substeps
-        for _ in np.linspace(0, 1, num_substeps):
-            # The agent's positions are in 3D space where index 0 and 2 are x and z and can be moved as
-            # y moves the agent up and down
-            for axis, axis_action in [(2, action[0]), (0, action[1])]:
-                agent_state = self._simulator.get_agent(
-                    self._simulator_settings["default_agent"]
-                ).get_state()
-                new_state = agent_state.position.copy()
-                new_state[axis] += dt * axis_action
-                if self._simulator.pathfinder.is_navigable(new_state):
-                    agent_state.position = new_state
-                    agent_state.sensor_states = {}
-                    self._agent.set_state(agent_state)
+    def _discretize_state(
+        self, position: NDArray, grid_resolution: Tuple[int, int]
+    ) -> Tuple[int, int]:
+        r"""Return gridworld index of realworld coordinates assuming top-left corner
+        is the origin. The real world coordinates of lower left corner are
+        (coordinate_min, coordinate_min) and of top right corner are
+        (coordinate_max, coordinate_max)
+        """
+        lower_bound, upper_bound = self._simulator.pathfinder.get_bounds()
 
-        done = False
-        agent_state = self._simulator.get_agent(
-            self._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
-        rew = -1.0 * np.linalg.norm(agent_position)
+        grid_x = int((position[0] - lower_bound[2]) / self._meters_per_pixel)
+        grid_y = int((position[1] - lower_bound[0]) / self._meters_per_pixel)
+        return grid_x, grid_y
 
-        new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
-        observations = self._simulator.get_sensor_observations()
-        for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)
-            new_state[idx] = value
-        self.state = new_state
+    def _undiscretize_state(
+        self, grid_position: Tuple[int, int], grid_resolution: Tuple[int, int]
+    ) -> Tuple[float, float]:
 
-        return self.state.copy(), rew, done, {}
+        lower_bound, upper_bound = self._simulator.pathfinder.get_bounds()
+
+        realworld_x = lower_bound[2] + grid_position[0] * self._meters_per_pixel
+        realworld_y = lower_bound[0] + grid_position[1] * self._meters_per_pixel
+        return realworld_x, realworld_y
 
     def _compute_apsp(self, walls: NDArray):
 
@@ -216,6 +223,52 @@ class HabitatNavigationEnv(gym.Env):
             for (i2, j2), d in dist_dict.items():
                 dist[i1, j1, i2, j2] = d
         return dist
+
+    def reset(self) -> NDArray:
+        self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
+        observations = self._simulator.reset()
+        for idx, (key, value) in enumerate(observations.items()):
+            assert value.shape == (self._height, self._width, 4)  # type: ignore
+            self.state[idx] = value
+        return self.state.copy()
+
+    def step(self, action: NDArray) -> Tuple[NDArray, float, bool, Dict]:
+        if self._action_noise > 0:
+            action += np.random.normal(0, self._action_noise)
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        assert self.action_space.contains(action)
+
+        num_substeps = 10
+        dt = 1.0 / num_substeps
+        for _ in np.linspace(0, 1, num_substeps):
+            # The agent's positions are in 3D space where index 0 and 2 are x and z and can be moved as
+            # y moves the agent up and down
+            for axis, axis_action in [(2, action[0]), (0, action[1])]:
+                agent_state = self._simulator.get_agent(
+                    self._simulator_settings["default_agent"]
+                ).get_state()
+                new_state = agent_state.position.copy()
+                new_state[axis] += dt * axis_action
+                if self._simulator.pathfinder.is_navigable(new_state):
+                    agent_state.position = new_state
+                    agent_state.sensor_states = {}
+                    self._agent.set_state(agent_state)
+
+        done = False
+        agent_state = self._simulator.get_agent(
+            self._simulator_settings["default_agent"]
+        ).get_state()
+        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        rew = float(-1.0 * np.linalg.norm(agent_position))
+
+        new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
+        observations = self._simulator.get_sensor_observations()
+        for idx, (key, value) in enumerate(observations.items()):
+            assert value.shape == (self._height, self._width, 4)  # type: ignore
+            new_state[idx] = value
+        self.state = new_state
+
+        return self.state.copy(), rew, done, {}
 
 
 class GoalConditionedHabitatPointWrapper(gym.Wrapper):
@@ -263,91 +316,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             }
         )
 
-    def _get_distance(self, position: NDArray, goal: NDArray) -> float:
-        """Compute the shortest path distance.
-
-        NOTE: This distance is *not* used for training."""
-        (i1, j1) = self._discretize_state(
-            position, (self.env._wall_height, self.env._wall_width)
-        )
-        (i2, j2) = self._discretize_state(
-            goal, (self.env._wall_height, self.env._wall_width)
-        )
-        return self._apsp[i1, j1, i2, j2]
-
-    def _discretize_state(
-        self, position: NDArray, grid_resolution: Tuple[int, int]
-    ) -> Tuple[int, int]:
-        r"""Return gridworld index of realworld coordinates assuming top-left corner
-        is the origin. The real world coordinates of lower left corner are
-        (coordinate_min, coordinate_min) and of top right corner are
-        (coordinate_max, coordinate_max)
-        """
-        lower_bound, upper_bound = self.env._simulator.pathfinder.get_bounds()
-
-        grid_size = (
-            abs(upper_bound[2] - lower_bound[2]) / grid_resolution[0],
-            abs(upper_bound[0] - lower_bound[0]) / grid_resolution[1],
-        )
-        grid_x = int((position[0] - lower_bound[2]) / grid_size[0])
-        grid_y = int((position[1] - lower_bound[0]) / grid_size[1])
-        return grid_x, grid_y
-
-    def _undiscretize_state(
-        self, grid_position: Tuple[int, int], grid_resolution: Tuple[int, int]
-    ) -> Tuple[float, float]:
-
-        lower_bound, upper_bound = self.env._simulator.pathfinder.get_bounds()
-
-        grid_size = (
-            abs(upper_bound[2] - lower_bound[2]) / grid_resolution[0],
-            abs(upper_bound[0] - lower_bound[0]) / grid_resolution[1],
-        )
-        realworld_x = lower_bound[2] + grid_position[0] * grid_size[0]
-        realworld_y = lower_bound[0] + grid_position[1] * grid_size[1]
-        return realworld_x, realworld_y
-
-    def reset(self) -> Dict:
-        count = 0
-        goal = None
-        while goal is None:
-            obs = self.env.reset()
-            agent_state = self.env._simulator.get_agent(
-                self.env._simulator_settings["default_agent"]
-            ).get_state()
-            agent_position = np.array(
-                [agent_state.position[2], agent_state.position[0]]
-            )
-            (agent_position, goal) = self._sample_goal(agent_position)
-            count += 1
-            if count > 1000:
-                print("WARNING: Unable to find goal within constraints.")
-        self._goal = goal
-        return {
-            "observation": obs,
-            "goal": self._goal,
-        }
-
-    def step(self, action: NDArray) -> Tuple[Dict, float, bool, Dict]:
-        obs, _, _, _ = self.env.step(action)
-        rew = -1.0
-
-        agent_state = self.env._simulator.get_agent(
-            self.env._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
-        done = self._is_done(agent_position, self._goal)
-        return (
-            {
-                "observation": obs,
-                "goal": self._goal,
-            },
-            rew,
-            done,
-            {},
-        )
-
-    def set_sample_goal_args(
+    def _set_sample_goal_args(
         self,
         prob_constraint: Union[float, None] = None,
         min_dist: Union[float, None] = None,
@@ -367,9 +336,11 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
     def _is_done(self, agent_position: NDArray, goal: NDArray) -> bool:
         """Determines whether observation equals goal."""
-        return np.linalg.norm(agent_position - goal) < self._threshold_distance
+        return bool(np.linalg.norm(agent_position - goal) < self._threshold_distance)
 
-    def _sample_goal(self, agent_position: NDArray) -> Tuple[NDArray, NDArray]:
+    def _sample_goal(
+        self, agent_position: NDArray
+    ) -> Tuple[NDArray, Union[NDArray, None]]:
         """Sampled a goal observation."""
         if np.random.random() < self._prob_constraint:
             return self._sample_goal_constrained(
@@ -380,7 +351,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
     def _sample_goal_constrained(
         self, agent_position: NDArray, min_dist: float, max_dist: float
-    ) -> Tuple[NDArray, NDArray]:
+    ) -> Tuple[NDArray, Union[NDArray, None]]:
         """Samples a goal with dist min_dist <= d(observation, goal) <= max_dist.
 
         Args:
@@ -391,13 +362,13 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
           agent_position: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self._discretize_state(
+        (i, j) = self.env._discretize_state(
             agent_position, (self.env._wall_height, self.env._wall_width)
         )
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
-        mask = np.logical_and(mask, self.env._walls == True)
+        mask = np.logical_and(mask, self.env._walls)
         candidate_states = np.where(mask)
         num_candidate_states = len(candidate_states[0])
         if num_candidate_states == 0:
@@ -411,7 +382,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         dist_to_goal = self._get_distance(agent_position, goal)
         assert min_dist <= dist_to_goal <= max_dist
 
-        undiscretized_goal_x, undiscretized_goal_y = self._undiscretize_state(
+        undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
             (int(goal[0]), int(goal[1])), (self.env._wall_height, self.env._wall_width)
         )
         undiscretized_goal = np.array(
@@ -451,12 +422,127 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             tries += 1
             if tries > 1000:
                 print("WARNING: Unable to find goal without constraints.")
+        sampled_goal = np.array([sampled_goal[2], sampled_goal[0]], dtype=np.float32)
         return (
             agent_position,
-            self.env._simulator.pathfinder.get_random_navigable_point(),
+            sampled_goal,
+        )
+
+    def reset(self) -> Dict:
+
+        count = 0
+        goal = None
+        while goal is None:
+            obs = self.env.reset()
+            agent_state = self.env._simulator.get_agent(
+                self.env._simulator_settings["default_agent"]
+            ).get_state()
+            agent_position = np.array(
+                [agent_state.position[2], agent_state.position[0]]
+            )
+            (agent_position, goal) = self._sample_goal(agent_position)
+            count += 1
+            if count > 1000:
+                print("WARNING: Unable to find goal within constraints.")
+        self._goal = goal
+        return {
+            "observation": obs,
+            "goal": self._goal,
+        }
+
+    def step(self, action: NDArray) -> Tuple[Dict, float, bool, Dict]:
+        obs, _, _, _ = self.env.step(action)
+        rew = -1.0
+
+        agent_state = self.env._simulator.get_agent(
+            self.env._simulator_settings["default_agent"]
+        ).get_state()
+        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        done = self._is_done(agent_position, self._goal)
+        return (
+            {
+                "observation": obs,
+                "goal": self._goal,
+            },
+            rew,
+            done,
+            {},
         )
 
     @property
     def max_goal_dist(self) -> float:
         apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
+
+
+def habitat_env_load_fn(
+    scene: str,
+    height: Union[float, None] = None,
+    terminate_on_timeout: bool = False,
+    max_episode_steps: Union[int, None] = None,
+    gym_env_wrappers: Union[Tuple[GoalConditionedHabitatPointWrapper], None] = (
+        GoalConditionedHabitatPointWrapper,
+    ),  # type: ignore
+) -> gym.Env:
+    """Loads the selected environment and wraps it with the specified wrappers.
+
+    Args:
+      scene: Scene path.
+      height: Height at which the vertical slice of the map must be taken for the top-down map generation.
+      terminate_on_timeout: Whether to set done = True when the max episode
+        steps is reached.
+      max_episode_steps: If None the max_episode_steps will be set to the default
+        step limit defined in the environment's spec. No limit is applied if set
+        to 0 or if there is no timestep_limit set in the environment's spec.
+      gym_env_wrappers: Iterable with references to wrapper classes to use
+        directly on the gym environment.
+
+    Returns:
+      An environment instance.
+    """
+
+    env = HabitatNavigationEnv(scene=scene, height=height)
+
+    if gym_env_wrappers is not None:
+        for wrapper in gym_env_wrappers:
+            env = wrapper(env)  # type: ignore
+
+    if max_episode_steps is not None and max_episode_steps > 0:
+        env = TimeLimit(
+            env, max_episode_steps, terminate_on_timeout=terminate_on_timeout
+        )
+    return env
+
+
+def display_map(
+    topdown_map: NDArray, scene_name: str, key_points: Union[NDArray, None] = None
+):
+    plt.figure(figsize=(12, 8))
+    plt.title(scene_name)
+    ax = plt.subplot(1, 1, 1)
+    ax.axis("off")
+    plt.imshow(topdown_map)
+    if key_points is not None:
+        for point in key_points:
+            plt.plot(point[0], point[1], marker="o", markersize=10, alpha=0.8)
+    plt.show()
+
+
+def set_habitat_env_difficulty(eval_env: gym.Env, difficulty: float):
+    assert 0 <= difficulty <= 1
+    max_goal_dist = eval_env.max_goal_dist  # type: ignore
+    eval_env._set_sample_goal_args(  # type: ignore
+        prob_constraint=1,
+        min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
+        max_dist=max_goal_dist * (difficulty + 0.05),
+    )
+
+
+if __name__ == "__main__":
+
+    scene = (
+        "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/"
+        "habitat-test-scenes/skokloster-castle.glb"
+    )
+    env = habitat_env_load_fn(scene=scene, height=0)
+    display_map(env.walls, "Skokloster Castle")  # type: ignore
