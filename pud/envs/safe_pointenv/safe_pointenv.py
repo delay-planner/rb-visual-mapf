@@ -44,7 +44,7 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
     return ax
 
 def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes, 
-        starts:list=[], goals:list=[]):
+        starts:list=[], goals:list=[], s:int=40):
     walls = walls.T
     (height, width) = walls.shape
 
@@ -71,21 +71,21 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes,
                 traj_goals.append([xn, yn])
 
     if len(starts) == 0:
-        starts = np.array(starts)
+        starts = np.array(traj_starts)
     else:
         # the externally supplied starts need to be flipped
         starts = np.array(starts) / np.array([[height, width]])
         starts = np.flip(starts, axis=1)
 
-    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="s", label="start", s=16)
+    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="s", label="start", s=s)
 
     if len(goals) == 0:
-        goals = np.array(goals)
+        goals = np.array(traj_goals)
     else:
         goals = np.array(goals) / np.array([[height, width]])
         goals = np.flip(goals, axis=1)
 
-    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal", s=16)
+    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal", s=s)
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T

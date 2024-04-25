@@ -247,10 +247,10 @@ if __name__ == "__main__":
                 agent=agent,
                 num_states=50,
                 target_val=0.5,
-                min_dist=5,
-                max_dist=10,
+                min_dist=10,
+                max_dist=20,
                 ensemble_agg="mean",
-                K=15,
+                K=1,
             )
     eval_env.set_pbs(pb_list=pbs_c)
     num_pb_c = len(pbs_c)
@@ -262,6 +262,9 @@ if __name__ == "__main__":
     #ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list = Collector.get_trajectory(policy=agent, eval_env=eval_env)
     #ep_de_normalized_obs = [eval_env.de_normalize_obs(x) for x in ep_observation_list]
     #ep_obs.append(ep_de_normalized_obs)
+    list_trajs = []
+    for id in eval_records.keys():
+        list_trajs.append(eval_records[id]["traj"])
     
     fig, ax = plt.subplots()
     ax = plot_safe_walls(walls=eval_env.get_map(), 
@@ -270,12 +273,14 @@ if __name__ == "__main__":
             ax=ax,
             )
 
-    ax = plot_trajs(list_trajs=[eval_records[id]["traj"] for id in eval_records.keys()], 
+    ax = plot_trajs(list_trajs=list_trajs, 
         walls=eval_env.get_map(),
         ax=ax,
         starts=start_list,
         goals=goal_list,
+        s=32,
         )
+
     fig.savefig(figdir.joinpath("test_trajs.jpg"), dpi=300)
     plt.close(fig)
 
