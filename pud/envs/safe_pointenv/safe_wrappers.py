@@ -86,6 +86,14 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             ]
         )
 
+    def de_normalize_goal_conditioned_obs(self, obs:dict):
+        """reverse of _normalize_obs"""
+        out = {
+            "observation": self.de_normalize_obs(obs["observation"]),
+            "goal": self.de_normalize_obs(obs["goal"]),
+        }
+        return out
+    
     def step(self, action):
         """
         The safe_pointenv does NOT use normalized observations, the goal-conditioned env does

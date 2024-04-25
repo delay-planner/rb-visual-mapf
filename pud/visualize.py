@@ -263,13 +263,13 @@ def visualize_search_path(
             starts = [state["observation"]]
             goals = [state["goal"]]
             for _ in range(num_agents - 1):
-                new_obs = eval_env.env.env._sample_safe_empty_state(
+                new_obs = eval_env.env.env.sample_safe_empty_state(
                     cost_limit=eval_env.env.env.cost_limit
                 )
                 new_goal = None
                 count = 0
                 while new_goal is None:
-                    new_obs = eval_env.env.env._sample_safe_empty_state(
+                    new_obs = eval_env.env.env.sample_safe_empty_state(
                         cost_limit=eval_env.env.env.cost_limit
                     )
                     (new_obs, new_goal) = eval_env.env._sample_goal(new_obs)

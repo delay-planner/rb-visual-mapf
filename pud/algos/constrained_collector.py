@@ -32,7 +32,7 @@ def calc_cost_class_inds(
         return int(class_inds)
     return class_inds
 
-def eval_agent_from_Q(policy, eval_env):
+def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     """
     Run evaluation and records the initial states for each episode
     until the pb Q from the env is empty
@@ -43,6 +43,7 @@ def eval_agent_from_Q(policy, eval_env):
     reset, and it should be safely handled by the reset_orig, suppress the warning
     message by turning off verbose"""
     eval_env.set_verbose(False)
+    eval_env.set_use_q(True)
 
     records = {}
     def new_record(init_state: Union[np.ndarray, dict], info:dict={}):
@@ -51,15 +52,16 @@ def eval_agent_from_Q(policy, eval_env):
             "rewards": 0.0,
             "cum_costs": info["cost"],
             "max_step_cost": 0.0,
-            "init_states": init_state,
             "steps": 0,
             "init_info": info,
         }
+        if collect_trajs:
+            records[key]["traj"] = [eval_env.get_internal_state()]
+        records[key]["init_states"] = eval_env.de_normalize_goal_conditioned_obs(init_state)
         return key
 
     c = 0  # count
     n = eval_env.get_Q_size()
-
 
     state, info = eval_env.reset()
     cur_key = new_record(state, info)
@@ -75,6 +77,9 @@ def eval_agent_from_Q(policy, eval_env):
         records[cur_key]["steps"] += 1
         records[cur_key]["rewards"] += reward
 
+        if (not done) and collect_trajs:
+            records[cur_key]["traj"].append(eval_env.get_internal_state())
+
         co = info.get("cost", 0.0)
         if co > records[cur_key]["max_step_cost"]:
             records[cur_key]["max_step_cost"] = co
@@ -82,16 +87,20 @@ def eval_agent_from_Q(policy, eval_env):
 
         if done:
             records[cur_key]["success"] = info["success"]
+            if "terminal_observation" in info:
+                records[cur_key]["traj"].append(
+                    eval_env.de_normalize_obs(info["terminal_observation"]["observation"])
+                    )
 
             c += 1
             if c < n:
                 cur_key = new_record(state, state["first_info"])
                 assert state["first_step"]
+            else:
+                eval_env.set_use_q(False)
     
     eval_env.set_verbose(True)
     return records
-
-
 
 class ConstrainedCollector(Collector):
     def __init__(
@@ -383,13 +392,13 @@ class ConstrainedCollector(Collector):
             starts: List[Tuple[float, float]] = [state["observation"]]
             goals: List[Tuple[float, float]] = [state["goal"]]
             for _ in range(num_agents - 1):
-                new_obs = eval_env.env.env._sample_safe_empty_state(
+                new_obs = eval_env.env.env.sample_safe_empty_state(
                     cost_limit=eval_env.env.env.cost_limit
                 )
                 new_goal = None
                 count = 0
                 while new_goal is None:
-                    new_obs = eval_env.env.env._sample_safe_empty_state(
+                    new_obs = eval_env.env.env.sample_safe_empty_state(
                         cost_limit=eval_env.env.env.cost_limit
                     )
                     (new_obs, new_goal) = eval_env.env._sample_goal(new_obs)

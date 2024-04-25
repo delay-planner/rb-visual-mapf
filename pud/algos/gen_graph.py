@@ -8,16 +8,19 @@ from dotmap import DotMap
 
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
+from pud.algos.constrained_collector import eval_agent_from_Q
 from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
                                      train_eval)
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent,
                                                sample_pbs_by_agent)
+from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
 from pud.utils import set_env_seed, set_global_seed
+import matplotlib.pyplot as plt
 
 
 def setup_args_parser(parser:argparse.ArgumentParser):
@@ -237,9 +240,48 @@ if __name__ == "__main__":
         outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix(),
         )
 
-    # from pud.policies import SearchPolicy
-    # search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True)
-    # eval_env.duration = 300 # We'll give the agent lots of time to try to find the goal.
+    # rollout trained policy and visualize trajectory
+    eval_env.set_prob_constraint(1.0)
+    pbs_c = sample_cost_pbs_by_agent(
+                env=eval_env,
+                agent=agent,
+                num_states=50,
+                target_val=0.5,
+                min_dist=5,
+                max_dist=10,
+                ensemble_agg="mean",
+                K=15,
+            )
+    eval_env.set_pbs(pb_list=pbs_c)
+    num_pb_c = len(pbs_c)
+
+    start_list = [p["start"].tolist() for p in pbs_c]
+    goal_list = [p["goal"].tolist() for p in pbs_c]
+
+    eval_records = eval_agent_from_Q(policy=agent, eval_env=eval_env, collect_trajs=True)
+    #ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list = Collector.get_trajectory(policy=agent, eval_env=eval_env)
+    #ep_de_normalized_obs = [eval_env.de_normalize_obs(x) for x in ep_observation_list]
+    #ep_obs.append(ep_de_normalized_obs)
+    
+    fig, ax = plt.subplots()
+    ax = plot_safe_walls(walls=eval_env.get_map(), 
+            cost_map=eval_env.get_cost_map(),
+            cost_limit=2.0,
+            ax=ax,
+            )
+
+    ax = plot_trajs(list_trajs=[eval_records[id]["traj"] for id in eval_records.keys()], 
+        walls=eval_env.get_map(),
+        ax=ax,
+        starts=start_list,
+        goals=goal_list,
+        )
+    fig.savefig(figdir.joinpath("test_trajs.jpg"), dpi=300)
+    plt.close(fig)
+
+    #from pud.policies import SearchPolicy
+    #search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True)
+    #eval_env.duration = 300 # We'll give the agent lots of time to try to find the goal.
 
     # Sparse graphical memory
     # 
@@ -249,7 +291,7 @@ if __name__ == "__main__":
     #
     #from pud.runner import cleanup_and_eval_search_policy
     #(initial_g, initial_rb), (filtered_g, filtered_rb), (cleaned_g, cleaned_rb) = cleanup_and_eval_search_policy(search_policy, eval_env)
-    #
+    ##
     #from pud.visualize import visualize_full_graph
     #visualize_full_graph(cleaned_g, cleaned_rb, eval_env)
 

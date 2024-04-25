@@ -63,7 +63,7 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes,
             x, y = pnt[1]/float(width), pnt[0]/float(height)
             xn, yn = pnt_next[1]/float(width), pnt_next[0]/float(height)
 
-            ax.plot([x, xn], [y, yn], color=c, markersize=4)
+            ax.plot([x, xn], [y, yn], marker="o", color=c, markersize=4, alpha=0.5)
 
             if i == 0:
                 traj_starts.append([x,y])
@@ -71,14 +71,21 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes,
                 traj_goals.append([xn, yn])
 
     if len(starts) == 0:
-        starts = traj_starts 
-    starts = np.array(starts)     
-    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="o", label="start")
+        starts = np.array(starts)
+    else:
+        # the externally supplied starts need to be flipped
+        starts = np.array(starts) / np.array([[height, width]])
+        starts = np.flip(starts, axis=1)
+
+    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="s", label="start", s=16)
 
     if len(goals) == 0:
-        goals = traj_goals
-    goals = np.array(goals)
-    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal")
+        goals = np.array(goals)
+    else:
+        goals = np.array(goals) / np.array([[height, width]])
+        goals = np.flip(goals, axis=1)
+
+    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal", s=16)
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T
@@ -158,6 +165,9 @@ class SafePointEnv (PointEnv):
     
     def get_map_height(self):
         return self._height
+
+    def get_internal_state(self):
+        return self.state.copy()
     
     def set_cost_limit(self, cost_limit:float):
         self.cost_limit = cost_limit
