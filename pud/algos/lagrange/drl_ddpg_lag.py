@@ -122,6 +122,9 @@ class DRLDDPGLag(UVFDDPG):
         for param, target_param in zip(self.cost_critic.parameters(), self.cost_critic_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
+    def set_lag_status(self, turn_on_lag:bool):
+        self.lagrange_on = turn_on_lag
+
     def optimize(
             self, 
             replay_buffer:ConstrainedReplayBuffer, 
