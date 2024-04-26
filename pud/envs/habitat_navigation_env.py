@@ -277,6 +277,9 @@ class HabitatNavigationEnv(gym.Env):
         agent_state.sensor_states = {}
         self._agent.set_state(agent_state)
 
+    def seed(self, seed: int) -> None:
+        self._simulator.seed(seed)
+
     def reset(self) -> NDArray:
         self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
         observations = self._simulator.reset()

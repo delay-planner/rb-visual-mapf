@@ -67,10 +67,8 @@ if __name__ == "__main__":
         terminate_on_timeout=False,
     )
 
-    # TODO: Check this function is working as expected or not!
     set_env_seed(env, cfg.seed + 1)
 
-    # TODO: Check if multiple simulator instances can be generated in the same thread!
     eval_env = safe_habitat_env_load_fn(
         cfg.env.toDict(),
         cfg.cost_function.toDict(),
@@ -81,6 +79,7 @@ if __name__ == "__main__":
     )
     set_env_seed(eval_env, cfg.seed + 2)
 
+    # TODO: Need to be able to consume this observation data
     obs_dim = env.observation_space["observation"].shape[0]  # type: ignore
     goal_dim = env.observation_space["goal"].shape[0]  # type: ignore
     state_dim = obs_dim + goal_dim

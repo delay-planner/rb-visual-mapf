@@ -149,6 +149,9 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert self._get_state_cost(new_state) < self.cost_limit
         return new_state
 
+    def seed(self, seed: int) -> None:
+        self._simulator.seed(seed)
+
     def reset(self):
         if (not hasattr(self, "cost_limit")) or (not hasattr(self, "_cost_map")):
             print(
