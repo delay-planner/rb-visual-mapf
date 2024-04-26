@@ -125,6 +125,20 @@ def visualize_eval_records(
         )
     return ax
 
+def visualize_problems(
+        eval_env:SafeGoalConditionedPointWrapper, 
+        ax:plt.axes,
+        starts:list=[],
+        goals:list=[], 
+    ):
+    return visualize_eval_records(
+            eval_records={},
+            eval_env=eval_env,
+            ax=ax,
+            starts=starts,
+            goals=goals,
+            )
+
 def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     plt.figure(figsize=(6, 6))
     plot_walls(eval_env.walls)

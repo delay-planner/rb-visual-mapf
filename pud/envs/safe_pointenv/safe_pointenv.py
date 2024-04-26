@@ -43,13 +43,49 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
     ax.set_aspect('equal', adjustable='box')
     return ax
 
-def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes, 
-        starts:list=[], goals:list=[], s:int=40):
+
+def plot_start_and_goals(walls:np.ndarray, 
+        ax:plt.axes, 
+        starts:List[list]=[], 
+        goals:List[list]=[], 
+        s:int=40,
+        start_color="g",
+        goal_color="r",
+        zorder=5,
+        normalize=True,
+        ):
     walls = walls.T
     (height, width) = walls.shape
+    # the externally supplied starts need to be flipped
 
-    start_color = "#18aedb"
-    end_color = "#dbbb18"
+    starts = np.array(starts)
+    if normalize:
+        starts = starts / np.array([[height, width]])
+    starts = np.flip(starts, axis=1)
+    ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=zorder, marker="s", label="start", s=s)
+
+    goals = np.array(goals)
+    if normalize:
+        goals = goals / np.array([[height, width]])
+    goals = np.flip(goals, axis=1)
+    ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=zorder, marker="x", label="goal", s=s)
+
+    return ax
+
+
+def plot_trajs(
+        list_trajs, 
+        walls:np.ndarray, 
+        ax:plt.axes, 
+        starts:list=[], 
+        goals:list=[], 
+        s:int=40,
+        start_color:str="#18aedb",
+        goal_color:str="#dbbb18",
+        ):
+    walls_bk = walls.copy()
+    walls = walls.T
+    (height, width) = walls.shape
     
     """plot a list of trajs, each is a list of tuples (int states)"""
     traj_starts = []
@@ -85,7 +121,8 @@ def plot_trajs(list_trajs, walls:np.ndarray, ax:plt.axes,
         goals = np.array(goals) / np.array([[height, width]])
         goals = np.flip(goals, axis=1)
 
-    ax.scatter(goals[:,0], goals[:,1], color=end_color, zorder=5, marker="x", label="goal", s=s)
+    ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=5, marker="x", label="goal", s=s)
+    return ax
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
     walls = walls.T
