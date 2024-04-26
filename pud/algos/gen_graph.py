@@ -232,7 +232,6 @@ if __name__ == "__main__":
     # We can also visualize the predictions from each critic. 
     # Note that while each critic may make incorrect decisions 
     # for distant states, their predictions in aggregate are correct.
-    # 
     from pud.visualize import visualize_graph_ensemble
     visualize_graph_ensemble(rb_vec, 
         eval_env, 
