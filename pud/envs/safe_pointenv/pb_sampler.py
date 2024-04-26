@@ -65,6 +65,42 @@ def sample_pbs_by_agent(
         }
     return nearest_pbs
 
+
+def constrained_sampler_for_cost(
+        env:SafeGoalConditionedPointWrapper, 
+        agent:DRLDDPGLag, 
+        num_states:int=100,
+        target_val:List[float]=None,
+        min_dist: float = 0,
+        max_dist: float = 10,
+        ensemble_agg:str="mean",
+        max_attempts=100,
+    ):
+    """
+    return a sampler function that generate pbs (start, goal)
+    """
+    for _ in range(max_attempts):
+        s = env.sample_safe_empty_state(cost_limit=env.cost_limit)
+        g = env.sample_safe_empty_state(cost_limit=env.cost_limit)
+        s_hat = {
+            "observation": env._normalize_obs(s),
+            "goal": env._normalize_obs(g),
+        }
+        d_2_g = agent.get_dist_to_goal(s_hat)
+        c_2_g = agent.get_cost_to_goal(s_hat)
+        if d_2_g >= min_dist and d_2_g <= max_dist:
+            pb = {
+                "normalized_state": s_hat,
+                "s": s,
+                "g": g,
+                "proj_d": d_2_g,
+                "proj_c": c_2_g,
+            }
+            return pb
+    return
+
+
+
 def sample_cost_pbs_by_agent(
         env:SafeGoalConditionedPointWrapper, 
         agent:DRLDDPGLag, 
@@ -80,12 +116,15 @@ def sample_cost_pbs_by_agent(
     problems whose start and goals are seperated too far away is 
     meaningless as they are handled by the HRL
     if failed, return an empty list, because the test results would not be informative
-    
     """
     rb_vec = [None] * num_states
+    #rb_vec_start = [None] * num_states
+    #rb_vec_goal = [None] * num_states
     for i in range(num_states):
         s0, info = env.reset_orig()
         rb_vec[i] = s0
+        #rb_vec_start[i] = env.de_normalize_obs(s0["observation"])
+        #rb_vec_goal[i] = env.de_normalize_obs(s0["goal"])
     rb_vec = np.array([x["observation"] for x in rb_vec])
 
     pdists = calc_pairwise_dist(agent, rb_vec, ensemble_agg) # num_states x num_states
