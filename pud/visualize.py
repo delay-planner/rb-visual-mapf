@@ -1,17 +1,15 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
-from pud.collector import Collector
+import numpy as np
 from matplotlib.animation import FuncAnimation
-from pud.utils import set_global_seed, set_env_seed
+from tqdm.auto import tqdm
+
 from pud.algos.constrained_collector import ConstrainedCollector
-from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
-from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls
+from pud.collector import Collector
+from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeTimeLimit,
-    SafeGoalConditionedPointWrapper,
-    set_safe_env_difficulty,
-)
+    SafeGoalConditionedPointWrapper, SafeTimeLimit, set_safe_env_difficulty)
+from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
+from pud.utils import set_env_seed, set_global_seed
 
 
 def visualize_trajectory(
@@ -101,6 +99,31 @@ def visualize_pairwise_costs(pdist, cost_limit:float, n_bins:int=20, outpath="")
     else:
         plt.show()
 
+def visualize_eval_records(
+        eval_records:dict, 
+        eval_env:SafeGoalConditionedPointWrapper, 
+        ax:plt.axes,
+        starts:list=[],
+        goals:list=[], 
+        ):
+    list_trajs = []
+    for id in eval_records.keys():
+        list_trajs.append(eval_records[id]["traj"])
+    
+    ax = plot_safe_walls(walls=eval_env.get_map(), 
+            cost_map=eval_env.get_cost_map(),
+            cost_limit=eval_env.cost_limit,
+            ax=ax,
+            )
+
+    ax = plot_trajs(list_trajs=list_trajs, 
+        walls=eval_env.get_map(),
+        ax=ax,
+        starts=starts,
+        goals=goals,
+        s=32,
+        )
+    return ax
 
 def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     plt.figure(figsize=(6, 6))
