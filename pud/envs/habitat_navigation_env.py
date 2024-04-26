@@ -82,6 +82,11 @@ class HabitatNavigationEnv(gym.Env):
         if apsp_path is None:
             print("Calling the APSP construction function")
             self._apsp = self._compute_apsp(self._walls)
+
+            import pickle
+
+            with open("apsp.pkl", "wb") as f:
+                pickle.dump(self._apsp, f)
         else:
             import pickle
 
