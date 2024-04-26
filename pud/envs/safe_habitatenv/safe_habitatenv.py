@@ -15,13 +15,14 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
+        apsp_path: Union[str, None] = None,
         # Cost specific arguments
         cost_fn_args: dict = {},
         cost_limit: float = 0.5,
         verbose: bool = False,
     ):
 
-        super().__init__(scene, height, action_noise, simulator_settings)
+        super().__init__(scene, height, action_noise, simulator_settings, apsp_path)
 
         self.scene = scene
         self.cost_function = None
@@ -155,15 +156,15 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         idx = np.random.randint(0, num_candidate_states)
         new_state = self._safe_empty_states[idx].astype(np.float32)
 
-        undiscretized_new_state_x, undiscretized_new_state_y = self._undiscretize_state(  # type: ignore
-            (int(new_state[0]), int(new_state[1])), (self._wall_height, self._wall_width)  # type: ignore
+        undiscretized_new_state_x, undiscretized_new_state_y = self._undiscretize_state(
+            (int(new_state[0]), int(new_state[1]))
         )
         undiscretized_new_state = np.array(
-            [undiscretized_new_state_y, self._vertical_slice, undiscretized_new_state_x]  # type: ignore
+            [undiscretized_new_state_x, undiscretized_new_state_y]
         )
 
         # NOTE: Don't remove the checks below
-        assert self._simulator.pathfinder.is_navigable(undiscretized_new_state)  # type: ignore
+        assert not self._is_blocked(undiscretized_new_state)
         assert self._get_state_cost(new_state) < self.cost_limit
         return new_state
 
@@ -185,18 +186,12 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         observations = self._simulator.reset()
 
         # Spawn the agent at the corresponding real-world coordinates in the habitat environment
-        agent_state = self._simulator.get_agent(
-            self._simulator_settings["default_agent"]
-        ).get_state()
-        safe_agent_position_x, safe_agent_position_y = self._undiscretize_state(  # type: ignore
-            (int(safe_agent_position[0]), int(safe_agent_position[1])),
-            (self._wall_height, self._wall_width),
+        safe_agent_position_x, safe_agent_position_y = self._undiscretize_state(
+            (int(safe_agent_position[0]), int(safe_agent_position[1]))
         )
-        agent_state.position = np.array(
-            [safe_agent_position_y, self._vertical_slice, safe_agent_position_x]
+        self._update_agent_position(
+            np.array([safe_agent_position_x, safe_agent_position_y])
         )
-        agent_state.sensor_states = {}
-        self._agent.set_state(agent_state)
 
         # Get the initial observations and return the state
         observations = self._simulator.get_sensor_observations()
@@ -213,44 +208,26 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert self.action_space.contains(action)
 
         # NOTE: Use the maximum cost along the action segment
-        agent_state = self._simulator.get_agent(
-            self._simulator_settings["default_agent"]
-        ).get_state()
-        (i, j) = self._discretize_state(  # type: ignore
-            np.array([agent_state.position[2], agent_state.position[0]]),
-            (self._wall_height, self._wall_width),
-        )
+        agent_position = self._get_agent_position()
+        (i, j) = self._discretize_state(agent_position)
         cost = self._get_state_cost(np.array([i, j]))
 
         num_substeps = 10
         dt = 1.0 / num_substeps
         for _ in np.linspace(0, 1, num_substeps):
-            # The agent's positions are in 3D space where index 0 and 2 are x and z and can be moved as
-            # y moves the agent up and down
-            for axis, axis_action in [(2, action[0]), (0, action[1])]:
-                agent_state = self._simulator.get_agent(
-                    self._simulator_settings["default_agent"]
-                ).get_state()
-                new_state = agent_state.position.copy()
+            for axis, axis_action in enumerate(action):
+                new_state = self._get_agent_position()
                 new_state[axis] += dt * axis_action
-                if self._simulator.pathfinder.is_navigable(new_state):
-                    agent_state.position = new_state
-                    agent_state.sensor_states = {}
-                    self._agent.set_state(agent_state)
+                if not self._is_blocked(new_state):
+                    self._update_agent_position(new_state)
 
-                    (i, j) = self._discretize_state(  # type: ignore
-                        np.array([new_state[2], new_state[0]]),
-                        (self._wall_height, self._wall_width),
-                    )
+                    (i, j) = self._discretize_state(new_state)
                     state_cost = self._get_state_cost(np.array([i, j]))
                     if cost < state_cost:
                         cost = state_cost
 
         done = False
-        agent_state = self._simulator.get_agent(
-            self._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        agent_position = self._get_agent_position()
         rew = float(-1.0 * np.linalg.norm(agent_position))
 
         new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
@@ -292,8 +269,29 @@ def display_map(
     )
 
     if key_points is not None:
-        for point in key_points:
-            plt.plot(point[0], point[1], marker="o", markersize=10, alpha=0.8)
+        ax.plot(
+            key_points[:, 1] / float(width),
+            key_points[:, 0] / float(height),
+            "b-o",
+            markersize=0.5,
+            alpha=0.8,
+        )
+        ax.scatter(
+            key_points[0][1] / float(width),
+            key_points[0][0] / float(height),
+            marker="+",
+            color="cyan",
+            s=10,
+            label="start",
+        )
+        ax.scatter(
+            key_points[-1][1] / float(width),
+            key_points[-1][0] / float(height),
+            marker="*",
+            color="green",
+            s=10,
+            label="goal",
+        )
 
     ax.set_xlim((0, 1))
     ax.set_ylim((0, 1))

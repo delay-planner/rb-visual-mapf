@@ -20,6 +20,7 @@ class HabitatNavigationEnv(gym.Env):
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
+        apsp_path: Union[str, None] = None,
     ):
 
         self._scene = scene
@@ -57,7 +58,7 @@ class HabitatNavigationEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(4, self._height, self._width, 4), dtype=np.uint8  # type: ignore
         )
-        # The last 4 is there because the default camera sensor returns 4 channels for some reason. Not sure why
+        # The channels are RGBA
 
         self.action_space = gym.spaces.Box(
             low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32
@@ -77,16 +78,15 @@ class HabitatNavigationEnv(gym.Env):
         ).astype(np.uint8)
         self._wall_height, self._wall_width = self._walls.shape
 
-        print("Calling the APSP construction function")
         t0 = time.time()
-        # self._apsp = self._compute_apsp(self._walls)
-        import pickle
+        if apsp_path is None:
+            print("Calling the APSP construction function")
+            self._apsp = self._compute_apsp(self._walls)
+        else:
+            import pickle
 
-        with open(
-            "/home/mers-pluto/Desktop/Work/cc-sorb-rev/pud/envs/safe_habitatenv/apsp.pkl",
-            "rb",
-        ) as f:
-            self._apsp = pickle.load(f)
+            with open(apsp_path, "rb") as f:
+                self._apsp = pickle.load(f)
         print("APSP construction time in (s): ", time.time() - t0)
 
         self.reset()
@@ -157,20 +157,21 @@ class HabitatNavigationEnv(gym.Env):
     def _get_distance(self, position: NDArray, goal: NDArray) -> float:
         """Compute the shortest path distance.
 
-        NOTE: This distance is *not* used for training."""
-        (i1, j1) = self._discretize_state(
-            position, (self._wall_height, self._wall_width)
-        )
-        (i2, j2) = self._discretize_state(goal, (self._wall_height, self._wall_width))
+        NOTE: This distance is *not* used for training. Further, the position and the goal arguments represent
+        the 2D coordinates ([x, y])
+
+        """
+        (i1, j1) = self._discretize_state(position)
+        (i2, j2) = self._discretize_state(goal)
         return self._apsp[i1, j1, i2, j2]
 
-    def _discretize_state(
-        self, position: NDArray, grid_resolution: Tuple[int, int]
-    ) -> Tuple[int, int]:
+    def _discretize_state(self, position: NDArray) -> Tuple[int, int]:
         r"""Return gridworld index of realworld coordinates assuming top-left corner
         is the origin. The real world coordinates of lower left corner are
         (coordinate_min, coordinate_min) and of top right corner are
         (coordinate_max, coordinate_max)
+
+        NOTE: position argument represents the 2D coordinates ([x, y])
         """
         lower_bound, upper_bound = self._simulator.pathfinder.get_bounds()
 
@@ -179,7 +180,7 @@ class HabitatNavigationEnv(gym.Env):
         return grid_x, grid_y
 
     def _undiscretize_state(
-        self, grid_position: Tuple[int, int], grid_resolution: Tuple[int, int]
+        self, grid_position: Tuple[int, int]
     ) -> Tuple[float, float]:
 
         lower_bound, upper_bound = self._simulator.pathfinder.get_bounds()
@@ -187,6 +188,18 @@ class HabitatNavigationEnv(gym.Env):
         realworld_x = lower_bound[2] + grid_position[0] * self._meters_per_pixel
         realworld_y = lower_bound[0] + grid_position[1] * self._meters_per_pixel
         return realworld_x, realworld_y
+
+    def _convert_sim_to_grid(self, position: NDArray) -> NDArray:
+        """
+        Convert the simulation 3D coordinates ([y, z, x]) to grid coordinates ([x, y])
+        """
+        return np.array([position[2], position[0]])
+
+    def _convert_grid_to_sim(self, position: NDArray) -> NDArray:
+        """
+        Convert the grid coordinates ([x, y]) to simulation 3D coordinates ([y, z, x])
+        """
+        return np.array([position[1], self._vertical_slice, position[0]])
 
     def _compute_apsp(self, walls: NDArray):
 
@@ -224,6 +237,33 @@ class HabitatNavigationEnv(gym.Env):
                 dist[i1, j1, i2, j2] = d
         return dist
 
+    def _is_blocked(self, agent_position: NDArray) -> bool:
+        """
+        Determines whether the agent is blocked given the agent position ([x, y]).
+        """
+        agent_sim_position = self._convert_grid_to_sim(agent_position)
+        return not self._simulator.pathfinder.is_navigable(agent_sim_position)
+
+    def _get_agent_position(self) -> NDArray:
+        """
+        Returns the position ([x, y]) of the agent in the environment.
+        """
+        agent_state = self._simulator.get_agent(
+            self._simulator_settings["default_agent"]
+        ).get_state()
+        return np.array([agent_state.position[2], agent_state.position[0]])
+
+    def _update_agent_position(self, agent_position: NDArray):
+        """
+        Given the agent position ([x, y]), update the agent state in the environment ([y, z, x]).
+        """
+        agent_state = self._simulator.get_agent(
+            self._simulator_settings["default_agent"]
+        ).get_state()
+        agent_state.position = self._convert_grid_to_sim(agent_position)
+        agent_state.sensor_states = {}
+        self._agent.set_state(agent_state)
+
     def reset(self) -> NDArray:
         self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
         observations = self._simulator.reset()
@@ -241,24 +281,14 @@ class HabitatNavigationEnv(gym.Env):
         num_substeps = 10
         dt = 1.0 / num_substeps
         for _ in np.linspace(0, 1, num_substeps):
-            # The agent's positions are in 3D space where index 0 and 2 are x and z and can be moved as
-            # y moves the agent up and down
-            for axis, axis_action in [(2, action[0]), (0, action[1])]:
-                agent_state = self._simulator.get_agent(
-                    self._simulator_settings["default_agent"]
-                ).get_state()
-                new_state = agent_state.position.copy()
+            for axis, axis_action in enumerate(action):
+                new_state = self._get_agent_position()
                 new_state[axis] += dt * axis_action
-                if self._simulator.pathfinder.is_navigable(new_state):
-                    agent_state.position = new_state
-                    agent_state.sensor_states = {}
-                    self._agent.set_state(agent_state)
+                if not self._is_blocked(new_state):
+                    self._update_agent_position(new_state)
 
         done = False
-        agent_state = self._simulator.get_agent(
-            self._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        agent_position = self._get_agent_position()
         rew = float(-1.0 * np.linalg.norm(agent_position))
 
         new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
@@ -362,9 +392,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
           agent_position: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self.env._discretize_state(
-            agent_position, (self.env._wall_height, self.env._wall_width)
-        )
+        (i, j) = self.env._discretize_state(agent_position)
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
@@ -383,14 +411,12 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         assert min_dist <= dist_to_goal <= max_dist
 
         undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
-            (int(goal[0]), int(goal[1])), (self.env._wall_height, self.env._wall_width)
+            (int(goal[0]), int(goal[1]))
         )
-        undiscretized_goal = np.array(
-            [undiscretized_goal_y, self.env._vertical_slice, undiscretized_goal_x]
-        )
-        assert self.env._simulator.pathfinder.is_navigable(undiscretized_goal)
+        undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
+        assert not self.env._is_blocked(undiscretized_goal)
 
-        return (agent_position, np.array([undiscretized_goal_x, undiscretized_goal_y]))
+        return (agent_position, undiscretized_goal)
 
     def _sample_goal_unconstrained(
         self, agent_position: NDArray
@@ -404,10 +430,9 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
           goal: a goal observation.
         """
 
-        agent_state = self.env._simulator.get_agent(
-            self.env._simulator_settings["default_agent"]
-        ).get_state()
-        current_island = self.env._simulator.pathfinder.get_island(agent_state.position)
+        agent_position = self.env._get_agent_position()
+        agent_sim_position = self.env._convert_grid_to_sim(agent_position)
+        current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
 
         tries = 1
         sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
@@ -434,12 +459,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         goal = None
         while goal is None:
             obs = self.env.reset()
-            agent_state = self.env._simulator.get_agent(
-                self.env._simulator_settings["default_agent"]
-            ).get_state()
-            agent_position = np.array(
-                [agent_state.position[2], agent_state.position[0]]
-            )
+            agent_position = self.env._get_agent_position()
             (agent_position, goal) = self._sample_goal(agent_position)
             count += 1
             if count > 1000:
@@ -454,10 +474,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, _ = self.env.step(action)
         rew = -1.0
 
-        agent_state = self.env._simulator.get_agent(
-            self.env._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        agent_position = self.env._get_agent_position()
         done = self._is_done(agent_position, self._goal)
         return (
             {

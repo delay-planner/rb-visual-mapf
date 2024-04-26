@@ -61,7 +61,9 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         )
 
     def _is_done(self, agent_position: NDArray, goal: NDArray) -> bool:
-        """Determines whether observation equals goal."""
+        """Determines whether observation equals goal.
+        NOTE: Both the agent position and goal arguments are the 2D coordinates ([x, y])
+        """
         return bool(np.linalg.norm(agent_position - goal) < self._threshold_distance)
 
     def _set_sample_goal_args(
@@ -116,9 +118,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           agent_position: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self.env._discretize_state(
-            agent_position, (self.env._wall_height, self.env._wall_width)
-        )
+        (i, j) = self.env._discretize_state(agent_position)
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
@@ -135,18 +135,15 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         goal += np.random.uniform(size=2)
 
         undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
-            (goal[0], goal[1]), (self.env._wall_height, self.env._wall_width)
+            (goal[0], goal[1])
         )
-        undiscretized_2d_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        dist_to_goal = self.env._get_distance(agent_position, undiscretized_2d_goal)
+        undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
+        dist_to_goal = self.env._get_distance(agent_position, undiscretized_goal)
+
         assert min_dist <= dist_to_goal <= max_dist
+        assert not self.env._is_blocked(undiscretized_goal)
 
-        undiscretized_3d_goal = np.array(
-            [undiscretized_goal_y, self.env._vertical_slice, undiscretized_goal_x]
-        )
-        assert self.env._simulator.pathfinder.is_navigable(undiscretized_3d_goal)
-
-        return (agent_position, undiscretized_2d_goal)
+        return (agent_position, undiscretized_goal)
 
     def _sample_goal_unconstrained(
         self, agent_position: NDArray
@@ -160,10 +157,9 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           goal: a goal observation.
         """
 
-        agent_state = self.env._simulator.get_agent(
-            self.env._simulator_settings["default_agent"]
-        ).get_state()
-        current_island = self.env._simulator.pathfinder.get_island(agent_state.position)
+        agent_position = self.env._get_agent_position()
+        agent_sim_position = self.env._convert_grid_to_sim(agent_position)
+        current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
 
         tries = 1
         sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
@@ -191,12 +187,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         info = {"cost": 0.0}
         while goal is None:
             obs, info = self.env.reset()  # type: ignore
-            agent_state = self.env._simulator.get_agent(
-                self.env._simulator_settings["default_agent"]
-            ).get_state()
-            agent_position = np.array(
-                [agent_state.position[2], agent_state.position[0]]
-            )
+            agent_position = self.env._get_agent_position()
             (agent_position, goal) = self._sample_goal(agent_position)
             count += 1
             if count > 1000:
@@ -214,10 +205,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, info = self.env.step(action)
         rew = -1.0
 
-        agent_state = self.env._simulator.get_agent(
-            self.env._simulator_settings["default_agent"]
-        ).get_state()
-        agent_position = np.array([agent_state.position[2], agent_state.position[0]])
+        agent_position = self.env._get_agent_position()
         done = self._is_done(agent_position, self._goal)
         return (
             {
