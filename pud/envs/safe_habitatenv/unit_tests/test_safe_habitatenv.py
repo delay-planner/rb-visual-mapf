@@ -15,6 +15,10 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     safe_habitat_env_load_fn,
 )
 
+"""
+python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py
+"""
+
 
 class TestSafeHabitatEnv(unittest.TestCase):
     def setUp(self):
@@ -45,7 +49,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
         """
 
         env_args = deepcopy(self.env_kwargs)
-        env_args.update
+        env_args.update(self.precompilation_kwargs)
         gym_env_wrappers = [SafeGoalConditionedHabitatPointWrapper]
         env = safe_habitat_env_load_fn(
             env_args,
@@ -216,6 +220,31 @@ class TestSafeHabitatEnv(unittest.TestCase):
         s0, info = self.habitat_env.reset()  # type: ignore
         action = self.habitat_env.action_space.sample()
         self.habitat_env.step(action)
+
+    def test_sim_to_grid_and_back_conversions(self):
+
+        for _ in range(100):
+            state, info = self.habitat_env.reset()  # type: ignore
+            agent_position = self.habitat_env._get_agent_position()
+            agent_grid_position_x, agent_grid_position_y = (
+                self.habitat_env._discretize_state(agent_position)
+            )
+            converted_agent_position_x, converted_agent_position_y = (
+                self.habitat_env._undiscretize_state(
+                    (agent_grid_position_x, agent_grid_position_y)
+                )
+            )
+            converted_agent_position = np.array(
+                [converted_agent_position_x, converted_agent_position_y]
+            )
+            reconverted_agent_grid_position_x, reconverted_agent_grid_position_y = (
+                self.habitat_env._discretize_state(converted_agent_position)
+            )
+            self.assertTrue(np.allclose(agent_position, converted_agent_position))
+            self.assertTrue(
+                agent_grid_position_x == reconverted_agent_grid_position_x
+                and agent_grid_position_y == reconverted_agent_grid_position_y
+            )
 
 
 if __name__ == "__main__":

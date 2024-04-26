@@ -60,29 +60,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         for cx, cy in zip(*empty_states):
             # Only sample states whose costs are lower than an upper bound
-
-            # NOTE: Need to check that the neighbors of this cell are also safe as the functions that
-            # map from discrete to continuous state space are not accurate!
-            unsafe_neighbors = False
-            neighbors = [
-                (cx - 1, cy - 1),
-                (cx - 1, cy),
-                (cx - 1, cy + 1),
-                (cx, cy - 1),
-                (cx, cy + 1),
-                (cx + 1, cy - 1),
-                (cx + 1, cy),
-                (cx + 1, cy + 1),
-            ]
-            for ncx, ncy in neighbors:
-                if ncx < 0 or ncx >= self._wall_height:
-                    continue
-                if ncy < 0 or ncy >= self._wall_width:
-                    continue
-                if self._cost_map[ncx, ncy] >= cost_limit:
-                    unsafe_neighbors = True
-                    break
-            if self._cost_map[cx, cy] < cost_limit and not unsafe_neighbors:
+            if self._cost_map[cx, cy] < cost_limit:
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
 
@@ -143,6 +121,9 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         return cost_map
 
     def _get_state_cost(self, xy: NDArray) -> float:
+        """
+        Assumes that the xy argument is the grid position and not the continuous position
+        """
         assert self.cost_function is not None
         min_distance, _ = self._dist_two_blocks(xy)
         return self.cost_function(min_distance)  # type: ignore

@@ -12,6 +12,24 @@ python pud/algos/cbfs_mp.py --cfg configs/config_SafePointEnv.yaml --outdir FULL
 python pud/algos/cbfs_catalog.py --cbfs_dir FULL_PATH_OUTPUT_DIR --output FULL_PATH_TO_CBFS_CATALOG_FILE
 ```
 
+## Installing habitat-sim
+### We require python>=3.9 and cmake>=3.10
+**Step 1**:
+```bash
+conda install habitat-sim -c conda-forge -c aihabitat
+```
+**Step 2**:
+### Download (testing) 3D scenes
+```bash
+python -m habitat_sim.utils.datasets_download --uids habitat_test_scenes --data-path /path/to/data/
+```
+### Download example objects
+```bash
+python -m habitat_sim.utils.datasets_download --uids habitat_example_objects --data-path /path/to/data/
+```
+
+
+
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
 ## Example usage

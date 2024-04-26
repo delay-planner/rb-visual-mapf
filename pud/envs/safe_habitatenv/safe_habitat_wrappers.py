@@ -132,7 +132,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
             dtype=np.float32,
         )
-        goal += np.random.uniform(size=2)
+        # goal += np.random.uniform(size=2)
 
         undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
             (goal[0], goal[1])

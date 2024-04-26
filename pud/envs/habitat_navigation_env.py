@@ -175,8 +175,16 @@ class HabitatNavigationEnv(gym.Env):
         """
         lower_bound, upper_bound = self._simulator.pathfinder.get_bounds()
 
-        grid_x = int((position[0] - lower_bound[2]) / self._meters_per_pixel)
-        grid_y = int((position[1] - lower_bound[0]) / self._meters_per_pixel)
+        grid_x = (
+            ((position[0] - lower_bound[2]) / self._meters_per_pixel)
+            .round()
+            .astype(int)
+        )
+        grid_y = (
+            ((position[1] - lower_bound[0]) / self._meters_per_pixel)
+            .round()
+            .astype(int)
+        )
         return grid_x, grid_y
 
     def _undiscretize_state(
