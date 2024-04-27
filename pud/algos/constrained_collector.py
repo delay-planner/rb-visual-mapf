@@ -38,7 +38,7 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     until the pb Q from the env is empty
     """
     # verify the eval_env has an non-empty Q of pbs
-    assert hasattr(eval_env, "pb_Q") and len(getattr(eval_env, "pb_Q")) > 0
+    assert hasattr(eval_env, "pb_Q")
     """At the end of the last pb in the Q, the step will trigger another
     reset, and it should be safely handled by the reset_orig, suppress the warning
     message by turning off verbose"""
