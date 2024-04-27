@@ -131,38 +131,46 @@ def sample_cost_pbs_by_agent(
     if failed, return an empty list, because the test results would not be informative
     """
     rb_vec = [None] * num_states
-    #rb_vec_start = [None] * num_states
-    #rb_vec_goal = [None] * num_states
     for i in range(num_states):
         s0, info = env.reset_orig()
         rb_vec[i] = s0
-        #rb_vec_start[i] = env.de_normalize_obs(s0["observation"])
-        #rb_vec_goal[i] = env.de_normalize_obs(s0["goal"])
     rb_vec = np.array([x["observation"] for x in rb_vec])
 
-    pcosts_ens = agent.get_pairwise_cost(rb_vec, aggregate=None) # num_states x num_states
-    pcosts = None
-    if ensemble_agg == "max":
-        pcosts = np.max(pcosts_ens, axis=0)
-    elif ensemble_agg == "mean":
-        pcosts = np.mean(pcosts_ens, axis=0)
-    
-    pcosts_std, pcosts_std_mean = 0.0, 0.0
-    if use_uncertainty:
-        pcosts_std = np.std(pcosts_ens, axis=0)
-        pcosts_std_mean = np.mean(pcosts_std)
+    rb_vec_goal = [None] * num_states
+    for i in range(num_states):
+        s0, info = env.reset_orig()
+        rb_vec_goal[i] = s0
+    rb_vec_goal = np.array([x["observation"] for x in rb_vec_goal])
 
-    # filter based on distance constraints
-    lb_mask = pcosts + pcosts_std >= min_dist
-    ub_mask = pcosts - pcosts_std <= max_dist
+    ## predict the pairwise costs
+    pdist = agent.get_pairwise_dist(obs_vec=rb_vec, 
+                    goal_vec=rb_vec_goal, 
+                    aggregate=None)
+    pdist_agg = None
+    if ensemble_agg == "max":
+        pdist_agg = np.max(pdist, axis=0)
+    elif ensemble_agg == "mean":
+        pdist_agg = np.mean(pdist, axis=0)
+
+    pdist_std = 0.0
+    if use_uncertainty:
+        pdist_std = np.std(pdist, axis=0)
+
+    lb_mask = pdist_agg + pdist_std >= min_dist
+    ub_mask = pdist_agg - pdist_std <= max_dist
     prod_mask = lb_mask * ub_mask
     
     gInds = np.where(prod_mask)
     if len(gInds[0]) == 0:
         return []
     else:    
-        pcosts = calc_pairwise_cost(agent, rb_vec, ensemble_agg) # num_states x num_states
-        pcosts_gInds = pcosts[gInds]
+        pcosts = agent.get_pairwise_dist(obs_vec=rb_vec, 
+                    goal_vec=rb_vec_goal,
+                    aggregate=None) # num_ens x num_states x num_states
+        pcosts_agg = np.mean(pcosts, axis=0)
+        pcosts_std = np.std(pcosts, axis=0)
+        pcosts_std_mean = np.mean(pcosts_std)
+        pcosts_gInds = pcosts_agg[gInds]
         pcosts_std_gInds = pcosts_std[gInds]
         scoring = 0.0
         if target_val is not None:
@@ -180,9 +188,9 @@ def sample_cost_pbs_by_agent(
             i,j = gmInds[0][n], gmInds[1][n]
             nearest_pbs[n] = {
                 "start": env.de_normalize_obs(rb_vec[i]),
-                "goal": env.de_normalize_obs(rb_vec[j]),
-                "info": {"prediction": pcosts[i,j],
-                        "proj_dist": pcosts[i,j],
+                "goal": env.de_normalize_obs(rb_vec_goal[j]),
+                "info": {"prediction": pcosts_agg[i,j],
+                        "proj_dist": pdist_agg[i,j],
                         "ensemble_std_mean": pcosts_std_mean,
                         },
                     }
