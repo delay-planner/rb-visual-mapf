@@ -164,7 +164,7 @@ def sample_cost_pbs_by_agent(
     if len(gInds[0]) == 0:
         return []
     else:    
-        pcosts = agent.get_pairwise_dist(obs_vec=rb_vec, 
+        pcosts = agent.get_pairwise_cost(obs_vec=rb_vec, 
                     goal_vec=rb_vec_goal,
                     aggregate=None) # num_ens x num_states x num_states
         pcosts_agg = np.mean(pcosts, axis=0)
@@ -174,7 +174,7 @@ def sample_cost_pbs_by_agent(
         pcosts_std_gInds = pcosts_std[gInds]
         scoring = 0.0
         if target_val is not None:
-            scoring = np.abs(pcosts_gInds - target_val)
+            scoring = scoring + np.abs(pcosts_gInds - target_val)
         # encourage diverse samples
         if use_uncertainty: 
             scoring = scoring - np.clip(pcosts_std_gInds,
