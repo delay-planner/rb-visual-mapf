@@ -4,20 +4,30 @@ ckpt_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/c
 cfg_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/bk/bk_config.yaml"
 figdir="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/visuals"
 
-K=100
+K=200
 N=200
-target=0.8
+# for dist
+metric="dist"
+#target=1
+
 min_dist=0
-max_dist=10
-figname="pb_${target}_dist_${min_dist}-${max_dist}_K=${K}_N=${N}.jpg"
+max_dist=5
+
+target_str="none"
+if [[ -n ${target} ]]; then
+    target_str=${target}
+fi
+
+figname="pb_${metric}=${target_str}_dist_${min_dist}-${max_dist}_K=${K}_N=${N}.jpg"
 
 python pud/algos/unit_tests/vis_sampler.py \
     --cfg $cfg_path \
     --ckpt $ckpt_path \
     --figsavedir $figdir \
     --K $K \
+    --metric $metric \
     --N $N \
-    --target $target \
     --min_dist $min_dist \
     --max_dist $max_dist \
     --figname $figname
+    #--target $target \
