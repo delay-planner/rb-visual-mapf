@@ -63,6 +63,9 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     c = 0  # count
     n = eval_env.get_Q_size()
 
+    if n == 0:
+        return records
+
     state, info = eval_env.reset()
     cur_key = new_record(state, info)
 
@@ -87,7 +90,7 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
 
         if done:
             records[cur_key]["success"] = info["success"]
-            if "terminal_observation" in info:
+            if collect_trajs and "terminal_observation" in info:
                 records[cur_key]["traj"].append(
                     eval_env.de_normalize_obs(info["terminal_observation"]["observation"])
                     )
