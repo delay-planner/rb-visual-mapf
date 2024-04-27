@@ -134,10 +134,14 @@ if __name__ == "__main__":
         type=int,
         default=50,
         help="sample size")
+    parser.add_argument("--metric",
+        type=str,
+        default="cost",
+        help="cost | dist")
     parser.add_argument("--target",
         type=float,
-        default=0.5,
-        help="target cost")
+        default=None,
+        help="target cost or distance")
     parser.add_argument("--min_dist",
         type=float,
         default=0,
@@ -151,7 +155,7 @@ if __name__ == "__main__":
         default="pb_samples.jpg",
         help="figure name")
     args = parser.parse_args()
-    
+
     setup_ret = setup_env(args)
     agent = setup_ret["agent"]
     eval_env = setup_ret["eval_env"]
@@ -167,31 +171,35 @@ if __name__ == "__main__":
     # rollout trained policy and visualize trajectory
     eval_env.set_prob_constraint(1.0)
 
-    pbs_d = sample_pbs_by_agent(
-                env=eval_env,
-                agent=agent,
-                num_states=args.N,
-                target_val=args.target,
-                min_dist=args.min_dist,
-                max_dist=args.max_dist,
-                ensemble_agg="mean",
-                K=args.K,
+    pbs = []
+    if args.metric == "dist":
+        pbs = sample_pbs_by_agent(
+                    env=eval_env,
+                    agent=agent,
+                    num_states=args.N,
+                    target_val=args.target,
+                    min_dist=args.min_dist,
+                    max_dist=args.max_dist,
+                    ensemble_agg="mean",
+                    K=args.K,
+                    )
+    elif args.metric == "cost":
+        pbs = sample_cost_pbs_by_agent(
+                    env=eval_env,
+                    agent=agent,
+                    num_states=args.N,
+                    target_val=args.target,
+                    min_dist=args.min_dist,
+                    max_dist=args.max_dist,
+                    ensemble_agg="mean",
+                    K=args.K,
                 )
-
-    pbs_c = sample_cost_pbs_by_agent(
-                env=eval_env,
-                agent=agent,
-                num_states=args.N,
-                target_val=args.target,
-                min_dist=args.min_dist,
-                max_dist=args.max_dist,
-                ensemble_agg="mean",
-                K=args.K,
-            )
-    eval_env.set_pbs(pb_list=pbs_c)
-
-    start_list = [p["start"].tolist() for p in pbs_c]
-    goal_list = [p["goal"].tolist() for p in pbs_c]
+    else:
+        raise Exception("metric is incorrect")
+    
+    eval_env.set_pbs(pb_list=pbs)
+    start_list = [p["start"].tolist() for p in pbs]
+    goal_list = [p["goal"].tolist() for p in pbs]
 
     eval_records = eval_agent_from_Q(
         policy=agent, 
@@ -200,12 +208,15 @@ if __name__ == "__main__":
         )
 
     fig, ax = plt.subplots()
-    visualize_eval_records(
-        eval_records=eval_records,
-        eval_env=eval_env,
-        ax=ax,
-        starts=start_list,
-        goals=goal_list,
-        )
+    ax = visualize_eval_records(
+            eval_records=eval_records,
+            eval_env=eval_env,
+            ax=ax,
+            starts=start_list,
+            goals=goal_list,
+            use_pbar=True,
+            )
+    ax.legend(loc="best")
+    fig.tight_layout()
     fig.savefig(figdir.joinpath(args.figname), dpi=300)
     plt.close(fig)

@@ -54,14 +54,26 @@ def sample_pbs_by_agent(
         rb_vec[i] = s0
     rb_vec = np.array([x["observation"] for x in rb_vec])
 
+    rb_vec_goal = [None] * num_states
+    for i in range(num_states):
+        s0, info = env.reset_orig()
+        rb_vec_goal[i] = s0
+    rb_vec_goal = np.array([x["observation"] for x in rb_vec_goal])
+
     ## predict the pairwise costs
-    pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)
+    pdist = agent.get_pairwise_dist(obs_vec=rb_vec, 
+                    goal_vec=rb_vec_goal, 
+                    aggregate=None)
     pdist_agg = None
-    pdist_std = np.std(pdist, axis=0)
     if ensemble_agg == "max":
         pdist_agg = np.max(pdist, axis=0)
     elif ensemble_agg == "mean":
         pdist_agg = np.mean(pdist, axis=0)
+
+    pdist_std, pdist_std_mean = 0.0, 0.0
+    if use_uncertainty:
+        pdist_std = np.std(pdist, axis=0)
+        pdist_std_mean = np.mean(pdist_std)
 
     lb_mask = pdist_agg + pdist_std >= min_dist
     ub_mask = pdist_agg - pdist_std <= max_dist
@@ -72,13 +84,15 @@ def sample_pbs_by_agent(
         return []
     else:
         pdist_gInds = pdist_agg[gInds]
-        pdist_gStds = pdist_std[gInds]
+        pdist_stds_gInds = pdist_std[gInds]
         scoring = 0.0 # smaller -> better
         if target_val is not None:
             scoring = scoring + np.abs(pdist_gInds - target_val)
         # encourage diverse samples
         if use_uncertainty: 
-            scoring = scoring - pdist_gStds.flatten()
+            scoring = scoring - np.clip(pdist_stds_gInds,
+                    a_min=uncertainty_lb, a_max=uncertainty_ub)
+
         K = min(K, len(scoring))
         mInds = arg_topk(-scoring, topK=K) # find K minimum entries
         gmInds = (gInds[0][mInds], gInds[1][mInds])
@@ -88,27 +102,12 @@ def sample_pbs_by_agent(
             i,j = gmInds[0][n], gmInds[1][n]
             nearest_pbs[n] = {
                 "start": env.de_normalize_obs(rb_vec[i]),
-                "goal": env.de_normalize_obs(rb_vec[j]),
-                "info": {"prediction": pcosts[i,j],
-                        "proj_dist": pcosts[i,j],
-                        "ensemble_std_mean": pcosts_std_mean,
+                "goal": env.de_normalize_obs(rb_vec_goal[j]),
+                "info": {"prediction": pdist_agg[i,j],
+                        "proj_dist": pdist_agg[i,j],
+                        "ensemble_std_mean": pdist_std_mean,
                         },
                     }
-
-
-
-
-        scoring = np.abs(pdist_agg - target_val)
-        inds = arg_topk(-scoring, topK=K) # find K minimum entries
-        #inds_set = get_nd_inds_set(inds)
-        nearest_pbs = [None] * K
-        for n in range(K):
-            i,j = inds[0][n], inds[1][n]
-            nearest_pbs[n] = {
-                "start": env.de_normalize_obs(rb_vec[i]),
-                "goal": env.de_normalize_obs(rb_vec[j]),
-                "info": {"prediction": pdist_agg[i,j]},
-            }
     return nearest_pbs
 
 
@@ -152,12 +151,10 @@ def sample_cost_pbs_by_agent(
     if use_uncertainty:
         pcosts_std = np.std(pcosts_ens, axis=0)
         pcosts_std_mean = np.mean(pcosts_std)
-        pcosts_std = np.clip(pcosts_std, 
-            a_min=uncertainty_lb, a_max=uncertainty_ub)
 
     # filter based on distance constraints
-    lb_mask = pcosts >= min_dist
-    ub_mask = pcosts <= max_dist
+    lb_mask = pcosts + pcosts_std >= min_dist
+    ub_mask = pcosts - pcosts_std <= max_dist
     prod_mask = lb_mask * ub_mask
     
     gInds = np.where(prod_mask)
@@ -166,10 +163,14 @@ def sample_cost_pbs_by_agent(
     else:    
         pcosts = calc_pairwise_cost(agent, rb_vec, ensemble_agg) # num_states x num_states
         pcosts_gInds = pcosts[gInds]
-        scoring = np.abs(pcosts_gInds - target_val)
+        pcosts_std_gInds = pcosts_std[gInds]
+        scoring = 0.0
+        if target_val is not None:
+            scoring = np.abs(pcosts_gInds - target_val)
         # encourage diverse samples
         if use_uncertainty: 
-            scoring = scoring - pcosts_std.flatten()
+            scoring = scoring - np.clip(pcosts_std_gInds,
+                        a_min=uncertainty_lb, a_max=uncertainty_ub)
         K = min(K, len(scoring))
         mInds = arg_topk(-scoring, topK=K) # find K minimum entries
         gmInds = (gInds[0][mInds], gInds[1][mInds])
