@@ -148,8 +148,9 @@ def train_eval(
                     tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["vals"]), global_step=i)
 
                     N_success = np.array(eval_info["dists"][ii]["success"], dtype=float)
-                    success_rate = np.sum(N_success) / len(N_success)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
 
                 field_header = "Eval Cost ~ "
                 for ii in eval_info["costs"]:
@@ -160,8 +161,9 @@ def train_eval(
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["vals"]), global_step=i)
 
                     N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
-                    success_rate = np.sum(N_success) / len(N_success)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
                 
                 # reset timer 
@@ -291,20 +293,23 @@ def eval_pointenv_cost_constrained_dists(agent,
                 use_uncertainty=True,
                 ensemble_agg="mean",
                 )
-        eval_env.append_pbs(pb_list=pbs)
-        dist_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
-        dist_logs = gather_log(eval_stats=dist_eval_i, 
-                      names_n_keys={
-                          "attr_vals": ["rewards"],
-                          "attr_pred": ["init_info", "prediction"],
-                          "success_hist": ["success"],
-                          })
-        dist_eval_stats[ii_d] = {
-            "vals": dist_logs["attr_vals"],
-            "pred": dist_logs["attr_pred"],
-            "ref": eval_distances[ii_d],
-            "success": dist_logs["success_hist"],
-        }
+        if len(pbs) > 0:
+            eval_env.append_pbs(pb_list=pbs)
+            dist_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+            dist_logs = gather_log(eval_stats=dist_eval_i, 
+                        names_n_keys={
+                            "attr_vals": ["rewards"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            dist_eval_stats[ii_d] = {
+                "vals": dist_logs["attr_vals"],
+                "pred": dist_logs["attr_pred"],
+                "ref": eval_distances[ii_d],
+                "success": dist_logs["success_hist"],
+            }
+        else:
+            print("[WARN] empty set for dist eval problem")
 
     cost_eval_stats = dict()
     for ii in range(len(cost_intervals)):
