@@ -100,7 +100,6 @@ def constrained_sampler_for_cost(
     return
 
 
-
 def sample_cost_pbs_by_agent(
         env:SafeGoalConditionedPointWrapper, 
         agent:DRLDDPGLag, 
@@ -110,6 +109,9 @@ def sample_cost_pbs_by_agent(
         max_dist: float = 10,
         ensemble_agg:str="mean",
         K:int=5, # num of samples nearest to the target metric
+        use_uncertainty:bool=True, # boost samples of high uncertainty 
+        uncertainty_lb:float=0.0, 
+        uncertainty_ub:float=1.0, 
     ):
     """
     filter based on distance constraints
@@ -127,10 +129,23 @@ def sample_cost_pbs_by_agent(
         #rb_vec_goal[i] = env.de_normalize_obs(s0["goal"])
     rb_vec = np.array([x["observation"] for x in rb_vec])
 
-    pdists = calc_pairwise_dist(agent, rb_vec, ensemble_agg) # num_states x num_states
+    pcosts_ens = agent.get_pairwise_cost(rb_vec, aggregate=None) # num_states x num_states
+    pcosts = None
+    if ensemble_agg == "max":
+        pcosts = np.max(pcosts_ens, axis=0)
+    elif ensemble_agg == "mean":
+        pcosts = np.mean(pcosts_ens, axis=0)
+    
+    pcosts_std, pcosts_std_mean = 0.0, 0.0
+    if use_uncertainty:
+        pcosts_std = np.std(pcosts_ens, axis=0)
+        pcosts_std_mean = np.mean(pcosts_std)
+        pcosts_std = np.clip(pcosts_std, 
+            a_min=uncertainty_lb, a_max=uncertainty_ub)
+
     # filter based on distance constraints
-    lb_mask = pdists >= min_dist
-    ub_mask = pdists <= max_dist
+    lb_mask = pcosts >= min_dist
+    ub_mask = pcosts <= max_dist
     prod_mask = lb_mask * ub_mask
     
     gInds = np.where(prod_mask)
@@ -140,6 +155,9 @@ def sample_cost_pbs_by_agent(
         pcosts = calc_pairwise_cost(agent, rb_vec, ensemble_agg) # num_states x num_states
         pcosts_gInds = pcosts[gInds]
         diff = np.abs(pcosts_gInds - target_val)
+        # encourage diverse samples
+        if use_uncertainty: 
+            diff = diff - pcosts_std.flatten()
         K = min(K, len(diff))
         mInds = arg_topk(-diff, topK=K) # find K minimum entries
         gmInds = (gInds[0][mInds], gInds[1][mInds])
@@ -151,7 +169,8 @@ def sample_cost_pbs_by_agent(
                 "start": env.de_normalize_obs(rb_vec[i]),
                 "goal": env.de_normalize_obs(rb_vec[j]),
                 "info": {"prediction": pcosts[i,j],
-                        "proj_dist": pdists[i,j]
+                        "proj_dist": pcosts[i,j],
+                        "ensemble_std_mean": pcosts_std_mean,
                         },
                     }
         return nearest_pbs
