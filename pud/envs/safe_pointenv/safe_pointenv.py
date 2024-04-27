@@ -1,11 +1,13 @@
-from pud.envs.simple_navigation_env import PointEnv, GoalConditionedPointWrapper
-from pud.envs.wrappers import TimeLimit
-import numpy as np
-import networkx as nx
-from typing import List
-import matplotlib.pyplot as plt
-from typing import Optional
 import time
+from typing import List, Optional
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+from tqdm.auto import tqdm
+
+from pud.envs.simple_navigation_env import (GoalConditionedPointWrapper,
+                                            PointEnv)
 
 def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:plt.axes):
     """
@@ -82,14 +84,17 @@ def plot_trajs(
         s:int=40,
         start_color:str="#18aedb",
         goal_color:str="#dbbb18",
+        use_pbar=False,
         ):
-    walls_bk = walls.copy()
+    pbar = tqdm(total=len(list_trajs), disable=(not use_pbar))
+
     walls = walls.T
     (height, width) = walls.shape
     
     """plot a list of trajs, each is a list of tuples (int states)"""
     traj_starts = []
     traj_goals = []
+    
     for traj in list_trajs:
         # randomize colors
         c = np.random.rand(3,)
@@ -105,6 +110,8 @@ def plot_trajs(
                 traj_starts.append([x,y])
             if i == len(traj) - 2:
                 traj_goals.append([xn, yn])
+            
+        pbar.update()
 
     if len(starts) == 0:
         starts = np.array(traj_starts)
@@ -122,6 +129,8 @@ def plot_trajs(
         goals = np.flip(goals, axis=1)
 
     ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=5, marker="x", label="goal", s=s)
+
+    pbar.close()
     return ax
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
@@ -173,8 +182,10 @@ class SafePointEnv (PointEnv):
 
         t0 = time.time()
         if cost_fn_name == 'cosine':
-            from pud.envs.safe_pointenv.cost_functions import cost_from_cosine_distance
             import functools
+
+            from pud.envs.safe_pointenv.cost_functions import \
+                cost_from_cosine_distance
             self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
 
             # NOTE: cost map is computed based on states, not trajectories/accumulated costs 

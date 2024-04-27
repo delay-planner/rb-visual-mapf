@@ -105,7 +105,8 @@ def visualize_eval_records(
         ax:plt.axes,
         starts:list=[],
         goals:list=[], 
-        ):
+        use_pbar=False,
+        ) -> plt.axes:
     list_trajs = []
     for id in eval_records.keys():
         list_trajs.append(eval_records[id]["traj"])
@@ -122,6 +123,7 @@ def visualize_eval_records(
         starts=starts,
         goals=goals,
         s=32,
+        use_pbar=use_pbar,
         )
     return ax
 
