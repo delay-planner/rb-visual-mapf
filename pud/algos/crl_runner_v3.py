@@ -24,6 +24,7 @@ from pud.envs.safe_pointenv.pb_sampler import (calc_pairwise_cost,
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper)
 from pud.policies import GaussianPolicy
+from pud.visualize import visualize_eval_records
 
 
 def train_eval(
@@ -41,7 +42,7 @@ def train_eval(
     opt_log_interval=100,
     eval_interval=10000,
     eval_distances=[2, 5, 10], # reference grouping based on estimated distances
-    eval_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
+    eval_cost_intervals=[0., 0.5, 1.0], # grouping cost eval results
     tensorboard_writer:Optional[SummaryWriter]=None,
     warmup_epochs:int =100,
     num_eval_episodes:int=10,
@@ -59,6 +60,7 @@ def train_eval(
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
     env.set_use_q(True)
+    agent.set_lag_status(turn_on_lag=False)
 
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
@@ -82,8 +84,8 @@ def train_eval(
                 cprint("[INFO] eps Jc={:.2f}, eps length={}".format(ep_cost, ep_len), "green")
             num_eps = collector.num_eps
 
-            if i > warmup_epochs:
-                agent.optimize_lagrange(ep_cost=ep_cost)
+            #if i > warmup_epochs:
+            #    agent.optimize_lagrange(ep_cost=ep_cost)
 
 
         if i % opt_log_interval == 0:
@@ -104,11 +106,11 @@ def train_eval(
                 env=env,
                 num_pbs_per_ref=num_train_pbs_per_ref,
                 sample_size=sample_size,
-                ref_cost_intervals=eval_cost_intervals,
-                ref_distances=eval_distances,
+                #ref_cost_intervals=eval_cost_intervals,
+                #ref_distances=eval_distances,
                 cost_min_dist=cost_min_dist,
                 cost_max_dist=cost_max_dist,
-                use_uncertainty=use_uncertainty, 
+                use_uncertainty=True, 
                 uncertainty_lb=uncertainty_lb, 
                 uncertainty_ub=uncertainty_ub, 
             )
@@ -165,34 +167,13 @@ def train_eval(
                 # reset timer 
                 t_mark = time.time()
 
-def update_train_pbs_uniform_distribution(
-        agent: DRLDDPGLag,
-        env: SafeGoalConditionedPointQueueWrapper,
-        num_pbs_per_metric:int,
-        sample_size:int,
-        cost_min_dist:float = 0.0,
-        cost_max_dist:float = 10.0,
-    ):
-    """uniformly generate samples for each distributional metric"""
-    new_train_pbs = []
-    for dd in np.random.uniform(low=env._min_dist, high=env._max_dist, size=num_pbs_per_metric):
-        pbs_i = sample_pbs_by_agent(env=env, 
-                agent=agent, 
-                num_states=sample_size,
-                target_val=dd,
-                pval_f=calc_pairwise_dist,
-                K=2,
-                ensemble_agg="mean",
-                )
-        new_train_pbs.extend(pbs_i)
-
 def update_train_pbs_by_metric(
         agent: DRLDDPGLag,
         env: SafeGoalConditionedPointQueueWrapper,
         num_pbs_per_ref:int,
         sample_size:int,
-        ref_distances=[2, 5, 10], # reference grouping based on estimated distances
-        ref_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
+        #ref_distances=[2, 5, 10], # reference grouping based on estimated distances
+        #ref_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
         cost_min_dist:float = 1.0,
         cost_max_dist:float = 10.0,
         use_uncertainty:bool=True, # boost samples of high uncertainty 
@@ -201,18 +182,22 @@ def update_train_pbs_by_metric(
     ):
     # update pbs in the train eval
     new_train_pbs = []
-    for dd in ref_distances:
-        pbs_i = sample_pbs_by_agent(env=env, 
-                agent=agent, 
-                num_states=sample_size,
-                target_val=dd,
-                pval_f=calc_pairwise_dist,
-                K=num_pbs_per_ref,
-                ensemble_agg="mean",
-                )
-        new_train_pbs.extend(pbs_i)
+    #for dd in ref_distances:
+    pbs_i = sample_pbs_by_agent(env=env, 
+            agent=agent, 
+            num_states=sample_size,
+            target_val=None,
+            K=num_pbs_per_ref,
+            ensemble_agg="mean",
+            min_dist=0.0,
+            max_dist=20.0,
+            use_uncertainty=use_uncertainty, # boost samples of high uncertainty 
+            uncertainty_lb=uncertainty_lb, 
+            uncertainty_ub=uncertainty_ub,
+            )
+    new_train_pbs.extend(pbs_i)
 
-    for cc in ref_cost_intervals:
+    #for cc in ref_cost_intervals:
         #pbs_i = sample_pbs_by_agent(env=env, 
         #        agent=agent, 
         #        num_states=sample_size,
@@ -221,20 +206,20 @@ def update_train_pbs_by_metric(
         #        K=num_pbs_per_ref,
         #        ensemble_agg="max",
         #        )
-        cost_eval_pbs = sample_cost_pbs_by_agent(
-                env=env,
-                agent=agent,
-                num_states=sample_size,
-                K=num_pbs_per_ref,
-                target_val=cc,
-                min_dist=cost_min_dist,
-                max_dist=cost_max_dist,
-                ensemble_agg="mean",
-                use_uncertainty=use_uncertainty, 
-                uncertainty_lb=uncertainty_lb, 
-                uncertainty_ub=uncertainty_ub, 
-                )
-        new_train_pbs.extend(cost_eval_pbs)
+    cost_eval_pbs = sample_cost_pbs_by_agent(
+            env=env,
+            agent=agent,
+            num_states=sample_size,
+            K=num_pbs_per_ref,
+            target_val=None,
+            min_dist=cost_min_dist,
+            max_dist=cost_max_dist,
+            ensemble_agg="mean",
+            use_uncertainty=use_uncertainty, 
+            uncertainty_lb=uncertainty_lb, 
+            uncertainty_ub=uncertainty_ub, 
+            )
+    new_train_pbs.extend(cost_eval_pbs)
     env.set_pbs(pb_list=new_train_pbs)
 
 def eval_agent_by_metric(
@@ -243,7 +228,6 @@ def eval_agent_by_metric(
         num_evals:int,
         sample_size:int,
         target_val:float,
-        pval_f, # pair-wise function
         ensemble_agg:str,
     ):
     """"""
@@ -252,8 +236,10 @@ def eval_agent_by_metric(
             agent=agent, 
             num_states=sample_size,
             target_val=target_val,
-            pval_f=pval_f,
             K=num_evals,
+            min_dist=target_val,
+            max_dist=target_val,
+            use_uncertainty=False,
             ensemble_agg=ensemble_agg,
             )
     eval_env.append_pbs(pb_list=pbs)
@@ -301,7 +287,6 @@ def eval_pointenv_cost_constrained_dists(agent,
                     num_evals=num_evals, 
                     sample_size=sample_size, 
                     target_val=eval_distances[ii_d], 
-                    pval_f=calc_pairwise_dist,
                     ensemble_agg="mean")
         dist_logs = gather_log(eval_stats=dist_eval_i, 
                       names_n_keys={
@@ -326,6 +311,7 @@ def eval_pointenv_cost_constrained_dists(agent,
                         target_val=cost_intervals[ii],
                         min_dist=cost_min_dist,
                         max_dist=cost_max_dist,
+                        use_uncertainty=False,
                         ensemble_agg="mean",)
         if len(cost_eval_pbs) > 0:
             eval_env.append_pbs(pb_list=cost_eval_pbs)
