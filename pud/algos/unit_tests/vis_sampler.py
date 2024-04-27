@@ -166,6 +166,18 @@ if __name__ == "__main__":
 
     # rollout trained policy and visualize trajectory
     eval_env.set_prob_constraint(1.0)
+
+    pbs_d = sample_pbs_by_agent(
+                env=eval_env,
+                agent=agent,
+                num_states=args.N,
+                target_val=args.target,
+                min_dist=args.min_dist,
+                max_dist=args.max_dist,
+                ensemble_agg="mean",
+                K=args.K,
+                )
+
     pbs_c = sample_cost_pbs_by_agent(
                 env=eval_env,
                 agent=agent,
