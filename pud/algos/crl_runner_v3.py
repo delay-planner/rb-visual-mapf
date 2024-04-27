@@ -281,13 +281,18 @@ def eval_pointenv_cost_constrained_dists(agent,
     dist_eval_stats = dict()
 
     for ii_d in range(len(eval_distances)):
-        dist_eval_i = eval_agent_by_metric(
-                    agent=agent, 
-                    eval_env=eval_env, 
-                    num_evals=num_evals, 
-                    sample_size=sample_size, 
-                    target_val=eval_distances[ii_d], 
-                    ensemble_agg="mean")
+        pbs = sample_pbs_by_agent(env=eval_env, 
+                agent=agent, 
+                num_states=sample_size,
+                target_val=eval_distances[ii_d],
+                K=num_evals,
+                min_dist=eval_distances[ii_d]-1,
+                max_dist=eval_distances[ii_d]+1,
+                use_uncertainty=True,
+                ensemble_agg="mean",
+                )
+        eval_env.append_pbs(pb_list=pbs)
+        dist_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
         dist_logs = gather_log(eval_stats=dist_eval_i, 
                       names_n_keys={
                           "attr_vals": ["rewards"],
@@ -311,7 +316,7 @@ def eval_pointenv_cost_constrained_dists(agent,
                         target_val=cost_intervals[ii],
                         min_dist=cost_min_dist,
                         max_dist=cost_max_dist,
-                        use_uncertainty=False,
+                        use_uncertainty=True,
                         ensemble_agg="mean",)
         if len(cost_eval_pbs) > 0:
             eval_env.append_pbs(pb_list=cost_eval_pbs)
@@ -336,6 +341,8 @@ def eval_pointenv_cost_constrained_dists(agent,
                 "ref": cost_intervals[ii],
                 "success": cost_logs["success_hist"],
             }
+        else:
+            print("[WARN] empty set for cost eval problem")
 
     eval_stats = {}
     eval_stats["dists"] = dist_eval_stats
