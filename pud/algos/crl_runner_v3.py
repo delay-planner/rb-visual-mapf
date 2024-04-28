@@ -25,6 +25,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper)
 from pud.policies import GaussianPolicy
 from pud.visualize import visualize_eval_records
+import matplotlib.pyplot as plt
 
 
 def train_eval(
@@ -56,6 +57,7 @@ def train_eval(
     uncertainty_lb:float = 0.0,
     verbose=True,
     ckpt_dir:Path=Path(""),
+    vis_dir:Path=Path(""),
     ):
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
@@ -125,6 +127,7 @@ def train_eval(
                 sample_size=sample_size,
                 cost_min_dist=cost_min_dist,
                 cost_max_dist=cost_max_dist,
+                vis_dir=vis_dir.joinpath("itr_{:0>6d}".format(i)),
                 )
             if verbose:
                 print('-' * 10)
@@ -268,15 +271,20 @@ def gather_log(eval_stats:dict, names_n_keys:Dict[str, list]):
     return logs
         
 
-def eval_pointenv_cost_constrained_dists(agent, 
+def eval_pointenv_cost_constrained_dists(
+        agent, 
         eval_env:SafeGoalConditionedPointWrapper, 
-        num_evals:int=10, 
+        num_evals:int=10,
         sample_size:int=100,
         eval_distances=[2, 5, 10, 20],
         cost_intervals=[0., 0.2, 0.5, 1.0],
         cost_min_dist:float = 0.0,
         cost_max_dist:float = 10.0,
+        vis_dir:Optional[Path]=None,
         ):
+    collect_trajs = False
+    if vis_dir is not None:
+        collect_trajs = True
     
     eval_env.set_prob_constraint(1.0)
     
@@ -288,14 +296,34 @@ def eval_pointenv_cost_constrained_dists(agent,
                 num_states=sample_size,
                 target_val=eval_distances[ii_d],
                 K=num_evals,
-                min_dist=eval_distances[ii_d]-1,
-                max_dist=eval_distances[ii_d]+1,
-                use_uncertainty=True,
+                min_dist=0,
+                max_dist=20,
+                use_uncertainty=False,
                 ensemble_agg="mean",
                 )
         if len(pbs) > 0:
             eval_env.append_pbs(pb_list=pbs)
-            dist_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+            dist_eval_i = eval_agent_from_Q(policy=agent, 
+                            eval_env=eval_env, 
+                            collect_trajs=collect_trajs,
+                            )
+            if collect_trajs:
+                vis_dir.mkdir(parents=True, exist_ok=True)
+                start_list = [p["start"].tolist() for p in pbs]
+                goal_list = [p["goal"].tolist() for p in pbs]
+                fig, ax = plt.subplots()
+                ax = visualize_eval_records(
+                        eval_records=dist_eval_i,
+                        eval_env=eval_env,
+                        ax=ax,
+                        starts=start_list,
+                        goals=goal_list,
+                        )
+                ax.legend()
+                figname = "dist={:0>2d}.jpg".format(eval_distances[ii_d])
+                fig.savefig(vis_dir.joinpath(figname), dpi=300)
+                plt.close(fig=fig)
+            
             dist_logs = gather_log(eval_stats=dist_eval_i, 
                         names_n_keys={
                             "attr_vals": ["rewards"],
@@ -321,11 +349,27 @@ def eval_pointenv_cost_constrained_dists(agent,
                         target_val=cost_intervals[ii],
                         min_dist=cost_min_dist,
                         max_dist=cost_max_dist,
-                        use_uncertainty=True,
+                        use_uncertainty=False,
                         ensemble_agg="mean",)
         if len(cost_eval_pbs) > 0:
             eval_env.append_pbs(pb_list=cost_eval_pbs)
             cost_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+            if collect_trajs:
+                vis_dir.mkdir(parents=True, exist_ok=True)
+                start_list = [p["start"].tolist() for p in pbs]
+                goal_list = [p["goal"].tolist() for p in pbs]
+                fig, ax = plt.subplots()
+                ax = visualize_eval_records(
+                        eval_records=dist_eval_i,
+                        eval_env=eval_env,
+                        ax=ax,
+                        starts=start_list,
+                        goals=goal_list,
+                        )
+                ax.legend()
+                figname = "cost={:.2f}.jpg".format(cost_intervals[ii])
+                fig.savefig(vis_dir.joinpath(figname), dpi=300)
+                plt.close(fig=fig)
             #cost_eval_i = eval_agent_by_metric(
             #            agent=agent, 
             #            eval_env=eval_env, 

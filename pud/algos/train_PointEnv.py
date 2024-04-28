@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
+    parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -127,6 +128,10 @@ if __name__ == "__main__":
     log_dir = log_dir.joinpath(date_time)
     ckpt_dir = log_dir.joinpath("ckpt")
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    vis_dir = None
+    if args.visual:
+        vis_dir = log_dir.joinpath("visual")
+        vis_dir.mkdir(parents=True, exist_ok=True)
     bk_dir = log_dir.joinpath("bk")
     bk_dir.mkdir(parents=True, exist_ok=True)
     with open(bk_dir.joinpath("bk_config.yaml"), "w") as f:
@@ -147,6 +152,7 @@ if __name__ == "__main__":
             tensorboard_writer=tb,
             pbar=args.pbar,
             ckpt_dir=ckpt_dir,
+            vis_dir=vis_dir,
             **cfg.runner,
             )
     torch.save(agent.state_dict(), 
