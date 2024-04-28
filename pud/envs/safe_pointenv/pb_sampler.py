@@ -32,7 +32,7 @@ def sample_pbs_by_agent(
         num_states:int=100,
         min_dist: float = 0,
         max_dist: float = 10,
-        target_val:List[float]=None,
+        target_val:float=None,
         ensemble_agg:str="max",
         use_uncertainty:bool=True, # boost samples of high uncertainty 
         uncertainty_lb:float=0.0, 
@@ -84,12 +84,12 @@ def sample_pbs_by_agent(
         return []
     else:
         pdist_gInds = pdist_agg[gInds]
-        pdist_stds_gInds = pdist_std[gInds]
         scoring = 0.0 # smaller -> better
         if target_val is not None:
             scoring = scoring + np.abs(pdist_gInds - target_val)
         # encourage diverse samples
         if use_uncertainty: 
+            pdist_stds_gInds = pdist_std[gInds]
             scoring = scoring - np.clip(pdist_stds_gInds,
                     a_min=uncertainty_lb, a_max=uncertainty_ub)
 
@@ -115,7 +115,7 @@ def sample_cost_pbs_by_agent(
         env:SafeGoalConditionedPointWrapper, 
         agent:DRLDDPGLag, 
         num_states:int=100,
-        target_val:List[float]=None,
+        target_val:float=None,
         min_dist: float = 0,
         max_dist: float = 10,
         ensemble_agg:str="mean",
@@ -171,12 +171,12 @@ def sample_cost_pbs_by_agent(
         pcosts_std = np.std(pcosts, axis=0)
         pcosts_std_mean = np.mean(pcosts_std)
         pcosts_gInds = pcosts_agg[gInds]
-        pcosts_std_gInds = pcosts_std[gInds]
         scoring = 0.0
         if target_val is not None:
             scoring = scoring + np.abs(pcosts_gInds - target_val)
         # encourage diverse samples
         if use_uncertainty: 
+            pcosts_std_gInds = pcosts_std[gInds]
             scoring = scoring - np.clip(pcosts_std_gInds,
                         a_min=uncertainty_lb, a_max=uncertainty_ub)
         K = min(K, len(scoring))
