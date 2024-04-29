@@ -3,7 +3,7 @@
 #env="FourRooms"
 env="CentralObstacle"
 
-comment="rev_pb_sampler_max_2_debug"
+comment="rev_pb_sampler_max_1_debug"
 SLURM_JOB_ID=local
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
@@ -21,7 +21,10 @@ device="cuda:0"
 
 cd "${project_root}"
 
-debugger_port=5678
+#debugger_port=5678
+
+cost_max=1.0
+cost_N=20
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
@@ -34,6 +37,8 @@ if [[ -n ${debugger_port} ]]; then
         pud/algos/train_PointEnv.py \
         --cfg $config \
         --env $env \
+        --cost_max $cost_max \
+        --cost_N $cost_N \
         --logdir ${log_dir} \
         --device ${device} \
         --visual \
@@ -43,6 +48,8 @@ else
     python pud/algos/train_PointEnv.py \
         --cfg $config \
         --env $env \
+        --cost_max $cost_max \
+        --cost_N $cost_N \
         --logdir ${log_dir} \
         --device ${device} \
         --visual \

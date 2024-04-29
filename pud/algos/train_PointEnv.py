@@ -30,6 +30,14 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="terminal override of training env")
+    parser.add_argument("--cost_max",
+        type=float,
+        default=-1,
+        help="override if > 0")
+    parser.add_argument("--cost_N",
+        type=int,
+        default=0,
+        help="override if > 0")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -49,6 +57,10 @@ if __name__ == "__main__":
         cfg.env.walls = args.env
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
+    if args.cost_max > 0:
+        cfg.agent.cost_max = args.cost_max
+    if args.cost_N > 0:
+        cfg.agent.cost_N = args.cost_N
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()
