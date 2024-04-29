@@ -30,7 +30,7 @@ cost_N=20
 # -z tests if condition true, -n no tests if condition if false
 if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
-    echo "[Action Needed] need to launch the debugger client"
+    echo "[Action Needed] need to launch the debugger client at port ${debugger_port}"
     python -m debugpy \
         --listen localhost:${debugger_port} \
         --wait-for-client \
