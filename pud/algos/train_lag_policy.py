@@ -32,6 +32,10 @@ if __name__ == "__main__":
         type=str,
         help="Training configuration",
     )
+    parser.add_argument("--lambda_lr",
+        type=float,
+        default=-1,
+        help="override lagrange lr")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -45,6 +49,9 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     # For dot completion
     cfg = DotMap(cfg)
+
+    if args.lambda_lr > 0:
+        cfg.agent.lambda_lr = args.lambda_lr
 
     # Override cfs from terminal
     cfg.runner.verbose = args.verbose
@@ -123,6 +130,10 @@ if __name__ == "__main__":
 
     agent_g.load_state_dict(torch.load(args.ckpt))
     agent.load_state_dict(torch.load(args.ckpt))
+
+    # check lambda_lr
+    if args.lambda_lr > 0:
+        assert agent.lagrange.lambda_optimizer.state_dict()["param_groups"][0]["lr"] == args.lambda_lr
 
     agent_g.eval()
 

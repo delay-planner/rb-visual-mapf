@@ -11,8 +11,9 @@ config="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/bk/b
 
 cd "${project_root}"
 
-debugger_port=5679
+#debugger_port=5679
 
+lambda_lr=1
 
 if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
@@ -24,6 +25,7 @@ if [[ -n ${debugger_port} ]]; then
             --cfg $config \
             --ckpt $ckpt \
             --device ${device} \
+            --lambda_lr $lambda_lr \
             --visual \
             --pbar
 else
@@ -32,6 +34,7 @@ else
         --cfg $config \
         --ckpt $ckpt \
         --device ${device} \
+        --lambda_lr $lambda_lr \
         --visual \
         --pbar
 fi

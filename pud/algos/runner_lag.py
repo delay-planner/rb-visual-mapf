@@ -62,7 +62,7 @@ def train_eval(
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
     env.set_use_q(True)
-    agent.set_lag_status(turn_on_lag=False)
+    agent.set_lag_status(turn_on_lag=True)
 
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
@@ -86,9 +86,7 @@ def train_eval(
                 cprint("[INFO] eps Jc={:.2f}, eps length={}".format(ep_cost, ep_len), "green")
             num_eps = collector.num_eps
 
-            #if i > warmup_epochs:
-            #    agent.optimize_lagrange(ep_cost=ep_cost)
-
+            agent.optimize_lagrange(ep_cost=ep_cost)
 
         if i % opt_log_interval == 0:
             if verbose:
@@ -122,9 +120,9 @@ def train_eval(
                 agent=agent, 
                 agent_g=agent_g,
                 eval_env=eval_env,
-                eval_distances=eval_distances,
+                eval_distances=[5, 10, 20],
                 num_evals=num_eval_episodes,
-                cost_intervals=eval_cost_intervals,
+                cost_intervals=[0.0, 0.5, 1.0],
                 sample_size=sample_size,
                 cost_min_dist=cost_min_dist,
                 cost_max_dist=cost_max_dist,
@@ -156,6 +154,12 @@ def train_eval(
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["agent"]["ref"]), success_rate, global_step=i)
 
+                    ## greedy agent
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_pred_mean".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.mean(eval_info["dists"][ii]["agent_g"]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_pred_std".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.std(eval_info["dists"][ii]["agent_g"]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_vals_mean".format(eval_info["dists"][ii]["agent_g"]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["agent_g"]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_vals_std".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.std(eval_info["dists"][ii]["agent_g"]["vals"]), global_step=i)
+
                 field_header = "Eval Cost ~ "
                 for ii in eval_info["costs"]:
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_mean".format(eval_info["costs"][ii]["agent"]["ref"]), np.mean(eval_info["costs"][ii]["agent"]["pred"]), global_step=i)
@@ -169,6 +173,12 @@ def train_eval(
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["agent"]["ref"]), success_rate, global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["agent"]["ref"]), len(N_success), global_step=i)
+
+                    ## greedy agent
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_pred_mean".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.mean(eval_info["costs"][ii]["agent_g"]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_pred_std".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.std(eval_info["costs"][ii]["agent_g"]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_vals_mean".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.mean(eval_info["costs"][ii]["agent_g"]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_vals_std".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.std(eval_info["costs"][ii]["agent_g"]["vals"]), global_step=i)
                 
                 # reset timer 
                 t_mark = time.time()
@@ -217,7 +227,7 @@ def update_train_pbs_by_metric(
             agent=agent,
             num_states=sample_size,
             K=num_pbs_per_ref,
-            target_val=None,
+            target_val=env.cost_limit,
             min_dist=cost_min_dist,
             max_dist=cost_max_dist,
             ensemble_agg="mean",
