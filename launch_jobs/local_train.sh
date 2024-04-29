@@ -32,7 +32,7 @@ if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
     echo "[Action Needed] need to launch the debugger client"
     python -m debugpy \
-        --listen localhost:5678 \
+        --listen localhost:${debugger_port} \
         --wait-for-client \
         pud/algos/train_PointEnv.py \
         --cfg $config \

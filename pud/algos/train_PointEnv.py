@@ -38,6 +38,10 @@ if __name__ == "__main__":
         type=int,
         default=0,
         help="override if > 0")
+    parser.add_argument("--ckpt",
+        type=str,
+        default="",
+        help="if non-empty, load the checkpoint into agent model")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -123,6 +127,10 @@ if __name__ == "__main__":
         device=torch.device(cfg.device),
         **cfg.agent,
     )
+    if len(args.ckpt) > 0:
+        assert Path(args.ckpt).exists()
+        print("[INFO] loading checkpoint: {}".format(args.ckpt))
+        agent.load_state_dict(torch.load(args.ckpt))
     agent.to(torch.device(args.device))
 
     print(agent)
