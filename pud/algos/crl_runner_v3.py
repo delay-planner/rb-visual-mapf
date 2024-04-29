@@ -356,8 +356,8 @@ def eval_pointenv_cost_constrained_dists(
             cost_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
             if collect_trajs:
                 vis_dir.mkdir(parents=True, exist_ok=True)
-                start_list = [p["start"].tolist() for p in pbs]
-                goal_list = [p["goal"].tolist() for p in pbs]
+                start_list = [p["start"].tolist() for p in cost_eval_pbs]
+                goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
                 fig, ax = plt.subplots()
                 ax = visualize_eval_records(
                         eval_records=dist_eval_i,
