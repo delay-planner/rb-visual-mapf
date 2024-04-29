@@ -21,11 +21,11 @@ device="cuda:0"
 
 cd "${project_root}"
 
-debug=true
+debugger_port=5678
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
-if [[ -n ${debug} ]]; then
+if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
     echo "[Action Needed] need to launch the debugger client"
     python -m debugpy \
