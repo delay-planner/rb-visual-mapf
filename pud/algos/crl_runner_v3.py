@@ -360,7 +360,7 @@ def eval_pointenv_cost_constrained_dists(
                 goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
                 fig, ax = plt.subplots()
                 ax = visualize_eval_records(
-                        eval_records=dist_eval_i,
+                        eval_records=cost_eval_i,
                         eval_env=eval_env,
                         ax=ax,
                         starts=start_list,
