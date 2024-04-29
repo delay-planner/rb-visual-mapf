@@ -353,7 +353,10 @@ def eval_pointenv_cost_constrained_dists(
                         ensemble_agg="mean",)
         if len(cost_eval_pbs) > 0:
             eval_env.append_pbs(pb_list=cost_eval_pbs)
-            cost_eval_i = eval_agent_from_Q(policy=agent, eval_env=eval_env)
+            cost_eval_i = eval_agent_from_Q(
+                    policy=agent, 
+                    eval_env=eval_env,
+                    collect_trajs=collect_trajs,)
             if collect_trajs:
                 vis_dir.mkdir(parents=True, exist_ok=True)
                 start_list = [p["start"].tolist() for p in cost_eval_pbs]
