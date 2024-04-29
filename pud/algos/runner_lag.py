@@ -164,7 +164,7 @@ def train_eval(
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_mean".format(eval_info["costs"][ii]["agent"]["ref"]), np.mean(eval_info["costs"][ii]["agent"]["vals"]), global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["agent"]["ref"]), np.std(eval_info["costs"][ii]["agent"]["vals"]), global_step=i)
 
-                    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
+                    N_success = np.array(eval_info["costs"][ii]["agent"]["success"], dtype=float)
                     if len(N_success) > 0:
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["agent"]["ref"]), success_rate, global_step=i)
