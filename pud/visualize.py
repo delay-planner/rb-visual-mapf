@@ -1,3 +1,5 @@
+from typing import Optional
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
@@ -106,6 +108,7 @@ def visualize_eval_records(
         starts:list=[],
         goals:list=[], 
         use_pbar=False,
+        color:Optional[str]=None,
         ) -> plt.axes:
     list_trajs = []
     for id in eval_records.keys():
@@ -124,6 +127,7 @@ def visualize_eval_records(
         goals=goals,
         s=32,
         use_pbar=use_pbar,
+        traj_color=color,
         )
     return ax
 

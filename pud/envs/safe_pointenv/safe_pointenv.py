@@ -84,6 +84,7 @@ def plot_trajs(
         s:int=40,
         start_color:str="#18aedb",
         goal_color:str="#dbbb18",
+        traj_color:Optional[str]=None,
         use_pbar=False,
         ):
     pbar = tqdm(total=len(list_trajs), disable=(not use_pbar))
@@ -97,13 +98,14 @@ def plot_trajs(
     
     for traj in list_trajs:
         # randomize colors
-        c = np.random.rand(3,)
+        c = traj_color
+        if traj_color is None:
+            c = np.random.rand(3,)
         for i in range(0, len(traj) - 1):
             pnt = traj[i]
             pnt_next = traj[i+1]
             x, y = pnt[1]/float(width), pnt[0]/float(height)
             xn, yn = pnt_next[1]/float(width), pnt_next[0]/float(height)
-
             ax.plot([x, xn], [y, yn], marker="o", color=c, markersize=4, alpha=0.5)
 
             if i == 0:
