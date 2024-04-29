@@ -58,6 +58,7 @@ def train_eval(
     verbose=True,
     ckpt_dir:Path=Path(""),
     vis_dir:Path=Path(""),
+    i_start:int=1,
     ):
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
@@ -72,7 +73,7 @@ def train_eval(
 
     pbar = tqdm(total=num_iterations, disable=not pbar)
     t_mark = time.time()
-    for i in range(1, num_iterations + 1):
+    for i in range(i_start, i_start+num_iterations):
         pbar.update()
         
         collector.step(collect_steps)
