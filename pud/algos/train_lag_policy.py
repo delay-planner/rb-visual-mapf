@@ -8,6 +8,7 @@ import argparse
 import numpy as np
 from pathlib import Path
 from dotmap import DotMap
+import shutil
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.ddpg import GoalConditionedCritic
@@ -166,6 +167,8 @@ if __name__ == "__main__":
     log_dir = log_dir.joinpath(date_time)
     ckpt_dir = log_dir.joinpath("ckpt")
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    tfevent_dir = log_dir.joinpath("tfevent")
+    tfevent_dir.mkdir(parents=True, exist_ok=True)
     vis_dir = None
     if args.visual:
         vis_dir = log_dir.joinpath("visual")
@@ -174,10 +177,16 @@ if __name__ == "__main__":
     bk_dir.mkdir(parents=True, exist_ok=True)
     with open(bk_dir.joinpath("bk_config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    tb = SummaryWriter(log_dir=log_dir.as_posix())
+    shutil.copy("pud/algos/lagrange/drl_ddpg_lag.py", bk_dir.as_posix())
+    shutil.copy("launch_jobs/local_lag_train.sh", bk_dir.as_posix())
+    shutil.copy("pud/algos/runner_lag.py", bk_dir.as_posix())
 
-    with open(log_dir.joinpath("extra_notes.txt").as_posix(), mode="w", encoding="utf-8", errors="strict") as f:
-        f.write(args.additional_comment)
+
+    tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
+
+    if len(args.additional_comment) > 0:
+        with open(log_dir.joinpath("extra_notes.txt").as_posix(), mode="w", encoding="utf-8", errors="strict") as f:
+            f.write(args.additional_comment)
 
     from pud.policies import GaussianPolicy
     # gaussian policy seems just add exploration noise, the evaluation code

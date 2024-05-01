@@ -65,6 +65,7 @@ def train_eval(
     env.set_verbose(False) # too much warn msgs due to empty queue
     env.set_use_q(True)
     agent.set_lag_status(turn_on_lag=True)
+    env.set_prob_constraint(1.0)
 
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
@@ -115,6 +116,7 @@ def train_eval(
                 use_uncertainty=True, 
                 uncertainty_lb=uncertainty_lb, 
                 uncertainty_ub=uncertainty_ub, 
+                illustration_pb_file=illustration_pb_file,
             )
 
             #eval_func = eval_pointenv_cost_constrained_dists
@@ -205,23 +207,24 @@ def update_train_pbs_by_metric(
         use_uncertainty:bool=True, # boost samples of high uncertainty 
         uncertainty_lb:float=0.0, 
         uncertainty_ub:float=1.0,
+        illustration_pb_file="",
     ):
     # update pbs in the train eval
     new_train_pbs = []
     #for dd in ref_distances:
-    pbs_i = sample_pbs_by_agent(env=env, 
-            agent=agent, 
-            num_states=sample_size,
-            target_val=None,
-            K=num_pbs_per_ref,
-            ensemble_agg="mean",
-            min_dist=0.0,
-            max_dist=20.0,
-            use_uncertainty=use_uncertainty, # boost samples of high uncertainty 
-            uncertainty_lb=uncertainty_lb, 
-            uncertainty_ub=uncertainty_ub,
-            )
-    new_train_pbs.extend(pbs_i)
+    #pbs_i = sample_pbs_by_agent(env=env, 
+    #        agent=agent, 
+    #        num_states=sample_size,
+    #        target_val=None,
+    #        K=num_pbs_per_ref,
+    #        ensemble_agg="mean",
+    #        min_dist=0.0,
+    #        max_dist=20.0,
+    #        use_uncertainty=use_uncertainty, # boost samples of high uncertainty 
+    #        uncertainty_lb=uncertainty_lb, 
+    #        uncertainty_ub=uncertainty_ub,
+    #        )
+    #new_train_pbs.extend(pbs_i)
 
     #for cc in ref_cost_intervals:
         #pbs_i = sample_pbs_by_agent(env=env, 
@@ -232,19 +235,22 @@ def update_train_pbs_by_metric(
         #        K=num_pbs_per_ref,
         #        ensemble_agg="max",
         #        )
-    cost_eval_pbs = sample_cost_pbs_by_agent(
+    #cost_eval_pbs = sample_cost_pbs_by_agent(
+    #        env=env,
+    #        agent=agent,
+    #        num_states=sample_size,
+    #        K=num_pbs_per_ref,
+    #        target_val=env.cost_limit,
+    #        min_dist=cost_min_dist,
+    #        max_dist=cost_max_dist,
+    #        ensemble_agg="mean",
+    #        use_uncertainty=use_uncertainty, 
+    #        uncertainty_lb=uncertainty_lb, 
+    #        uncertainty_ub=uncertainty_ub, 
+    #        )
+    cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
             env=env,
-            agent=agent,
-            num_states=sample_size,
-            K=num_pbs_per_ref,
-            target_val=env.cost_limit,
-            min_dist=cost_min_dist,
-            max_dist=cost_max_dist,
-            ensemble_agg="mean",
-            use_uncertainty=use_uncertainty, 
-            uncertainty_lb=uncertainty_lb, 
-            uncertainty_ub=uncertainty_ub, 
-            )
+            agent=agent,)
     new_train_pbs.extend(cost_eval_pbs)
     env.set_pbs(pb_list=new_train_pbs)
 
