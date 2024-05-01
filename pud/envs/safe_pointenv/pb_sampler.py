@@ -195,3 +195,44 @@ def sample_cost_pbs_by_agent(
                         },
                     }
         return nearest_pbs
+
+def load_pb_set(file_path:str, 
+        env:SafeGoalConditionedPointWrapper,
+        agent:DRLDDPGLag,):
+    pnts_vis = np.loadtxt(fname=file_path,
+            dtype=float,
+            delimiter=",")
+    # the plotted figure are flipped, 
+    # so coords need to be flipped back
+    assert len(pnts_vis) % 2 == 0, "the number of points need to be even"
+    pnts = np.flip(pnts_vis, axis=1)
+    start_list = []
+    goal_list = []
+
+    for i in range(len(pnts)):
+        if i % 2 == 0:
+            start_list.append(pnts[i])
+        else:
+            goal_list.append(pnts[i])
+
+    gc_states = {
+        "observation": np.array(start_list),
+        "goal": np.array(goal_list),
+    }
+    pcosts = agent.get_cost_to_goal(state=gc_states, aggregate=None)
+    pcosts_agg = np.mean(pcosts, axis=0)
+    pdists = agent.get_dist_to_goal(state=gc_states, aggregate=None)
+    pdists_agg = np.mean(pdists, axis=0)
+    pcosts_std_mean = np.mean(np.std(pcosts, axis=1))
+
+    pbs = [None] * len(start_list)
+    for i in range(len(start_list)):
+        pbs[i] = {
+            "start": env.de_normalize_obs(start_list[i]),
+            "goal": env.de_normalize_obs(goal_list[i]),
+            "info": {"prediction": np.mean(pcosts_agg[i]),
+                    "proj_dist": pdists_agg[i],
+                    "ensemble_std_mean": pcosts_std_mean,
+                    },
+                }
+    return pbs
