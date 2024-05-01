@@ -13,7 +13,7 @@ cd "${project_root}"
 
 #debugger_port=5679
 
-lambda_lr=1
+lambda_lr=0.001
 
 if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
