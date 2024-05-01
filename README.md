@@ -2,7 +2,9 @@
 
 ## Design custom evaluation problems for illustration
 **Step 1**: generate a figure of the 2D maze
+
 **Step 2**: load the image into [WebPlotDigitizer](https://apps.automeris.io/wpd/), manually align the x and y axes by selecting the start and end points. 
+
 **Step 3**: pick the start and goal positions from the figure, click "View Data" button, copy the coords to a new file under [illustration_set](hyperlink_pud/envs/safe_pointenv/illustration_setaddress) illustration following the specification in [spec.md](pud/envs/safe_pointenv/illustration_set/spec.md).
 
 ## Installing habitat-sim
