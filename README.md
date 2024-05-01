@@ -5,7 +5,7 @@
 
 **Step 2**: load the image into [WebPlotDigitizer](https://apps.automeris.io/wpd/), manually align the x and y axes by selecting the start and end points. 
 
-**Step 3**: pick the start and goal positions from the figure, click "View Data" button, copy the coords to a new file under [illustration_set](pud/envs/safe_pointenv/illustration_set) illustration following the specification in [spec.md](pud/envs/safe_pointenv/illustration_set/spec.md).
+**Step 3**: pick the start and goal positions from the figure, click "View Data" button, copy the coords to a new file under [illustration_set](pud/envs/safe_pointenv/illustration_set) illustration following the specification [here](pud/envs/safe_pointenv/illustration_set/README.md).
 
 ## Installing habitat-sim
 ### We require python>=3.9 and cmake>=3.10
