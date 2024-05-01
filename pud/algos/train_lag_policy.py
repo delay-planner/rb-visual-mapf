@@ -32,10 +32,17 @@ if __name__ == "__main__":
         type=str,
         help="Training configuration",
     )
+    parser.add_argument("--cost_limit",
+        type=float,
+        default=-1,
+        help="override cost limit")
     parser.add_argument("--lambda_lr",
         type=float,
         default=-1,
         help="override lagrange lr")
+    parser.add_argument("--illustration_pb_file",
+        type=str,
+        help="problems that serve as illustration and evaluation set")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -52,6 +59,8 @@ if __name__ == "__main__":
 
     if args.lambda_lr > 0:
         cfg.agent.lambda_lr = args.lambda_lr
+    if args.cost_limit >= 0:
+        cfg.agent.cost_limit = args.cost_limit
 
     # Override cfs from terminal
     cfg.runner.verbose = args.verbose
@@ -177,6 +186,7 @@ if __name__ == "__main__":
             eval_func=eval_pointenv_cost_constrained_dists,
             tensorboard_writer=tb,
             pbar=args.pbar,
+            illustration_pb_file=args.illustration_pb_file,
             ckpt_dir=ckpt_dir,
             vis_dir=vis_dir,
             **cfg.runner,

@@ -18,7 +18,8 @@ from pud.algos.constrained_collector import eval_agent_from_Q
 from pud.algos.data_struct import dict_expand, init_embedded_dict
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent,
-                                               sample_pbs_by_agent)
+                                               sample_pbs_by_agent,
+                                               load_pb_set)
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper)
 from pud.policies import GaussianPolicy
@@ -56,6 +57,7 @@ def train_eval(
     uncertainty_ub:float = 1.0,
     uncertainty_lb:float = 0.0,
     verbose=True,
+    illustration_pb_file="",
     ckpt_dir:Path=Path(""),
     vis_dir:Path=Path(""),
     ):
@@ -126,6 +128,7 @@ def train_eval(
                 sample_size=sample_size,
                 cost_min_dist=cost_min_dist,
                 cost_max_dist=cost_max_dist,
+                illustration_pb_file=illustration_pb_file,
                 vis_dir=vis_dir.joinpath("itr_{:0>6d}".format(i)),
                 )
             if verbose:
@@ -292,7 +295,8 @@ def gather_log(eval_stats:dict, names_n_keys:Dict[str, list]):
 def eval_pointenv_cost_constrained_dists(
         agent:DRLDDPGLag,
         agent_g:DRLDDPGLag,
-        eval_env:SafeGoalConditionedPointWrapper, 
+        eval_env:SafeGoalConditionedPointWrapper,
+        illustration_pb_file:str, 
         num_evals:int=10,
         sample_size:int=100,
         eval_distances=[2, 5, 10, 20],
@@ -386,17 +390,21 @@ def eval_pointenv_cost_constrained_dists(
             print("[WARN] empty set for dist eval problem")
 
     cost_eval_stats = dict()
+    cost_intervals=[1.0] # override
     for ii in range(len(cost_intervals)):
-        cost_eval_pbs = sample_cost_pbs_by_agent(
-                        env=eval_env,
-                        agent=agent_g,
-                        num_states=sample_size,
-                        K=num_evals,
-                        target_val=cost_intervals[ii],
-                        min_dist=cost_min_dist,
-                        max_dist=cost_max_dist,
-                        use_uncertainty=False,
-                        ensemble_agg="mean",)
+        #cost_eval_pbs = sample_cost_pbs_by_agent(
+        #                env=eval_env,
+        #                agent=agent_g,
+        #                num_states=sample_size,
+        #                K=num_evals,
+        #                target_val=cost_intervals[ii],
+        #                min_dist=cost_min_dist,
+        #                max_dist=cost_max_dist,
+        #                use_uncertainty=False,
+        #                ensemble_agg="mean",)
+        cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
+                            env=eval_env,
+                            agent=agent,)
         if len(cost_eval_pbs) > 0:
             eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
             cost_eval_i = eval_agent_from_Q(policy=agent, 

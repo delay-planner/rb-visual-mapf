@@ -9,6 +9,11 @@ ckpt_path="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/202
 cfg_path="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/bk/bk_config.yaml"
 figdir="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/"
 
+cfg_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/bk/bk_config.yaml"
+ckpt_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/ckpt/ckpt_0140000"
+figdir="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/"
+
+
 problem_file="pud/envs/safe_pointenv/illustration_set/CentralObstacle.txt"
 
 figname="pb_CentralObstacle.jpg"
