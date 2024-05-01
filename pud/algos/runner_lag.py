@@ -143,42 +143,49 @@ def train_eval(
                 # for dists
                 field_header = "Eval Dist ~ "
                 for ii in eval_info["dists"]:
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_mean".format(eval_info["dists"][ii]["agent"]["ref"]), np.mean(eval_info["dists"][ii]["agent"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_std".format(eval_info["dists"][ii]["agent"]["ref"]), np.std(eval_info["dists"][ii]["agent"]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(eval_info["dists"][ii]["agent"]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.mean(eval_info["dists"][ii]["agent"]["pred"]),
+                        "val": -1.0*np.mean(eval_info["dists"][ii]["agent"]["vals"]),
+                        "pred_greedy": np.mean(eval_info["dists"][ii]["agent_g"]["pred"]),
+                        "val_greedy": -1.0*np.mean(eval_info["dists"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
 
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_mean".format(eval_info["dists"][ii]["agent"]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["agent"]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_std".format(eval_info["dists"][ii]["agent"]["ref"]), np.std(eval_info["dists"][ii]["agent"]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/std".format(eval_info["dists"][ii]["agent"]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.std(eval_info["dists"][ii]["agent"]["pred"]),
+                        "val": np.std(eval_info["dists"][ii]["agent"]["vals"]),
+                        "pred_greedy": np.std(eval_info["dists"][ii]["agent_g"]["pred"]),
+                        "val_greedy": np.std(eval_info["dists"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
 
                     N_success = np.array(eval_info["dists"][ii]["agent"]["success"], dtype=float)
                     if len(N_success) > 0:
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["agent"]["ref"]), success_rate, global_step=i)
-
-                    ## greedy agent
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_pred_mean".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.mean(eval_info["dists"][ii]["agent_g"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_pred_std".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.std(eval_info["dists"][ii]["agent_g"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_vals_mean".format(eval_info["dists"][ii]["agent_g"]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["agent_g"]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/greedy_vals_std".format(eval_info["dists"][ii]["agent_g"]["ref"]), np.std(eval_info["dists"][ii]["agent_g"]["vals"]), global_step=i)
-
+                
                 field_header = "Eval Cost ~ "
                 for ii in eval_info["costs"]:
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_mean".format(eval_info["costs"][ii]["agent"]["ref"]), np.mean(eval_info["costs"][ii]["agent"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_std".format(eval_info["costs"][ii]["agent"]["ref"]), np.std(eval_info["costs"][ii]["agent"]["pred"]), global_step=i)
-
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_mean".format(eval_info["costs"][ii]["agent"]["ref"]), np.mean(eval_info["costs"][ii]["agent"]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["agent"]["ref"]), np.std(eval_info["costs"][ii]["agent"]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["agent"]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info["costs"][ii]["agent"]["pred"]),
+                            "val": np.mean(eval_info["costs"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.mean(eval_info["costs"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.mean(eval_info["costs"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["agent"]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info["costs"][ii]["agent"]["pred"]),
+                            "val": np.std(eval_info["costs"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.std(eval_info["costs"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.std(eval_info["costs"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
 
                     N_success = np.array(eval_info["costs"][ii]["agent"]["success"], dtype=float)
                     if len(N_success) > 0:
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["agent"]["ref"]), success_rate, global_step=i)
                     tensorboard_writer.add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["agent"]["ref"]), len(N_success), global_step=i)
-
-                    ## greedy agent
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_pred_mean".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.mean(eval_info["costs"][ii]["agent_g"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_pred_std".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.std(eval_info["costs"][ii]["agent_g"]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_vals_mean".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.mean(eval_info["costs"][ii]["agent_g"]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/greedy_vals_std".format(eval_info["costs"][ii]["agent_g"]["ref"]), np.std(eval_info["costs"][ii]["agent_g"]["vals"]), global_step=i)
                 
                 # reset timer 
                 t_mark = time.time()
