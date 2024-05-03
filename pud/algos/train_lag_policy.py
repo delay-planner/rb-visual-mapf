@@ -33,6 +33,10 @@ if __name__ == "__main__":
         type=str,
         help="Training configuration",
     )
+    parser.add_argument("--collect_steps",
+        type=int,
+        default=-1,
+        help="override the number of steps per agent update")
     parser.add_argument("--num_iterations",
         type=int,
         default=-1,
@@ -72,6 +76,8 @@ if __name__ == "__main__":
         cfg.agent.cost_limit = args.cost_limit
     if args.num_iterations > 0:
         cfg.runner.num_iterations = args.num_iterations
+    if args.collect_steps > 0:
+        cfg.runner.collect_steps = args.collect_steps
 
     # Override cfs from terminal
     cfg.runner.verbose = args.verbose

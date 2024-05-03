@@ -22,6 +22,7 @@ illustration_pb_file="pud/envs/safe_pointenv/illustration_set/CentralObstacle.tx
 lambda_lr=0.001
 cost_limit=0
 num_iterations=600000
+collect_steps=2
 
 profile_output="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/result.prof"
 
@@ -33,6 +34,7 @@ if [[ -n ${debugger_port} ]]; then
         --wait-for-client \
         pud/algos/train_lag_policy.py \
             --cfg $config \
+            --collect_steps $collect_steps \
             --ckpt $ckpt \
             --device ${device} \
             --cost_limit $cost_limit \
@@ -44,6 +46,7 @@ else
     echo "[INFO] running in normal mode"
     python -m cProfile -o ${profile_output} pud/algos/train_lag_policy.py \
         --cfg $config \
+        --collect_steps $collect_steps \
         --ckpt $ckpt \
         --device ${device} \
         --cost_limit $cost_limit \

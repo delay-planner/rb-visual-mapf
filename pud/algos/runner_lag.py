@@ -78,6 +78,7 @@ def train_eval(
     for i in range(1, num_iterations + 1):
         pbar.update()
         
+        # the itr/s shown in tqdm is reduced by a factor of collect_steps
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(replay_buffer, iterations=opt_steps, batch_size=batch_size_opt)
