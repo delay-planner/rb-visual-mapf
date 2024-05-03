@@ -235,22 +235,23 @@ def update_train_pbs_by_metric(
         #        K=num_pbs_per_ref,
         #        ensemble_agg="max",
         #        )
-    #cost_eval_pbs = sample_cost_pbs_by_agent(
-    #        env=env,
-    #        agent=agent,
-    #        num_states=sample_size,
-    #        K=num_pbs_per_ref,
-    #        target_val=env.cost_limit,
-    #        min_dist=cost_min_dist,
-    #        max_dist=cost_max_dist,
-    #        ensemble_agg="mean",
-    #        use_uncertainty=use_uncertainty, 
-    #        uncertainty_lb=uncertainty_lb, 
-    #        uncertainty_ub=uncertainty_ub, 
-    #        )
-    cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
+    target_cost = np.random.uniform(low=agent.lagrange.cost_limit, high=4.0)
+    cost_eval_pbs = sample_cost_pbs_by_agent(
             env=env,
-            agent=agent,)
+            agent=agent,
+            num_states=sample_size,
+            K=num_pbs_per_ref,
+            target_val=target_cost,
+            min_dist=cost_min_dist,
+            max_dist=cost_max_dist,
+            ensemble_agg="mean",
+            use_uncertainty=use_uncertainty, 
+            uncertainty_lb=uncertainty_lb, 
+            uncertainty_ub=uncertainty_ub, 
+            )
+    #cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
+    #        env=env,
+    #        agent=agent,)
     new_train_pbs.extend(cost_eval_pbs)
     env.set_pbs(pb_list=new_train_pbs)
 
@@ -319,81 +320,81 @@ def eval_pointenv_cost_constrained_dists(
     
     dist_eval_stats = dict()
 
-    for ii_d in range(len(eval_distances)):
-        pbs = sample_pbs_by_agent(env=eval_env, 
-                agent=agent_g, 
-                num_states=sample_size,
-                target_val=eval_distances[ii_d],
-                K=num_evals,
-                min_dist=0,
-                max_dist=20,
-                use_uncertainty=False,
-                ensemble_agg="mean",
-                )
-        if len(pbs) > 0:
-            eval_env.append_pbs(pb_list=deepcopy(pbs))
-            dist_eval_i = eval_agent_from_Q(policy=agent, 
-                            eval_env=eval_env, 
-                            collect_trajs=collect_trajs,
-                            )
-            eval_env.append_pbs(pb_list=deepcopy(pbs))
-            dist_eval_i_g = eval_agent_from_Q(policy=agent_g, 
-                            eval_env=eval_env, 
-                            collect_trajs=collect_trajs,
-                            )
-            if collect_trajs:
-                vis_dir.mkdir(parents=True, exist_ok=True)
-                start_list = [p["start"].tolist() for p in pbs]
-                goal_list = [p["goal"].tolist() for p in pbs]
-                fig, ax = plt.subplots()
-                ax = visualize_eval_records(
-                        eval_records=dist_eval_i,
-                        eval_env=eval_env,
-                        ax=ax,
-                        starts=start_list,
-                        goals=goal_list,
-                        color="g",
-                        )
-                ax = visualize_eval_records(
-                        eval_records=dist_eval_i_g,
-                        eval_env=eval_env,
-                        ax=ax,
-                        starts=start_list,
-                        goals=goal_list,
-                        color="r",
-                        )
-                ax.legend()
-                ax.set_title("target dist ~ {}".format(eval_distances[ii_d]))
-                figname = "dist={:0>2d}.jpg".format(eval_distances[ii_d])
-                fig.savefig(vis_dir.joinpath(figname), dpi=300)
-                plt.close(fig=fig)
-            dist_eval_stats[ii_d] = {}
-            dist_logs = gather_log(eval_stats=dist_eval_i, 
-                        names_n_keys={
-                            "attr_vals": ["rewards"],
-                            "attr_pred": ["init_info", "prediction"],
-                            "success_hist": ["success"],
-                            })
-            dist_eval_stats[ii_d]["agent"] = {
-                "vals": dist_logs["attr_vals"],
-                "pred": dist_logs["attr_pred"],
-                "ref": eval_distances[ii_d],
-                "success": dist_logs["success_hist"],
-            }
-            dist_logs_g = gather_log(eval_stats=dist_eval_i_g, 
-                        names_n_keys={
-                            "attr_vals": ["rewards"],
-                            "attr_pred": ["init_info", "prediction"],
-                            "success_hist": ["success"],
-                            })
-            dist_eval_stats[ii_d]["agent_g"] = {
-                "vals": dist_logs_g["attr_vals"],
-                "pred": dist_logs_g["attr_pred"],
-                "ref": eval_distances[ii_d],
-                "success": dist_logs_g["success_hist"],
-            }
-        else:
-            print("[WARN] empty set for dist eval problem")
+    #for ii_d in range(len(eval_distances)):
+    #    pbs = sample_pbs_by_agent(env=eval_env, 
+    #            agent=agent_g, 
+    #            num_states=sample_size,
+    #            target_val=eval_distances[ii_d],
+    #            K=num_evals,
+    #            min_dist=0,
+    #            max_dist=20,
+    #            use_uncertainty=False,
+    #            ensemble_agg="mean",
+    #            )
+    #    if len(pbs) > 0:
+    #        eval_env.append_pbs(pb_list=deepcopy(pbs))
+    #        dist_eval_i = eval_agent_from_Q(policy=agent, 
+    #                        eval_env=eval_env, 
+    #                        collect_trajs=collect_trajs,
+    #                        )
+    #        eval_env.append_pbs(pb_list=deepcopy(pbs))
+    #        dist_eval_i_g = eval_agent_from_Q(policy=agent_g, 
+    #                        eval_env=eval_env, 
+    #                        collect_trajs=collect_trajs,
+    #                        )
+    #        if collect_trajs:
+    #            vis_dir.mkdir(parents=True, exist_ok=True)
+    #            start_list = [p["start"].tolist() for p in pbs]
+    #            goal_list = [p["goal"].tolist() for p in pbs]
+    #            fig, ax = plt.subplots()
+    #            ax = visualize_eval_records(
+    #                    eval_records=dist_eval_i,
+    #                    eval_env=eval_env,
+    #                    ax=ax,
+    #                    starts=start_list,
+    #                    goals=goal_list,
+    #                    color="g",
+    #                    )
+    #            ax = visualize_eval_records(
+    #                    eval_records=dist_eval_i_g,
+    #                    eval_env=eval_env,
+    #                    ax=ax,
+    #                    starts=start_list,
+    #                    goals=goal_list,
+    #                    color="r",
+    #                    )
+    #            ax.legend()
+    #            ax.set_title("target dist ~ {}".format(eval_distances[ii_d]))
+    #            figname = "dist={:0>2d}.jpg".format(eval_distances[ii_d])
+    #            fig.savefig(vis_dir.joinpath(figname), dpi=300)
+    #            plt.close(fig=fig)
+    #        dist_eval_stats[ii_d] = {}
+    #        dist_logs = gather_log(eval_stats=dist_eval_i, 
+    #                    names_n_keys={
+    #                        "attr_vals": ["rewards"],
+    #                        "attr_pred": ["init_info", "prediction"],
+    #                        "success_hist": ["success"],
+    #                        })
+    #        dist_eval_stats[ii_d]["agent"] = {
+    #            "vals": dist_logs["attr_vals"],
+    #            "pred": dist_logs["attr_pred"],
+    #            "ref": eval_distances[ii_d],
+    #            "success": dist_logs["success_hist"],
+    #        }
+    #        dist_logs_g = gather_log(eval_stats=dist_eval_i_g, 
+    #                    names_n_keys={
+    #                        "attr_vals": ["rewards"],
+    #                        "attr_pred": ["init_info", "prediction"],
+    #                        "success_hist": ["success"],
+    #                        })
+    #        dist_eval_stats[ii_d]["agent_g"] = {
+    #            "vals": dist_logs_g["attr_vals"],
+    #            "pred": dist_logs_g["attr_pred"],
+    #            "ref": eval_distances[ii_d],
+    #            "success": dist_logs_g["success_hist"],
+    #        }
+    #    else:
+    #        print("[WARN] empty set for dist eval problem")
 
     cost_eval_stats = dict()
     cost_intervals=[1.0] # override

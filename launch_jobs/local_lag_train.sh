@@ -17,10 +17,13 @@ cd "${project_root}"
 #debugger_port=5679
 illustration_pb_file="pud/envs/safe_pointenv/illustration_set/CentralObstacle.txt"
 
-additional_comment=""
+#additional_comment="uniformly sample the training cost target at training problem generation, test set is isolated"
 
 lambda_lr=0.001
 cost_limit=0
+num_iterations=600000
+
+profile_output="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/result.prof"
 
 if [[ -n ${debugger_port} ]]; then
     echo "[INFO] running in debug mode"
@@ -35,19 +38,18 @@ if [[ -n ${debugger_port} ]]; then
             --cost_limit $cost_limit \
             --illustration_pb_file $illustration_pb_file \
             --lambda_lr $lambda_lr \
-            --additional_comment $additional_comment \
             --visual \
             --pbar
 else
     echo "[INFO] running in normal mode"
-    python pud/algos/train_lag_policy.py \
+    python -m cProfile -o ${profile_output} pud/algos/train_lag_policy.py \
         --cfg $config \
         --ckpt $ckpt \
         --device ${device} \
         --cost_limit $cost_limit \
         --illustration_pb_file $illustration_pb_file \
         --lambda_lr $lambda_lr \
-        --additional_comment $additional_comment \
+        --num_iterations $num_iterations \
         --visual \
         --pbar
 fi

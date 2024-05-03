@@ -15,7 +15,7 @@ from pud.ddpg import GoalConditionedCritic
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper, 
+    SafeGoalConditionedPointWrapper,
     SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointBlendWrapper,
     safe_env_load_fn,
@@ -33,6 +33,10 @@ if __name__ == "__main__":
         type=str,
         help="Training configuration",
     )
+    parser.add_argument("--num_iterations",
+        type=int,
+        default=-1,
+        help="override num of iterations")
     parser.add_argument("--cost_limit",
         type=float,
         default=-1,
@@ -66,6 +70,8 @@ if __name__ == "__main__":
         cfg.agent.lambda_lr = args.lambda_lr
     if args.cost_limit >= 0:
         cfg.agent.cost_limit = args.cost_limit
+    if args.num_iterations > 0:
+        cfg.runner.num_iterations = args.num_iterations
 
     # Override cfs from terminal
     cfg.runner.verbose = args.verbose
