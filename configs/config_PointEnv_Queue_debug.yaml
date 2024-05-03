@@ -50,6 +50,9 @@ runner:
     verbose: false
     sample_size: 50
     num_train_pbs_per_ref: 10
-    cost_min_dist: 1.0
-    cost_max_dist: 10.0
+    cost_min_dist: 0.0
+    cost_max_dist: 5.0
+    use_uncertainty: true
+    uncertainty_ub: 1.0
+    uncertainty_lb: 0.0
 seed: 0
