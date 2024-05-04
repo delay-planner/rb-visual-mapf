@@ -183,23 +183,21 @@ class SafePointEnv (PointEnv):
         self.cost_function = None
 
         t0 = time.time()
-        if cost_fn_name == 'cosine':
-            import functools
 
+        if cost_fn_name: 
+            import functools   
             from pud.envs.safe_pointenv.cost_functions import \
-                cost_from_cosine_distance
-            self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
+                    cost_from_cosine_distance, cost_from_linear_distance     
+            if cost_fn_name == "cosine":
+                self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
+            elif cost_fn_name == "linear":
+                self.cost_function = functools.partial(cost_from_linear_distance, r=self.cost_f_cfg['radius'])
+            else:
+                raise Exception("Unsupported cost function")
 
             # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
             self._cost_map = self.build_cost_map()
             
-            # safe apsp is deprecated, replaced with cbfs grid policies
-            #self._safe_apsp = {}
-
-            # compute an conservative (upper-bound) apsp (step cost_limit = 0), this can be used to quickly estimate the distance between two states, and the cost of trajectory = 0
-            #self._safe_apsp["ub"] = self._compute_safe_apsp(self._walls, self._cost_map, cost_limit=0.0)
-            # compute an lower-bound apsp, so the accurate accumulated cost fallws between the two
-            #self._safe_apsp["lb"] = self._compute_safe_apsp(self._walls, self._cost_map, cost_limit=self.cost_limit)
         self.safe_empty_states = self.gather_safe_empty_states(self.cost_limit)
         self.reset()
         print("[INFO] SafePointEnv setup: {} s".format(time.time() - t0))
