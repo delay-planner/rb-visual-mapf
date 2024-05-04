@@ -4,7 +4,7 @@ Evaluate the accuracy and reliability of reward and cost critics
 
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -15,12 +15,10 @@ from tqdm.auto import tqdm
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.data_struct import dict_expand, init_embedded_dict
+from pud.algos.data_struct import dict_expand
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.envs.safe_pointenv.pb_sampler import (calc_pairwise_cost,
-                                               calc_pairwise_dist,
-                                               sample_cost_pbs_by_agent,
-                                               sample_pbs_by_agent)
+from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
+    sample_pbs_by_agent, load_pb_set)
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper)
 from pud.policies import GaussianPolicy
@@ -45,25 +43,27 @@ def train_eval(
     eval_distances=[2, 5, 10], # reference grouping based on estimated distances
     eval_cost_intervals=[0., 0.5, 1.0], # grouping cost eval results
     tensorboard_writer:Optional[SummaryWriter]=None,
-    warmup_epochs:int =100,
     num_eval_episodes:int=10,
     pbar=True,
     sample_size:int=100,
     num_train_pbs_per_ref:int=10,
     cost_min_dist:float = 1.0,
     cost_max_dist:float = 10.0,
-    use_uncertainty:bool = True,
     uncertainty_ub:float = 1.0,
     uncertainty_lb:float = 0.0,
+    turn_on_lag:bool = False,
     verbose=True,
     ckpt_dir:Path=Path(""),
     vis_dir:Path=Path(""),
+    illustration_pb_file="",
     i_start:int=1,
+    warmup_epochs:int=200,
+    use_uncertainty:bool=True,
     ):
     """train constrained RL agent"""
     env.set_verbose(False) # too much warn msgs due to empty queue
     env.set_use_q(True)
-    agent.set_lag_status(turn_on_lag=False)
+    agent.set_lag_status(turn_on_lag=turn_on_lag)
 
     collector = Collector(policy, replay_buffer, env, initial_collect_steps=initial_collect_steps)
     
@@ -145,24 +145,35 @@ def train_eval(
                 # for dists
                 field_header = "Eval Dist ~ "
                 for ii in eval_info["dists"]:
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_mean".format(eval_info["dists"][ii]["ref"]), np.mean(eval_info["dists"][ii]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/pred_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["pred"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(eval_info["dists"][ii]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.mean(eval_info["dists"][ii]["pred"]),
+                        "val": -1.0*np.mean(eval_info["dists"][ii]["vals"]),
+                        }, global_step=i)
 
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_mean".format(eval_info["dists"][ii]["ref"]), -1.0*np.mean(eval_info["dists"][ii]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:0>2d}/vals_std".format(eval_info["dists"][ii]["ref"]), np.std(eval_info["dists"][ii]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/std".format(eval_info["dists"][ii]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.std(eval_info["dists"][ii]["pred"]),
+                        "val": np.std(eval_info["dists"][ii]["vals"]),
+                        }, global_step=i)
 
                     N_success = np.array(eval_info["dists"][ii]["success"], dtype=float)
                     if len(N_success) > 0:
                         success_rate = np.sum(N_success) / len(N_success)
                         tensorboard_writer.add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
-
+                
                 field_header = "Eval Cost ~ "
                 for ii in eval_info["costs"]:
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["pred"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/pred_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["pred"]), global_step=i)
-
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_mean".format(eval_info["costs"][ii]["ref"]), np.mean(eval_info["costs"][ii]["vals"]), global_step=i)
-                    tensorboard_writer.add_scalar(field_header+"{:.2f}/vals_std".format(eval_info["costs"][ii]["ref"]), np.std(eval_info["costs"][ii]["vals"]), global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info["costs"][ii]["pred"]),
+                            "val": np.mean(eval_info["costs"][ii]["vals"]),
+                        }, global_step=i)
+                    tensorboard_writer.add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info["costs"][ii]["pred"]),
+                            "val": np.std(eval_info["costs"][ii]["vals"]),
+                        }, global_step=i)
 
                     N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
                     if len(N_success) > 0:
@@ -374,14 +385,6 @@ def eval_pointenv_cost_constrained_dists(
                 figname = "cost={:.2f}.jpg".format(cost_intervals[ii])
                 fig.savefig(vis_dir.joinpath(figname), dpi=300)
                 plt.close(fig=fig)
-            #cost_eval_i = eval_agent_by_metric(
-            #            agent=agent, 
-            #            eval_env=eval_env, 
-            #            num_evals=num_evals, 
-            #            sample_size=sample_size, 
-            #            target_val=cost_intervals[ii], 
-            #            pval_f=calc_pairwise_cost,
-            #            ensemble_agg="mean")
             cost_logs = gather_log(eval_stats=cost_eval_i, 
                         names_n_keys={
                             "attr_vals": ["cum_costs"],

@@ -7,21 +7,22 @@ agent:
     tau: 0.05
     use_distributional_rl: true
     # cost configs
-    cost_limit: 1.0
+    cost_limit: 10.0
     cost_min: 0.0
-    cost_max: 2.0
-    cost_N: 40
+    cost_max: 20
+    cost_N: 20
     cost_critic_lr: 0.001
     lambda_lr: 0.001
     lambda_optimizer: "Adam"
 ckpt_dir: ./workdirs/train_CentralObstacle/
 #ckpt_dir: ./workdirs/debug_FourRooms/
 env:
-    #walls: CentralObstacle
-    walls: FourRooms
+    walls: CentralObstacle
+    # walls: FourRooms
     resize_factor: 5
     thin: false
-    cost_limit: 1.0
+    # only step-wise max limit, to prune unnecessary calculation
+    cost_limit: 20.0
 wrappers:
     SafeGoalConditionedPointQueueWrapper:
         prob_constraint: 0.5
@@ -33,13 +34,13 @@ wrappers:
 time_limit:
     max_episode_steps: 20
 cost_function:
-    name: "cosine"
-    radius: 2.0
+    name: "linear"
+    radius: 25.0
 replay_buffer:
     max_size: 1000
 runner:
     batch_size_opt: 64
-    collect_steps: 2
+    collect_steps: 10
     eval_interval: 1000
     initial_collect_steps: 1000
     num_eval_episodes: 10
@@ -47,12 +48,12 @@ runner:
     opt_steps: 1
     warmup_epochs: 1000
     eval_distances: [2, 5, 10]
-    eval_cost_intervals: [0.0, 0.25, 0.5, 1.0]
+    eval_cost_intervals: [5, 10, 20]
     verbose: false
     sample_size: 50
-    num_train_pbs_per_ref: 10
-    cost_min_dist: 1.0
-    cost_max_dist: 6.0
+    num_train_pbs_per_ref: 20
+    cost_min_dist: 0.0
+    cost_max_dist: 5.0
     use_uncertainty: true
     uncertainty_ub: 1.0
     uncertainty_lb: 0.0

@@ -1,7 +1,6 @@
 import yaml
 import torch
 import argparse
-import numpy as np
 from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -46,6 +45,25 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="override the start iteration index, for resume training")
+    parser.add_argument("--collect_steps",
+        type=int,
+        default=-1,
+        help="override the number of steps per agent update")
+    parser.add_argument("--num_iterations",
+        type=int,
+        default=-1,
+        help="override num of iterations")
+    parser.add_argument("--cost_limit",
+        type=float,
+        default=-1,
+        help="override cost limit")
+    parser.add_argument("--lambda_lr",
+        type=float,
+        default=-1,
+        help="override lagrange lr")
+    parser.add_argument("--illustration_pb_file",
+        type=str,
+        help="problems that serve as illustration and evaluation set")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -69,6 +87,14 @@ if __name__ == "__main__":
         cfg.agent.cost_max = args.cost_max
     if args.cost_N > 0:
         cfg.agent.cost_N = args.cost_N
+    if args.lambda_lr > 0:
+        cfg.agent.lambda_lr = args.lambda_lr
+    if args.cost_limit >= 0:
+        cfg.agent.cost_limit = args.cost_limit
+    if args.num_iterations > 0:
+        cfg.runner.num_iterations = args.num_iterations
+    if args.collect_steps > 0:
+        cfg.runner.collect_steps = args.collect_steps
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()
@@ -109,7 +135,6 @@ if __name__ == "__main__":
     set_env_seed(eval_env, cfg.seed + 2)
 
     obs_dim = env.observation_space["observation"].shape[0]  # type: ignore
-
     goal_dim = obs_dim
     state_dim = obs_dim + goal_dim
     action_dim = env.action_space.shape[0]
@@ -152,6 +177,8 @@ if __name__ == "__main__":
     log_dir = log_dir.joinpath(date_time)
     ckpt_dir = log_dir.joinpath("ckpt")
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    tfevent_dir = log_dir.joinpath("tfevent")
+    tfevent_dir.mkdir(parents=True, exist_ok=True)
     vis_dir = None
     if args.visual:
         vis_dir = log_dir.joinpath("visual")
@@ -160,12 +187,15 @@ if __name__ == "__main__":
     bk_dir.mkdir(parents=True, exist_ok=True)
     with open(bk_dir.joinpath("bk_config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    tb = SummaryWriter(log_dir=log_dir.as_posix())
+    
+    tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
 
     from pud.policies import GaussianPolicy
     # gaussian policy seems just add exploration noise, the evaluation code
     # does not use it
     policy = GaussianPolicy(agent)
+
+    turn_on_lag = False
 
     train_eval(policy,
             agent,
@@ -178,6 +208,8 @@ if __name__ == "__main__":
             ckpt_dir=ckpt_dir,
             vis_dir=vis_dir,
             i_start=args.i_start,
+            turn_on_lag=turn_on_lag,
+            illustration_pb_file=args.illustration_pb_file,
             **cfg.runner,
             )
     torch.save(agent.state_dict(), 
