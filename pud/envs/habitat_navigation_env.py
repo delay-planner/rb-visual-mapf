@@ -348,17 +348,10 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         self._threshold_distance = threshold_distance
         super(GoalConditionedHabitatPointWrapper, self).__init__(env)
 
-        simulator_bounds = env._simulator.pathfinder.get_bounds()
-        simulator_bounds_lb = np.array([simulator_bounds[0][2], simulator_bounds[0][0]])
-        simulator_bounds_ub = np.array([simulator_bounds[1][2], simulator_bounds[1][0]])
         self.observation_space = gym.spaces.Dict(
             {
                 "observation": env.observation_space,
-                "goal": gym.spaces.Box(
-                    low=simulator_bounds_lb,
-                    high=simulator_bounds_ub,
-                    dtype=np.float32,
-                ),
+                "goal": env.observation_space,
             }
         )
 
@@ -480,10 +473,24 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             count += 1
             if count > 1000:
                 print("WARNING: Unable to find goal within constraints.")
-        self._goal = goal
+
+        # Set the agent's position to the sampled goal's position and extract the observations.
+        # Remember to reset the agent's position to the original position after extracting the goal observations.
+        self.goal_observation = np.zeros(
+            (4, self._height, self._width, 4), dtype=np.uint8
+        )
+        agent_current_position = self.env._get_agent_position()
+        self.env._update_agent_position(goal)
+        goal_observations = self._simulator.get_sensor_observations()
+        for idx, (key, value) in enumerate(goal_observations.items()):
+            assert value.shape == (self._height, self._width, 4)  # type: ignore
+            self._goal_observation[idx] = value
+        self._goal_position = goal
+
+        self.env._update_agent_position(agent_current_position)
         return {
             "observation": obs,
-            "goal": self._goal,
+            "goal": self._goal_observation,
         }
 
     def step(self, action: NDArray) -> Tuple[Dict, float, bool, Dict]:
@@ -495,7 +502,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         return (
             {
                 "observation": obs,
-                "goal": self._goal,
+                "goal": self._goal_observation,
             },
             rew,
             done,
