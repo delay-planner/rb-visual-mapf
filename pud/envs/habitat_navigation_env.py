@@ -476,14 +476,14 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
         # Set the agent's position to the sampled goal's position and extract the observations.
         # Remember to reset the agent's position to the original position after extracting the goal observations.
-        self.goal_observation = np.zeros(
-            (4, self._height, self._width, 4), dtype=np.uint8
+        self._goal_observation = np.zeros(
+            (4, self.env._height, self.env._width, 4), dtype=np.uint8
         )
         agent_current_position = self.env._get_agent_position()
         self.env._update_agent_position(goal)
-        goal_observations = self._simulator.get_sensor_observations()
+        goal_observations = self.env._simulator.get_sensor_observations()
         for idx, (key, value) in enumerate(goal_observations.items()):
-            assert value.shape == (self._height, self._width, 4)  # type: ignore
+            assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
             self._goal_observation[idx] = value
         self._goal_position = goal
 
