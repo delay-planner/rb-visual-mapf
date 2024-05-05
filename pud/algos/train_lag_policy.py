@@ -52,10 +52,6 @@ if __name__ == "__main__":
     parser.add_argument("--illustration_pb_file",
         type=str,
         help="problems that serve as illustration and evaluation set")
-    parser.add_argument("--additional_comment",
-        type=str,
-        default="",
-        help="store additional comment in a new file under the training directory")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -195,10 +191,6 @@ if __name__ == "__main__":
 
 
     tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
-
-    if len(args.additional_comment) > 0:
-        with open(log_dir.joinpath("extra_notes.txt").as_posix(), mode="w", encoding="utf-8", errors="strict") as f:
-            f.write(args.additional_comment)
 
     from pud.policies import GaussianPolicy
     # gaussian policy seems just add exploration noise, the evaluation code
