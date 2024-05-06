@@ -18,8 +18,14 @@ ckpt_dir: ./workdirs/train_HabitatSkokloster/
 env:
     height: 0.0
     scene: "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
-    # apsp_path: "/home/mers-pluto/Desktop/Work/cc-sorb-rev/pud/envs/safe_habitatenv/apsp.pkl"
+    apsp_path: "/home/mers-pluto/Desktop/Work/cc-sorb-rev/apsp.pkl"
     cost_limit: 1.0
+    simulator_settings:
+        scene: "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
+        width: 64
+        height: 64
+        default_agent: 0
+        sensor_height: 1.5
 wrappers:
     SafeGoalConditionedHabitatPointWrapper:
         min_dist: 0 
