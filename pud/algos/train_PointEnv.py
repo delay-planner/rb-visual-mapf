@@ -29,6 +29,14 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="terminal override of training env")
+    parser.add_argument("--cost_name",
+        type=str,
+        default="",
+        help="override cost type")
+    parser.add_argument("--cost_radius",
+        type=float,
+        default=-1,
+        help="override cost type")
     parser.add_argument("--cost_max",
         type=float,
         default=-1,
@@ -83,6 +91,10 @@ if __name__ == "__main__":
         cfg.env.walls = args.env
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
+    if len(args.cost_name) > 0:
+        cfg.cost_function.name = args.cost_name
+    if args.cost_radius > 0:
+        cfg.cost_function.radius = args.cost_radius
     if args.cost_max > 0:
         cfg.agent.cost_max = args.cost_max
     if args.cost_N > 0:

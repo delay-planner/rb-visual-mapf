@@ -169,8 +169,12 @@ class DRLDDPGLag(UVFDDPG):
                 actor_loss_r = -self.get_q_values(state)
                 actor_loss = 0.0 # placeholder
                 if self.lagrange_on:
-                    actor_loss_c = self.get_cost_q_values(state) * self.lagrange.lagrangian_multiplier.item()
-                    actor_loss =  (actor_loss_r + actor_loss_c).mean() / (1 + self.lagrange.lagrangian_multiplier.item())
+                    actor_loss_c = self.get_cost_q_values(state)
+                    # todo: figure out whether the masked version is better, it should enforce a <= constraint?
+                    mask_loss_c = actor_loss_c > self.lagrange.cost_limit
+                    lag = self.lagrange.lagrangian_multiplier.item()
+                    masked_actor_loss_c = (actor_loss_c * mask_loss_c).mean() * lag
+                    actor_loss =  (actor_loss_r.mean() + masked_actor_loss_c) / (1 + lag)
                 else:
                     actor_loss = actor_loss_r.mean() # debug training, drop lagrange
                 # Optimize the actor 
