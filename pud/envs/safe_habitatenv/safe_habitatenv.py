@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 from numpy.typing import NDArray
 from matplotlib.axes import Axes
 from typing import Tuple, Dict, Union
-
+import argparse
+import os
+from pathlib import Path
 from pud.envs.habitat_navigation_env import HabitatNavigationEnv
 
 
@@ -287,11 +289,22 @@ def display_map(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test_scene",
+        type=str,
+        default="skokloster-castle.glb",
+        help="test scene name")
+
+    args = parser.parse_args()
 
     scene = (
-        "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/"
+        "external_data/scene_datasets/"
         "habitat-test-scenes/skokloster-castle.glb"
     )
+    env_var = "HATBITAT_DATA_DIR"
+    if env_var in os.environ:
+        scene = (Path(os.environ[env_var]).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
+
     env = SafeHabitatNavigationEnv(
         scene=scene,
         height=0,
