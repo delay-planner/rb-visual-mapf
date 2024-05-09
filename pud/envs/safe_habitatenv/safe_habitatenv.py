@@ -21,10 +21,17 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         # Cost specific arguments
         cost_fn_args: dict = {},
         cost_limit: float = 0.5,
-        verbose: bool = False,
+        use_gpu: bool = False,
     ):
 
-        super().__init__(scene, height, action_noise, simulator_settings, apsp_path)
+        super().__init__(
+            scene=scene, 
+            height=height, 
+            action_noise=action_noise, 
+            simulator_settings=simulator_settings, 
+            apsp_path=apsp_path,
+            use_gpu=use_gpu,
+            )
 
         self.scene = scene
         self.cost_function = None
