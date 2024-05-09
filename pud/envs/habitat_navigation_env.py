@@ -71,7 +71,7 @@ class HabitatNavigationEnv(gym.Env):
         assert self._simulator.pathfinder.is_loaded
 
         # Simulator's top-down visualizer's parameters
-        self._meters_per_pixel = 0.1
+        self._meters_per_pixel = 0.4
         if height is not None:
             self._vertical_slice = height
         else:
