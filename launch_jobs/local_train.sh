@@ -3,8 +3,8 @@
 #env="FourRooms"
 env="CentralObstacle"
 
-comment="cost_limit=20"
-SLURM_JOB_ID=local
+comment="cost_limit=10"
+SLURM_JOB_ID=local0002
 experiment_dir="runs/results"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
@@ -26,6 +26,9 @@ cd "${project_root}"
 #cost_max=
 #cost_N=
 
+cost_name="linear"
+cost_radius=10.0
+
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
 if [[ -n ${debugger_port} ]]; then
@@ -46,6 +49,8 @@ else
     python pud/algos/train_PointEnv.py \
         --cfg $config \
         --env $env \
+        --cost_name $cost_name \
+        --cost_radius $cost_radius \
         --logdir ${log_dir} \
         --device ${device} \
         --visual \

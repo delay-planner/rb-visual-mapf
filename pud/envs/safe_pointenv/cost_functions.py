@@ -49,7 +49,7 @@ def cost_from_cosine_distance(d:Union[float, np.ndarray], r:float) -> Union[floa
 
 
 if __name__ == "__main__":
-    r = 40.0
+    r = 5
     #d = np.linspace(0, 2*r, 100)
     d = np.linspace(0, 50, 100)
     #Jc = cost_from_cosine_distance(d, r)
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     Jc_2 = cost_from_cosine_distance(0.0, 2.0)
 
     import functools
-    cost_f = functools.partial(cost_from_cosine_distance, r=20.0)
+    cost_f = functools.partial(cost_from_cosine_distance, r=r)
 
     from pathlib import Path
     out_dir = Path("pud/envs/safe_pointenv")

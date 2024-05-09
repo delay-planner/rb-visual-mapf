@@ -1,10 +1,17 @@
 import unittest
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv, plot_safe_walls, plot_maze_grid_points
-from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
 from copy import deepcopy
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm.auto import tqdm
+
+from pud.envs.safe_pointenv.safe_pointenv import (SafePointEnv,
+                                                  plot_maze_grid_points,
+                                                  plot_safe_walls)
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointQueueWrapper, SafeGoalConditionedPointWrapper,
+    safe_env_load_fn)
 
 """
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_env_load_fn
@@ -37,7 +44,7 @@ class TestSafePointEnv(unittest.TestCase):
         """
         env_args = deepcopy(self.env_kwargs)
         env_args.update(self.precompilation_kwargs)
-        gym_env_wrappers = [SafeGoalConditionedPointWrapper]
+        gym_env_wrappers = [SafeGoalConditionedPointQueueWrapper]
         env = safe_env_load_fn(env_args,
                         self.cost_f_kwargs,
                         max_episode_steps=20,
@@ -48,7 +55,8 @@ class TestSafePointEnv(unittest.TestCase):
         new_state, info = env.reset()
         self.assertTrue("cost" in info)
 
-        for _ in range(40):
+        num_steps = int(1e6)
+        for _ in tqdm(range(int(1e6)), total=num_steps):
             at = env.action_space.sample()
             next_state, rew, done, info = env.step(at)
             self.assertTrue("cost" in info)
