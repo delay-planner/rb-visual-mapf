@@ -4,6 +4,7 @@ import gym.spaces
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 import habitat_sim
 from numpy.typing import NDArray
@@ -21,9 +22,11 @@ class HabitatNavigationEnv(gym.Env):
         action_noise: float = 1.0,
         simulator_settings: dict = {},
         apsp_path: Union[str, None] = None,
+        use_gpu:bool=False,
     ):
 
         self._scene = scene
+        self.use_gpu = use_gpu
 
         if not simulator_settings:
             # If simulator settings were not specified then use the default settings
@@ -104,6 +107,8 @@ class HabitatNavigationEnv(gym.Env):
 
         simulator_cfg = habitat_sim.SimulatorConfiguration()
         simulator_cfg.scene_id = self._simulator_settings["scene"]
+        if not self.use_gpu:
+            simulator_cfg.gpu_device_id = -1
 
         # Generate a default RBG camera specification and attach it to each robot
         rgb_sensor_spec_forward = habitat_sim.sensor.CameraSensorSpec()
@@ -245,7 +250,7 @@ class HabitatNavigationEnv(gym.Env):
 
         # dist[i, j, k, l] is path from (i, j) -> (k, l)
         dist = np.full((height, width, height, width), np.float32("inf"))
-        for (i1, j1), dist_dict in nx.shortest_path_length(g):
+        for (i1, j1), dist_dict in tqdm(nx.shortest_path_length(g), total=len(g.nodes())):
             for (i2, j2), d in dist_dict.items():
                 dist[i1, j1, i2, j2] = d
         return dist
@@ -572,10 +577,23 @@ def set_habitat_env_difficulty(eval_env: gym.Env, difficulty: float):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test_scene",
+        type=str,
+        default="skokloster-castle.glb",
+        help="test scene name")
 
+    args = parser.parse_args()
+    import os
+    from pathlib import Path
     scene = (
-        "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/"
+        "external_data/scene_datasets/"
         "habitat-test-scenes/skokloster-castle.glb"
     )
+    env_var = "HATBITAT_DATA_DIR"
+    if env_var in os.environ:
+        scene = (Path(os.environ[env_var]).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
+
     env = habitat_env_load_fn(scene=scene, height=0)
     display_map(env.walls, "Skokloster Castle")  # type: ignore
