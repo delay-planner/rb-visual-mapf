@@ -6,10 +6,14 @@ class ReplayBuffer:
         self.ptr = 0
         self.size = 0
 
-        self.observation = np.zeros((max_size, obs_dim))
-        self.goal = np.zeros((max_size, goal_dim))
-        self.next_observation = np.zeros((max_size, obs_dim))
-        self.next_goal = np.zeros((max_size, goal_dim))
+        if isinstance(obs_dim, tuple):
+            obs_shape = (max_size, *obs_dim)
+        else:
+            obs_shape = (max_size, obs_dim)
+        self.observation = np.zeros(obs_shape)
+        self.goal = np.zeros(obs_shape)
+        self.next_observation = np.zeros(obs_shape)
+        self.next_goal = np.zeros(obs_shape)
         self.action = np.zeros((max_size, action_dim))
         self.reward = np.zeros((max_size, 1))
         self.done = np.zeros((max_size, 1))

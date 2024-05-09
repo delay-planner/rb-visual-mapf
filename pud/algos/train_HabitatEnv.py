@@ -7,10 +7,10 @@ from datetime import datetime
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.policies import GaussianPolicy
-from pud.ddpg import GoalConditionedCritic
 from pud.algos.crl_runner_v2 import train_eval
 from pud.utils import set_env_seed, set_global_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
+from pud.ddpg import GoalConditionedCritic, AutoEncoder
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
@@ -80,9 +80,12 @@ if __name__ == "__main__":
     set_env_seed(eval_env, cfg.seed + 2)
 
     # TODO: Need to be able to consume this observation data
-    obs_dim = env.observation_space["observation"].shape[0]  # type: ignore
-    goal_dim = env.observation_space["goal"].shape[0]  # type: ignore
-    state_dim = obs_dim + goal_dim
+    latent_dimensions = 512
+    obs_dim = env.observation_space["observation"].shape  # type: ignore
+    goal_dim = env.observation_space["goal"].shape  # type: ignore
+    state_dim = (
+        latent_dimensions * obs_dim[0] * 2
+    )  # For each image along cardinal directions and the same for the goal
 
     action_dim = env.action_space.shape[0]  # type: ignore
     max_action = float(env.action_space.high[0])  # type: ignore
@@ -95,6 +98,10 @@ if __name__ == "__main__":
         f"Max action: {max_action}"
     )
 
+    image_params = {
+        "input_channels": obs_dim[-1],
+    }
+
     agent = DRLDDPGLag(
         state_dim,
         action_dim,
@@ -102,6 +109,10 @@ if __name__ == "__main__":
         CriticCls=GoalConditionedCritic,
         device=torch.device(cfg.device),
         **cfg.agent,
+        # AutoEncoderCls=AutoEncoder,
+        # obs_dim=obs_dim,
+        # latent_dimension=latent_dimensions,
+        image_params=image_params,
     )
     agent.to(torch.device(args.device))
 
