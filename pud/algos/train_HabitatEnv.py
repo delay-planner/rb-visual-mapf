@@ -66,6 +66,10 @@ if __name__ == "__main__":
         type=float,
         default=-1,
         help="override lagrange lr")
+    parser.add_argument("--apsp_path",
+        type=str,
+        default="",
+        help="supply pre-computed apsp path")
     parser.add_argument("--illustration_pb_file",
         type=str,
         help="problems that serve as illustration and evaluation set")
@@ -103,6 +107,8 @@ if __name__ == "__main__":
         cfg.runner.num_iterations = args.num_iterations
     if args.collect_steps > 0:
         cfg.runner.collect_steps = args.collect_steps
+    if len(args.apsp_path) > 0:
+        cfg.env.apsp_path = args.apsp_path
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()
