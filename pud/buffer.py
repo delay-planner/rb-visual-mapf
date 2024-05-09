@@ -1,5 +1,6 @@
 from pud.dependencies import *
 
+
 class ReplayBuffer:
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
         self.max_size = max_size
@@ -19,10 +20,10 @@ class ReplayBuffer:
         self.done = np.zeros((max_size, 1))
 
     def add(self, state, action, next_state, reward, done):
-        self.observation[self.ptr] = state['observation']
-        self.goal[self.ptr] = state['goal']
-        self.next_observation[self.ptr] = next_state['observation']
-        self.next_goal[self.ptr] = next_state['goal']
+        self.observation[self.ptr] = state["observation"]
+        self.goal[self.ptr] = state["goal"]
+        self.next_observation[self.ptr] = next_state["observation"]
+        self.next_goal[self.ptr] = next_state["goal"]
         self.action[self.ptr] = action
         self.reward[self.ptr] = reward
         self.done[self.ptr] = done
@@ -36,11 +37,11 @@ class ReplayBuffer:
         batch = (
             dict(
                 observation=torch.FloatTensor(self.observation[ind]),
-                goal=torch.FloatTensor(self.goal[ind]), 
+                goal=torch.FloatTensor(self.goal[ind]),
             ),
             dict(
                 observation=torch.FloatTensor(self.next_observation[ind]),
-                goal=torch.FloatTensor(self.next_goal[ind]), 
+                goal=torch.FloatTensor(self.next_goal[ind]),
             ),
             torch.FloatTensor(self.action[ind]),
             torch.FloatTensor(self.reward[ind]),

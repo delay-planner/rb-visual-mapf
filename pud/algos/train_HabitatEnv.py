@@ -109,10 +109,9 @@ if __name__ == "__main__":
         CriticCls=GoalConditionedCritic,
         device=torch.device(cfg.device),
         **cfg.agent,
-        # AutoEncoderCls=AutoEncoder,
-        # obs_dim=obs_dim,
-        # latent_dimension=latent_dimensions,
-        image_params=image_params,
+        AutoEncoderCls=AutoEncoder,
+        obs_dim=obs_dim,
+        latent_dimension=latent_dimensions,
     )
     agent.to(torch.device(args.device))
 
