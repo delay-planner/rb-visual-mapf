@@ -12,9 +12,17 @@ from numpy.typing import NDArray
 from typing import Tuple, Dict, Union
 import yaml
 from pud.envs.wrappers import TimeLimit
+from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
+from pathlib import Path
+
 
 
 class HabitatNavigationEnv(gym.Env):
+    """#todo: 
+        - use the internal x,y state on maze to step forward
+        - add normalize and de-normalize to wrappers
+        - bypass the sim state, it should be used only to set the sim state, otherwise use the maze state
+        """
 
     def __init__(
         self,
@@ -22,11 +30,19 @@ class HabitatNavigationEnv(gym.Env):
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
-        apsp_path: Union[str, None] = None,
+        apsp_path: str = "",
         use_gpu:bool=False,
     ):
 
-        self._scene = scene
+        # prepend data root dir
+        habitat_data_root = ""
+        with open("configs/habitat_data.yaml", "r") as f:
+            habitat_data_f = yaml.safe_load(f)
+            habitat_data_root = habitat_data_f["HATBITAT_DATA_DIR"]
+
+        self._scene = Path(habitat_data_root).joinpath(scene).as_posix()
+        simulator_settings["scene"] = Path(habitat_data_root).joinpath(scene).as_posix()
+
         self.use_gpu = use_gpu
 
         if not simulator_settings:
@@ -53,6 +69,7 @@ class HabitatNavigationEnv(gym.Env):
         self._height = self._simulator_settings["height"]
 
         self._configuration = self._make_habitat_configuration()
+        
         self._simulator = habitat_sim.Simulator(self._configuration)
 
         self._agent = self._simulator.initialize_agent(
@@ -82,17 +99,26 @@ class HabitatNavigationEnv(gym.Env):
         ).astype(np.uint8)
         self._wall_height, self._wall_width = self._walls.shape
 
+        # discrete maze all-pair-shortest-path load or calculation
         t0 = time.time()
-        if apsp_path is None:
-            print("Calling the APSP construction function")
-            self._apsp = self._compute_apsp(self._walls)
-            with open("apsp.pkl", "wb") as f:
-                pickle.dump(self._apsp, f)
-        else:
+        path_apsp = None
+        if len(apsp_path)>0:
+            path_apsp = Path(apsp_path)
+        if path_apsp and Path(apsp_path).exists():
+            print("[INFO] loading prior apsp pickle: {}".format(path_apsp.as_posix()))
             with open(apsp_path, "rb") as f:
                 self._apsp = pickle.load(f)
-        print("APSP construction time in (s): ", time.time() - t0)
-
+        else:
+            print("[INFO] Calling the APSP construction function")
+            self._apsp = self._compute_apsp(self._walls)
+            print("APSP construction time in (s): ", time.time() - t0)
+            if path_apsp and (not path_apsp.exists()):
+                path_apsp.parent.mkdir(exist_ok=True, parents=True)
+                path_apsp_dump = path_apsp.as_posix()
+                print("[INFO] saving apsp to {}".format(path_apsp_dump))
+                with open(path_apsp_dump, "wb") as f:
+                    pickle.dump(self._apsp, f)
+        
         self.reset()
 
     @property
@@ -589,7 +615,6 @@ if __name__ == "__main__":
         help="test scene name")
 
     args = parser.parse_args()
-    from pathlib import Path
 
     habitat_data_root = ""
     with open("configs/habitat_data.yaml", "r") as f:
@@ -598,5 +623,5 @@ if __name__ == "__main__":
     
     scene = (Path(habitat_data_root).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
 
-    env = habitat_env_load_fn(scene=scene, height=0, use_gpu=True)
+    env = habitat_env_load_fn(scene=scene, height=0, use_gpu=False)
     #display_map(env.walls, "Skokloster Castle")  # type: ignore
