@@ -1,0 +1,57 @@
+agent:
+    tau: 0.05
+    num_bins: 20
+    discount: 1
+    ensemble_size: 3
+    actor_update_interval: 1
+    targets_update_interval: 5
+    use_distributional_rl: true
+    # Cost configs
+    cost_N: 20
+    cost_min: 0.0
+    cost_max: 1.0
+    cost_limit: 1.0
+    lambda_lr: 0.001
+    cost_critic_lr: 0.001
+    lambda_optimizer: "Adam"
+ckpt_dir: ./workdirs/train_HabitatSkokloster/
+env:
+    height: 0.0
+    scene: "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
+    #apsp_path: "/home/mers-pluto/Desktop/Work/cc-sorb-rev/apsp.pkl"
+    cost_limit: 1.0
+    simulator_settings:
+        scene: "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
+        width: 64
+        height: 64
+        default_agent: 0
+        sensor_height: 1.5
+wrappers:
+    SafeGoalConditionedHabitatPointWrapper:
+        min_dist: 0 
+        max_dist: 4
+        min_cost: 0.3
+        max_cost: 1.0
+        prob_constraint: 0.8
+        threshold_distance: 1.0
+time_limit:
+    max_episode_steps: 20
+cost_function:
+    name: "cosine"
+    radius: 2.0
+replay_buffer:
+    max_size: 1000
+runner:
+    opt_steps: 1
+    verbose: false
+    collect_steps: 2
+    batch_size_opt: 64
+    eval_interval: 2
+    warmup_epochs: 1
+    num_eval_episodes: 1
+    num_iterations: 300000
+    eval_distances: [2, 5, 10]
+    initial_collect_steps: 1000
+    eval_cost_intervals: [0.0, 0.3943001329211866, 1.0]
+device: "cpu"
+seed: 0
