@@ -7,7 +7,6 @@ from datetime import datetime
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.policies import GaussianPolicy
-from pud.algos.crl_runner_v2 import train_eval
 from pud.utils import set_env_seed, set_global_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.ddpg import GoalConditionedCritic, AutoEncoder
@@ -17,6 +16,8 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
+from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -62,6 +63,10 @@ if __name__ == "__main__":
         type=float,
         default=-1,
         help="override cost limit")
+    parser.add_argument("--scene",
+        type=str,
+        default="scene_datasets/habitat-test-scenes/skokloster-castle.glb",
+        help="override scene")
     parser.add_argument("--lambda_lr",
         type=float,
         default=-1,
@@ -109,6 +114,8 @@ if __name__ == "__main__":
         cfg.runner.collect_steps = args.collect_steps
     if len(args.apsp_path) > 0:
         cfg.env.apsp_path = args.apsp_path
+    if len(args.scene) > 0:
+        cfg.env.scene = args.scene
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()
@@ -142,6 +149,7 @@ if __name__ == "__main__":
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
     cfg.env.use_gpu = args.device!="cpu"
+
     env = safe_habitat_env_load_fn(
         cfg.env.toDict(),
         cfg.cost_function.toDict(),
@@ -213,7 +221,7 @@ if __name__ == "__main__":
         replay_buffer,
         env,
         eval_env,
-        eval_func=None,
+        eval_func=eval_pointenv_cost_constrained_dists,
         tensorboard_writer=tb,
         pbar=args.pbar,
         ckpt_dir=ckpt_dir,
