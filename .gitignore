@@ -6,7 +6,7 @@ pud/algos/lr_scheduler/output
 temp/
 external_data/
 .vscode/
-
+pud/envs/safe_habitatenv/apsps/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
