@@ -10,7 +10,7 @@ import pickle
 import habitat_sim
 from numpy.typing import NDArray
 from typing import Tuple, Dict, Union
-
+import yaml
 from pud.envs.wrappers import TimeLimit
 
 
@@ -524,6 +524,7 @@ def habitat_env_load_fn(
     gym_env_wrappers: Union[Tuple[GoalConditionedHabitatPointWrapper], None] = (
         GoalConditionedHabitatPointWrapper,
     ),  # type: ignore
+    use_gpu:bool=False,
 ) -> gym.Env:
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -542,7 +543,7 @@ def habitat_env_load_fn(
       An environment instance.
     """
 
-    env = HabitatNavigationEnv(scene=scene, height=height)
+    env = HabitatNavigationEnv(scene=scene, height=height, use_gpu=use_gpu)
 
     if gym_env_wrappers is not None:
         for wrapper in gym_env_wrappers:
@@ -588,15 +589,14 @@ if __name__ == "__main__":
         help="test scene name")
 
     args = parser.parse_args()
-    import os
     from pathlib import Path
-    scene = (
-        "external_data/scene_datasets/"
-        "habitat-test-scenes/skokloster-castle.glb"
-    )
-    env_var = "HATBITAT_DATA_DIR"
-    if env_var in os.environ:
-        scene = (Path(os.environ[env_var]).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
 
-    env = habitat_env_load_fn(scene=scene, height=0)
-    display_map(env.walls, "Skokloster Castle")  # type: ignore
+    habitat_data_root = ""
+    with open("configs/habitat_data.yaml", "r") as f:
+        habitat_data_f = yaml.safe_load(f)
+        habitat_data_root = habitat_data_f["HATBITAT_DATA_DIR"]
+    
+    scene = (Path(habitat_data_root).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
+
+    env = habitat_env_load_fn(scene=scene, height=0, use_gpu=True)
+    #display_map(env.walls, "Skokloster Castle")  # type: ignore
