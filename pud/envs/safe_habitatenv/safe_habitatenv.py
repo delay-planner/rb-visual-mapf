@@ -19,7 +19,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         simulator_settings: dict = {},
         apsp_path: Union[str, None] = None,
         # Cost specific arguments
-        cost_fn_args: dict = {},
+        cost_f_args: dict = {},
         cost_limit: float = 0.5,
         use_gpu: bool = False,
     ):
@@ -37,19 +37,27 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         self.cost_function = None
         self.cost_limit = cost_limit
         self.action_noise = action_noise
-        self.cost_fn_cfg = cost_fn_args
+        self.cost_f_cfg = cost_f_args
 
         obstacles_x, obstacles_y = np.where(self._walls == 0)
         self.obstacles = np.stack([obstacles_x, obstacles_y], axis=-1).astype(float)
 
         t0 = time.time()
-        if self.cost_fn_cfg.get("name") == "cosine":
-            import functools
-            from pud.envs.safe_pointenv.cost_functions import cost_from_cosine_distance
 
-            self.cost_function = functools.partial(
-                cost_from_cosine_distance, r=self.cost_fn_cfg["radius"]
-            )
+        cost_fn_name = self.cost_f_cfg.get('name')
+        self.cost_function = None
+        if cost_fn_name: 
+            import functools   
+            from pud.envs.safe_pointenv.cost_functions import \
+                    cost_from_cosine_distance, cost_from_linear_distance     
+            if cost_fn_name == "cosine":
+                self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
+            elif cost_fn_name == "linear":
+                self.cost_function = functools.partial(cost_from_linear_distance, r=self.cost_f_cfg['radius'])
+            else:
+                raise Exception("Unsupported cost function")
+
+            # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
             self._cost_map = self._build_cost_map()
 
         self._safe_empty_states = self._gather_safe_empty_states(self.cost_limit)
@@ -315,7 +323,7 @@ if __name__ == "__main__":
     env = SafeHabitatNavigationEnv(
         scene=scene,
         height=0,
-        cost_fn_args={"name": "cosine", "radius": 2.0},
+        cost_f_args={"name": "cosine", "radius": 2.0},
         cost_limit=1.0,
     )
     plt.figure(figsize=(12, 8))
