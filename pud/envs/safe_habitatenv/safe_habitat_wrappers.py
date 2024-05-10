@@ -226,41 +226,70 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         return np.max(apsp[np.isfinite(apsp)])
 
 
-class SafeGoalConditionedHabitatPointQueueWrapper(
-    SafeGoalConditionedHabitatPointWrapper
-):
-
+class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPointWrapper):
     def __init__(
         self,
-        env: SafeHabitatNavigationEnv,
+        env: SafeGoalConditionedHabitatPointWrapper,
         prob_constraint: float = 0.8,
-        min_dist: float = 0,
-        max_dist: float = 4,
-        min_cost: float = 0,
-        max_cost: float = 1000,
-        threshold_distance: float = 1.0,
+        min_dist=0,
+        max_dist=4,
+        min_cost=0,
+        max_cost=1000,
+        threshold_distance=1.0,
     ):
+        """Reset using problems (start-goal pairs) from an external queue. If the queue is empty, use the default reset method
         """
-        Reset using problems (start - goal) pairs from an external queue.
-        If the queue is empty, use the default reset method
-        """
-
         super(SafeGoalConditionedHabitatPointQueueWrapper, self).__init__(
-            env=env,
-            prob_constraint=prob_constraint,
-            min_dist=min_dist,
-            max_dist=max_dist,
-            min_cost=min_cost,
-            max_cost=max_cost,
-            threshold_distance=threshold_distance,
-        )
-        self._pb_Q = []
+                env=env,
+                prob_constraint=prob_constraint,
+                min_dist=min_dist,
+                max_dist=max_dist,
+                min_cost=min_cost,
+                max_cost=max_cost,
+                threshold_distance=threshold_distance,
+                )
+        self.pb_Q = []
+        # by default, don't pop from Q because there are many 
+        # redundant reset from parent classes
+        self.use_q = False  
+        self.verbose = True
 
     def get_Q_size(self):
-        return len(self._pb_Q)
+        return len(self.pb_Q)
 
-    def append_pbs(self, pb_list: List[Tuple]):
-        self._pb_Q.extend(pb_list)
+    def set_use_q(self, status: bool):
+        self.use_q = status
+
+    def append_pbs(self, pb_list:List[tuple]):
+        self.pb_Q.extend(pb_list)
+    
+    def set_pbs(self, pb_list:List[tuple]):
+        """replace the problem Q with a new one, 
+        intended for update pbs for training"""
+        assert isinstance(pb_list, list)
+        self.pb_Q = pb_list
+
+    def set_verbose(self, new_verbose:bool):
+        self.verbose = new_verbose
+    
+    def reset(self):
+        if self.use_q and np.random.rand()<self._prob_constraint:
+            if len(self.pb_Q)>0:
+                new_pb = self.pb_Q.pop(0)
+                return self.reset_alt(**new_pb)
+            if self.verbose:
+                print("[WARN]: queue from goal conditioned env is empty")
+        return self._reset_original()
+
+    def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
+        """reset using alternative source, start and goal are assumed to be de-normalized"""
+        self._goal = goal
+        obs, new_info = self.env.reset_manual(start_state=start)
+        new_info.update(info)
+        return {
+            "observation": self._normalize_obs(obs),
+            "goal": self._normalize_obs(self._goal),
+        }, new_info
 
 
 def set_safe_habitat_env_difficulty(
@@ -311,7 +340,7 @@ def safe_habitat_env_load_fn(
       An environment instance.
     """
 
-    env = SafeHabitatNavigationEnv(**env_kwargs, cost_fn_args=cost_fn_kwargs)
+    env = SafeHabitatNavigationEnv(**env_kwargs, cost_f_args=cost_fn_kwargs)
 
     for idx, wrapper in enumerate(gym_env_wrappers):
         if idx < len(wrapper_kwargs):
