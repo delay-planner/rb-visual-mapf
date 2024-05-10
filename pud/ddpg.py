@@ -300,6 +300,7 @@ class Critic(nn.Module):
             )
             self.l1 = nn.Linear(32 * 3 * 3 * 4, 256)
         else:
+            self.images = False
             self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256 + action_dim, 256)
         self.l3 = nn.Linear(256, output_dim)

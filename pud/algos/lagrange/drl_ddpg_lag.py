@@ -60,6 +60,7 @@ class DRLDDPGLag(UVFDDPG):
         base_channel_size: int = 32,
         latent_dimension: int = 512,
         AutoEncoderCls: Union[object, None] = None,
+        image_params: Union[Dict, None] = None,
         device: torch.device = torch.device("cpu"),
     ):
         super(DRLDDPGLag, self).__init__(
@@ -80,6 +81,7 @@ class DRLDDPGLag(UVFDDPG):
             num_bins=num_bins,
             use_distributional_rl=use_distributional_rl,
             ensemble_size=ensemble_size,
+            image_params=image_params,
         )
 
         self.lagrange = Lagrange(
@@ -90,6 +92,11 @@ class DRLDDPGLag(UVFDDPG):
         )
         self.lagrange_on = False
         self.device = device
+
+        if image_params is None:
+            self.images = False
+        else:
+            self.images = True
 
         # Add the autoencoder
         if AutoEncoderCls is not None:
@@ -109,7 +116,10 @@ class DRLDDPGLag(UVFDDPG):
             )
 
         # add cost critic
-        CostCriticCls = functools.partial(CriticCls, output_dim=cost_N)
+        CostCriticCls = functools.partial(CriticCls, 
+                    output_dim=cost_N, 
+                    image_params=image_params,
+                    )
         self.F_categorical = CategoricalActivation(
             vmin=cost_min, vmax=cost_max, N=cost_N
         )

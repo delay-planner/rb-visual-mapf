@@ -5,6 +5,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
+import pickle
 
 import habitat_sim
 from numpy.typing import NDArray
@@ -85,14 +86,9 @@ class HabitatNavigationEnv(gym.Env):
         if apsp_path is None:
             print("Calling the APSP construction function")
             self._apsp = self._compute_apsp(self._walls)
-
-            import pickle
-
             with open("apsp.pkl", "wb") as f:
                 pickle.dump(self._apsp, f)
         else:
-            import pickle
-
             with open(apsp_path, "rb") as f:
                 self._apsp = pickle.load(f)
         print("APSP construction time in (s): ", time.time() - t0)
