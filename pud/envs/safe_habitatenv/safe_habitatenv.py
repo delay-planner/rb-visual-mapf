@@ -154,7 +154,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         idx = np.random.randint(0, num_candidate_states)
         new_state = self._safe_empty_states[idx].astype(np.float32)
 
-        undiscretized_new_state_x, undiscretized_new_state_y = self.get_xy_in_habitat_from_xy_in_grid(
+        undiscretized_new_state_x, undiscretized_new_state_y = self.get_habitat_xy_from_grid_xy(
             (int(new_state[0]), int(new_state[1]))
         )
         undiscretized_new_state = np.array(
@@ -187,10 +187,10 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         observations = self._simulator.reset()
 
         # Spawn the agent at the corresponding real-world coordinates in the habitat environment
-        safe_agent_position_x, safe_agent_position_y = self.get_xy_in_habitat_from_xy_in_grid(
+        safe_agent_position_x, safe_agent_position_y = self.get_habitat_xy_from_grid_xy(
             (int(safe_agent_position[0]), int(safe_agent_position[1]))
         )
-        self.update_agent_position(
+        self.set_agent_pos_w_habitatxy(
             np.array([safe_agent_position_x, safe_agent_position_y])
         )
 
@@ -220,7 +220,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 new_state = self.get_xy_in_habitat()
                 new_state[axis] += dt * axis_action
                 if not self._is_blocked(new_state):
-                    self.update_agent_position(new_state)
+                    self.set_agent_pos_w_habitatxy(new_state)
 
                     (i, j) = self.get_grid_xy_from_habitat_xy(new_state)
                     state_cost = self._get_state_cost(np.array([i, j]))
