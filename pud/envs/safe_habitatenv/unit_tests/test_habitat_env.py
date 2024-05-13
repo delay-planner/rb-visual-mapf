@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 """
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.compare_occupancy
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.test_steps
+python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.speed_compare
 """
 
 def plot_walls(env:HabitatNavigationEnv, ax:plt.axes):
@@ -75,6 +76,21 @@ class TestHabitatEnv(unittest.TestCase):
         ax.legend()
         fig.savefig(fname="runs/tmp_plots/walls.jpg", dpi=300)
         plt.close(fig=fig)
+
+    def speed_compare(self):
+        env = HabitatNavigationEnv(
+            scene=self.scene,
+            height=0,
+            simulator_settings=self.simulator_settings,
+            device=self.device,
+            apsp_path=self.apsp_path,
+            )
+
+        for _ in tqdm(range(100)):
+            env.step_in_grid(action=env.grid_observation_space.sample())
+
+        for _ in tqdm(range(100)):
+            env.step_habitat(action=env.grid_observation_space.sample())
 
     def test_steps(self):
         env = HabitatNavigationEnv(

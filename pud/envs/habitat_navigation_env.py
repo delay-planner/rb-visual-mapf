@@ -232,7 +232,7 @@ class HabitatNavigationEnv(gym.Env):
                 dist[i1, j1, i2, j2] = d
         return dist
 
-    def discretize_state_in_grid(self, state: TypeGridXY):
+    def _discretize_state(self, state: TypeGridXY):
         (i, j) = np.floor(state).astype(np.int64)
         # Round down to the nearest cell if at the boundary.
         if i == self._wall_height:
@@ -241,16 +241,16 @@ class HabitatNavigationEnv(gym.Env):
             j -= 1
         return (i, j)
     
-    def is_blocked_in_grid(self, state: TypeGridXY) -> bool:
+    def _is_blocked(self, state: TypeGridXY) -> bool:
         """
         check occupancy through 2D maze matrix, the same as the point env
         """
         if not self.grid_observation_space.contains(state):
             return True
-        (i, j) = self.discretize_state_in_grid(state)
+        (i, j) = self._discretize_state(state)
         return (self._walls[i, j] == 0)
 
-    def sample_empty_state(self, max_attempts=100):
+    def _sample_empty_state(self, max_attempts=100):
         # 1 is empty, 0 is block
         candidate_states = np.where(self._walls == 1)
         num_candidate_states = len(candidate_states[0])
@@ -260,7 +260,7 @@ class HabitatNavigationEnv(gym.Env):
                             candidate_states[1][state_index]],
                             dtype=np.float32)
             state_grid += np.random.uniform(size=2)
-            if not self.is_blocked_in_grid(state_grid):
+            if not self._is_blocked(state_grid):
                 return state_grid
 
     def reset(self):
@@ -268,16 +268,19 @@ class HabitatNavigationEnv(gym.Env):
 
     def reset_in_grid(self):
         """reset in grid maze"""
-        self.state_grid = self.sample_empty_state()
+        self.state_grid = self._sample_empty_state()
         return self.state_grid.copy()
 
     def _get_distance(self, obs:TypeGridXY, goal:TypeGridXY):
         """Compute the shortest path distance.
 
         Note: This distance is *not* used for training."""
-        (i1, j1) = self.discretize_state_in_grid(obs)
-        (i2, j2) = self.discretize_state_in_grid(goal)
+        (i1, j1) = self._discretize_state(obs)
+        (i2, j2) = self._discretize_state(goal)
         return self._apsp[i1, j1, i2, j2]
+
+    def step(self, action:NDArray):
+        return self.step_in_grid(action=action)
 
     def step_in_grid(self, action:NDArray):
         """
@@ -291,7 +294,7 @@ class HabitatNavigationEnv(gym.Env):
         start_state = self.state_grid.copy()
         for dt in np.linspace(0, 1, num_substeps):
             new_state = start_state + dt * action
-            if not self.is_blocked_in_grid(new_state):
+            if not self._is_blocked(new_state):
                 self.state_grid = new_state
             else:
                 break
@@ -418,7 +421,7 @@ class HabitatNavigationEnv(gym.Env):
             cat_obs[idx] = value
         return cat_obs
 
-    def step(self, action: NDArray) -> Tuple[TypeHabitatSensorObs, float, bool, Dict]:
+    def step_habitat(self, action: NDArray) -> Tuple[TypeHabitatSensorObs, float, bool, Dict]:
         if self._action_noise > 0:
             action += np.random.normal(0, self._action_noise)
         action = np.clip(action, self.action_space.low, self.action_space.high)
@@ -478,6 +481,10 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
                 "observation": env.observation_space,
                 "goal": env.observation_space,
             }
+        )
+
+        self.grid_observation_space = gym.spaces.Dict(
+
         )
 
     def _set_sample_goal_args(
