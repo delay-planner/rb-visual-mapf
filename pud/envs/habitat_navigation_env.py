@@ -263,7 +263,7 @@ class HabitatNavigationEnv(gym.Env):
             if not self._is_blocked(state_grid):
                 return state_grid
 
-    def reset(self):
+    def reset(self) -> TypeGridXY:
         return self.reset_in_grid()
 
     def reset_in_grid(self):
@@ -370,12 +370,12 @@ class HabitatNavigationEnv(gym.Env):
         """
         return np.array([position[1], self._vertical_slice, position[0]])
 
-    def is_blocked_habitat(self, agent_position: NDArray) -> bool:
+    def is_blocked_habitat(self, obs: NDArray) -> bool:
         """
         check occupancy through habitat
         Determines whether the agent is blocked given the agent position ([x, y]).
         """
-        agent_sim_position = self.convert_xy_to_xyz_in_habitat(agent_position)
+        agent_sim_position = self.convert_xy_to_xyz_in_habitat(obs)
         return not self._simulator.pathfinder.is_navigable(agent_sim_position)
 
     def get_xy_in_habitat(self) ->  TypeHabitatXY:
@@ -387,14 +387,14 @@ class HabitatNavigationEnv(gym.Env):
         ).get_state()
         return np.array([agent_state.position[2], agent_state.position[0]])
 
-    def set_agent_pos_w_habitatxy(self, agent_position: TypeHabitatXY):
+    def set_agent_pos_w_habitatxy(self, obs: TypeHabitatXY):
         """
         Given the agent position ([x, y]), update the agent state in the environment ([y, z, x]).
         """
         agent_state = self._simulator.get_agent(
             self._simulator_settings["default_agent"]
         ).get_state()
-        agent_state.position = self.convert_xy_to_xyz_in_habitat(agent_position)
+        agent_state.position = self.convert_xy_to_xyz_in_habitat(obs)
         agent_state.sensor_states = {}
         self._agent.set_state(agent_state)
 
@@ -437,8 +437,8 @@ class HabitatNavigationEnv(gym.Env):
                     self.set_agent_pos_w_habitatxy(new_state)
 
         done = False
-        agent_position = self.get_xy_in_habitat()
-        rew = float(-1.0 * np.linalg.norm(agent_position))
+        obs = self.get_xy_in_habitat()
+        rew = float(-1.0 * np.linalg.norm(obs))
 
         self.state = self.get_sensor_observation()
 
@@ -484,7 +484,11 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         )
 
         self.grid_observation_space = gym.spaces.Dict(
-
+            {
+                "observation": env.grid_observation_space,
+                "goal": env.grid_observation_space,
+            }
+            
         )
 
     def _set_sample_goal_args(
@@ -505,142 +509,93 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         self._max_dist = max_dist
         self._prob_constraint = prob_constraint
 
-    def _is_done(self, agent_position: NDArray, goal: NDArray) -> bool:
+    def _is_done(self, obs: NDArray, goal: NDArray) -> bool:
         """Determines whether observation equals goal."""
-        return bool(np.linalg.norm(agent_position - goal) < self._threshold_distance)
+        return bool(np.linalg.norm(obs - goal) < self._threshold_distance)
 
     def _sample_goal(
-        self, agent_position: NDArray
-    ) -> Tuple[NDArray, Union[NDArray, None]]:
+        self, obs: TypeGridXY
+    ) -> Tuple[TypeGridXY, Union[TypeGridXY, None]]:
         """Sampled a goal observation."""
         if np.random.random() < self._prob_constraint:
             return self._sample_goal_constrained(
-                agent_position, self._min_dist, self._max_dist
+                obs, self._min_dist, self._max_dist
             )
         else:
-            return self._sample_goal_unconstrained(agent_position)
+            return self._sample_goal_unconstrained(obs)
 
     def _sample_goal_constrained(
-        self, agent_position: NDArray, min_dist: float, max_dist: float
-    ) -> Tuple[NDArray, Union[NDArray, None]]:
+        self, obs: TypeGridXY, min_dist: float, max_dist: float
+    ) -> Tuple[TypeGridXY, Union[TypeGridXY, None]]:
         """Samples a goal with dist min_dist <= d(observation, goal) <= max_dist.
 
         Args:
-          agent_position: The current position of the agent (without goal).
+          obs: The current position of the agent (without goal).
           min_dist: (int) Minimum distance to goal.
           max_dist: (int) Maximum distance to goal.
         Returns:
-          agent_position: The current position of the agent (without goal).
+          obs: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self.env._discretize_state(agent_position)
-        mask = np.logical_and(
-            self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
-        )
-        mask = np.logical_and(mask, self.env._walls)
+        self.env: HabitatNavigationEnv
+
+        (i, j) = self.env._discretize_state(obs)
+        mask = np.logical_and(self.env._apsp[i, j] >= min_dist, 
+                              self.env._apsp[i, j] <= max_dist)
+        mask = np.logical_and(mask, self.env._walls==1)
         candidate_states = np.where(mask)
         num_candidate_states = len(candidate_states[0])
         if num_candidate_states == 0:
-            return (agent_position, None)
+            return (obs, None)
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array(
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
             dtype=np.float32,
         )
         goal += np.random.uniform(size=2)
-        dist_to_goal = self._get_distance(agent_position, goal)
+        dist_to_goal = self._get_distance(obs, goal)
         assert min_dist <= dist_to_goal <= max_dist
+        assert not self.env._is_blocked(goal)
+        return (obs, goal)
+    
 
-        undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
-            (int(goal[0]), int(goal[1]))
-        )
-        undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        assert not self.env.is_blocked_habitat(undiscretized_goal)
-
-        return (agent_position, undiscretized_goal)
-
-    def _sample_goal_unconstrained(
-        self, agent_position: NDArray
-    ) -> Tuple[NDArray, NDArray]:
+    def _sample_goal_unconstrained(self, obs:TypeGridXY):
         """Samples a goal without any constraints.
 
         Args:
-          agent_position: The current position of the agent (without goal)
+          obs: observation (without goal).
         Returns:
           observation: observation (without goal).
           goal: a goal observation.
         """
+        return (obs, self.env._sample_empty_state())
 
-        agent_position = self.env._get_agent_position()
-        agent_sim_position = self.env._convert_grid_to_sim(agent_position)
-        current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
+    def _normalize_obs(self, obs: TypeGridXY):
+        return np.array([
+            obs[0] / float(self.env._height),
+            obs[1] / float(self.env._width)
+        ])
 
-        tries = 1
-        sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
-        is_navigable = self.env._simulator.pathfinder.is_navigable(sampled_goal)
-        sampled_island = self.env._simulator.pathfinder.get_island(sampled_goal)
-        valid = is_navigable and sampled_island == current_island
-        while not valid:
-            sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
-            is_navigable = self.env._simulator.pathfinder.is_navigable(sampled_goal)
-            sampled_island = self.env._simulator.pathfinder.get_island(sampled_goal)
-            valid = is_navigable and sampled_island == current_island
-            tries += 1
-            if tries > 1000:
-                print("WARNING: Unable to find goal without constraints.")
-        sampled_goal = np.array([sampled_goal[2], sampled_goal[0]], dtype=np.float32)
-        return (
-            agent_position,
-            sampled_goal,
-        )
-
-    def reset(self) -> Dict:
-
-        count = 0
+    def reset(self):
         goal = None
+        count = 0
         while goal is None:
             obs = self.env.reset()
-            agent_position = self.env._get_agent_position()
-            (agent_position, goal) = self._sample_goal(agent_position)
+            (obs, goal) = self._sample_goal(obs)
             count += 1
             if count > 1000:
-                print("WARNING: Unable to find goal within constraints.")
+                print('WARNING: Unable to find goal within constraints.')
+        self._goal = goal
+        return {'observation': self._normalize_obs(obs),
+                'goal': self._normalize_obs(self._goal)}
+    
 
-        # Set the agent's position to the sampled goal's position and extract the observations.
-        # Remember to reset the agent's position to the original position after extracting the goal observations.
-        self._goal_observation = np.zeros(
-            (4, self.env._height, self.env._width, 4), dtype=np.uint8
-        )
-        agent_current_position = self.env._get_agent_position()
-        self.env._update_agent_position(goal)
-        goal_observations = self.env._simulator.get_sensor_observations()
-        for idx, (key, value) in enumerate(goal_observations.items()):
-            assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
-            self._goal_observation[idx] = value
-        self._goal_position = goal
-
-        self.env._update_agent_position(agent_current_position)
-        return {
-            "observation": obs,
-            "goal": self._goal_observation,
-        }
-
-    def step(self, action: NDArray) -> Tuple[Dict, float, bool, Dict]:
+    def step(self, action):
         obs, _, _, _ = self.env.step(action)
         rew = -1.0
-
-        agent_position = self.env._get_agent_position()
-        done = self._is_done(agent_position, self._goal)
-        return (
-            {
-                "observation": obs,
-                "goal": self._goal_observation,
-            },
-            rew,
-            done,
-            {},
-        )
-
+        done = self._is_done(obs, self._goal)
+        return {'observation': self._normalize_obs(obs),
+                'goal': self._normalize_obs(self._goal)}, rew, done, {}
     @property
     def max_goal_dist(self) -> float:
         apsp = self.env._apsp
