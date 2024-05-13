@@ -21,7 +21,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         # Cost specific arguments
         cost_f_args: dict = {},
         cost_limit: float = 0.5,
-        use_gpu: bool = False,
+        device: str = "cpu",
     ):
 
         super().__init__(
@@ -30,7 +30,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
             action_noise=action_noise, 
             simulator_settings=simulator_settings, 
             apsp_path=apsp_path,
-            use_gpu=use_gpu,
+            device=device,
             )
 
         self.scene = scene
