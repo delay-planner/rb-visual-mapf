@@ -4,10 +4,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls
 import numpy as np
+from tqdm.auto import tqdm
 
 
 """
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.compare_occupancy
+python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.test_steps
 """
 
 def plot_walls(env:HabitatNavigationEnv, ax:plt.axes):
@@ -61,7 +63,7 @@ class TestHabitatEnv(unittest.TestCase):
         for i in range(h):
             for j in range(w):
                 grid_xy = (i,j)
-                habitat_xy = env.get_xy_in_habitat_from_xy_in_grid(grid_xy)
+                habitat_xy = env.get_habitat_xy_from_grid_xy(grid_xy)
                 # 1 is empty, 0 is blocked
                 if env.walls[i,j] != 1-env.is_blocked_habitat(habitat_xy):
                     diff_set.append((i,j))
@@ -84,8 +86,11 @@ class TestHabitatEnv(unittest.TestCase):
             )
 
         env.reset()
+        env.sync_n_get_sensor_obs()
+        env.get_habitat_xy_from_grid_xy(env.state_grid)
 
-        pass
+        for _ in tqdm(range(100)):
+            env.step(action=env.grid_observation_space.sample())
 
     def test_init(self):
         env = HabitatNavigationEnv(
