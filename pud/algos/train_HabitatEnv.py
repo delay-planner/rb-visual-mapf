@@ -148,7 +148,7 @@ if __name__ == "__main__":
             gym_env_wrappers.append(SafeGoalConditionedHabitatPointQueueWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
-    cfg.env.use_gpu = args.device!="cpu"
+    cfg.env.device = args.device
 
     env = safe_habitat_env_load_fn(
         cfg.env.toDict(),
