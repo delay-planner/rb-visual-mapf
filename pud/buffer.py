@@ -1,5 +1,5 @@
-from pud.dependencies import *
-
+import numpy as np
+import torch
 
 class ReplayBuffer:
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
@@ -7,23 +7,19 @@ class ReplayBuffer:
         self.ptr = 0
         self.size = 0
 
-        if isinstance(obs_dim, tuple):
-            obs_shape = (max_size, *obs_dim)
-        else:
-            obs_shape = (max_size, obs_dim)
-        self.observation = np.zeros(obs_shape)
-        self.goal = np.zeros(obs_shape)
-        self.next_observation = np.zeros(obs_shape)
-        self.next_goal = np.zeros(obs_shape)
+        self.observation = np.zeros((max_size, obs_dim))
+        self.goal = np.zeros((max_size, goal_dim))
+        self.next_observation = np.zeros((max_size, obs_dim))
+        self.next_goal = np.zeros((max_size, goal_dim))
         self.action = np.zeros((max_size, action_dim))
         self.reward = np.zeros((max_size, 1))
         self.done = np.zeros((max_size, 1))
 
     def add(self, state, action, next_state, reward, done):
-        self.observation[self.ptr] = state["observation"]
-        self.goal[self.ptr] = state["goal"]
-        self.next_observation[self.ptr] = next_state["observation"]
-        self.next_goal[self.ptr] = next_state["goal"]
+        self.observation[self.ptr] = state['observation']
+        self.goal[self.ptr] = state['goal']
+        self.next_observation[self.ptr] = next_state['observation']
+        self.next_goal[self.ptr] = next_state['goal']
         self.action[self.ptr] = action
         self.reward[self.ptr] = reward
         self.done[self.ptr] = done
@@ -37,11 +33,11 @@ class ReplayBuffer:
         batch = (
             dict(
                 observation=torch.FloatTensor(self.observation[ind]),
-                goal=torch.FloatTensor(self.goal[ind]),
+                goal=torch.FloatTensor(self.goal[ind]), 
             ),
             dict(
                 observation=torch.FloatTensor(self.next_observation[ind]),
-                goal=torch.FloatTensor(self.next_goal[ind]),
+                goal=torch.FloatTensor(self.next_goal[ind]), 
             ),
             torch.FloatTensor(self.action[ind]),
             torch.FloatTensor(self.reward[ind]),
