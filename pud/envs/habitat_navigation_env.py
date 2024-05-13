@@ -31,7 +31,7 @@ class HabitatNavigationEnv(gym.Env):
         action_noise: float = 1.0,
         simulator_settings: dict = {},
         apsp_path: str = "",
-        use_gpu:bool=False,
+        device:str="cpu",
     ):
 
         # prepend data root dir
@@ -43,7 +43,7 @@ class HabitatNavigationEnv(gym.Env):
         self._scene = Path(habitat_data_root).joinpath(scene).as_posix()
         simulator_settings["scene"] = Path(habitat_data_root).joinpath(scene).as_posix()
 
-        self.use_gpu = use_gpu
+        self.device = device
 
         if not simulator_settings:
             # If simulator settings were not specified then use the default settings
@@ -129,7 +129,7 @@ class HabitatNavigationEnv(gym.Env):
 
         simulator_cfg = habitat_sim.SimulatorConfiguration()
         simulator_cfg.scene_id = self._simulator_settings["scene"]
-        if not self.use_gpu:
+        if self.device == "cpu":
             simulator_cfg.gpu_device_id = -1
 
         # Generate a default RBG camera specification and attach it to each robot
@@ -308,6 +308,13 @@ class HabitatNavigationEnv(gym.Env):
         self._simulator.seed(seed)
 
     def reset(self) -> NDArray:
+        """return camera observation
+        self._simulator.get_sensor_observations()
+        # to get the number of agents
+        tmp = self._simulator.agents
+        # to get the agent from ID
+        self._simulator.get_agent(0)
+        """
         self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
         observations = self._simulator.reset()
         for idx, (key, value) in enumerate(observations.items()):
@@ -550,7 +557,7 @@ def habitat_env_load_fn(
     gym_env_wrappers: Union[Tuple[GoalConditionedHabitatPointWrapper], None] = (
         GoalConditionedHabitatPointWrapper,
     ),  # type: ignore
-    use_gpu:bool=False,
+    device:str="cpu",
 ) -> gym.Env:
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -569,7 +576,7 @@ def habitat_env_load_fn(
       An environment instance.
     """
 
-    env = HabitatNavigationEnv(scene=scene, height=height, use_gpu=use_gpu)
+    env = HabitatNavigationEnv(scene=scene, height=height, device=device)
 
     if gym_env_wrappers is not None:
         for wrapper in gym_env_wrappers:
@@ -609,9 +616,13 @@ def set_habitat_env_difficulty(eval_env: gym.Env, difficulty: float):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_scene",
+    parser.add_argument("--device",
         type=str,
-        default="skokloster-castle.glb",
+        default="cpu",
+        help="cpu or cuda:X")
+    parser.add_argument("--scene",
+        type=str,
+        default="scene_datasets/habitat-test-scenes/skokloster-castle.glb",
         help="test scene name")
 
     args = parser.parse_args()
@@ -620,8 +631,6 @@ if __name__ == "__main__":
     with open("configs/habitat_data.yaml", "r") as f:
         habitat_data_f = yaml.safe_load(f)
         habitat_data_root = habitat_data_f["HATBITAT_DATA_DIR"]
-    
-    scene = (Path(habitat_data_root).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
 
-    env = habitat_env_load_fn(scene=scene, height=0, use_gpu=False)
+    env = habitat_env_load_fn(scene=(args.scene), height=0, device=args.device)
     #display_map(env.walls, "Skokloster Castle")  # type: ignore
