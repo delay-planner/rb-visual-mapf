@@ -271,6 +271,14 @@ class HabitatNavigationEnv(gym.Env):
         self.state_grid = self.sample_empty_state()
         return self.state_grid.copy()
 
+    def _get_distance(self, obs:TypeGridXY, goal:TypeGridXY):
+        """Compute the shortest path distance.
+
+        Note: This distance is *not* used for training."""
+        (i1, j1) = self.discretize_state_in_grid(obs)
+        (i2, j2) = self.discretize_state_in_grid(goal)
+        return self._apsp[i1, j1, i2, j2]
+
     def step_in_grid(self, action:NDArray):
         """
         a step function in 2d grid similar to simple navigation env
