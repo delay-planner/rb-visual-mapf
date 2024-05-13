@@ -106,7 +106,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           agent_position: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self.env._discretize_state(agent_position)
+        (i, j) = self.env.get_grid_xy_from_habitat_xy(agent_position)
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
@@ -122,11 +122,11 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         )
         # goal += np.random.uniform(size=2)
 
-        undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
+        undiscretized_goal_x, undiscretized_goal_y = self.env.get_xy_in_habitat_from_xy_in_grid(
             (goal[0], goal[1])
         )
         undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        dist_to_goal = self.env._get_distance(agent_position, undiscretized_goal)
+        dist_to_goal = self.env.get_distance(agent_position, undiscretized_goal)
 
         assert min_dist <= dist_to_goal <= max_dist
         assert not self.env._is_blocked(undiscretized_goal)
@@ -145,8 +145,8 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           goal: a goal observation.
         """
 
-        agent_position = self.env._get_agent_position()
-        agent_sim_position = self.env._convert_grid_to_sim(agent_position)
+        agent_position = self.env.get_xy_in_habitat()
+        agent_sim_position = self.env.convert_xy_to_xyz_in_habitat(agent_position)
         current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
 
         tries = 1
@@ -175,7 +175,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         info = {"cost": 0.0}
         while goal is None:
             obs, info = self.env.reset()  # type: ignore
-            agent_position = self.env._get_agent_position()
+            agent_position = self.env.get_xy_in_habitat()
             (agent_position, goal) = self._sample_goal(agent_position)
             count += 1
             if count > 1000:
@@ -186,15 +186,15 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         self._goal_observation = np.zeros(
             (4, self.env._height, self.env._width, 4), dtype=np.uint8
         )
-        agent_current_position = self.env._get_agent_position()
-        self.env._update_agent_position(goal)
+        agent_current_position = self.env.get_xy_in_habitat()
+        self.env.update_agent_position(goal)
         goal_observations = self.env._simulator.get_sensor_observations()
         for idx, (key, value) in enumerate(goal_observations.items()):
             assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
             self._goal_observation[idx] = value
         self._goal_position = goal
 
-        self.env._update_agent_position(agent_current_position)
+        self.env.update_agent_position(agent_current_position)
 
         return {
             "observation": obs,
@@ -208,7 +208,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, info = self.env.step(action)
         rew = -1.0
 
-        agent_position = self.env._get_agent_position()
+        agent_position = self.env.get_xy_in_habitat()
         done = self._is_done(agent_position, self._goal_position)
         return (
             {

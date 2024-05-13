@@ -154,7 +154,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         idx = np.random.randint(0, num_candidate_states)
         new_state = self._safe_empty_states[idx].astype(np.float32)
 
-        undiscretized_new_state_x, undiscretized_new_state_y = self._undiscretize_state(
+        undiscretized_new_state_x, undiscretized_new_state_y = self.get_xy_in_habitat_from_xy_in_grid(
             (int(new_state[0]), int(new_state[1]))
         )
         undiscretized_new_state = np.array(
@@ -187,10 +187,10 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         observations = self._simulator.reset()
 
         # Spawn the agent at the corresponding real-world coordinates in the habitat environment
-        safe_agent_position_x, safe_agent_position_y = self._undiscretize_state(
+        safe_agent_position_x, safe_agent_position_y = self.get_xy_in_habitat_from_xy_in_grid(
             (int(safe_agent_position[0]), int(safe_agent_position[1]))
         )
-        self._update_agent_position(
+        self.update_agent_position(
             np.array([safe_agent_position_x, safe_agent_position_y])
         )
 
@@ -209,26 +209,26 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert self.action_space.contains(action)
 
         # NOTE: Use the maximum cost along the action segment
-        agent_position = self._get_agent_position()
-        (i, j) = self._discretize_state(agent_position)
+        agent_position = self.get_xy_in_habitat()
+        (i, j) = self.get_grid_xy_from_habitat_xy(agent_position)
         cost = self._get_state_cost(np.array([i, j]))
 
         num_substeps = 10
         dt = 1.0 / num_substeps
         for _ in np.linspace(0, 1, num_substeps):
             for axis, axis_action in enumerate(action):
-                new_state = self._get_agent_position()
+                new_state = self.get_xy_in_habitat()
                 new_state[axis] += dt * axis_action
                 if not self._is_blocked(new_state):
-                    self._update_agent_position(new_state)
+                    self.update_agent_position(new_state)
 
-                    (i, j) = self._discretize_state(new_state)
+                    (i, j) = self.get_grid_xy_from_habitat_xy(new_state)
                     state_cost = self._get_state_cost(np.array([i, j]))
                     if cost < state_cost:
                         cost = state_cost
 
         done = False
-        agent_position = self._get_agent_position()
+        agent_position = self.get_xy_in_habitat()
         rew = float(-1.0 * np.linalg.norm(agent_position))
 
         new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)

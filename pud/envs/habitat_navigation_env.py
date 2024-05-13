@@ -15,6 +15,8 @@ from pud.envs.wrappers import TimeLimit
 from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
 from pathlib import Path
 
+## Define data types
+Type2DMazePos = NDArray
 
 
 class HabitatNavigationEnv(gym.Env):
@@ -68,7 +70,7 @@ class HabitatNavigationEnv(gym.Env):
         self._width = self._simulator_settings["width"]
         self._height = self._simulator_settings["height"]
 
-        self._configuration = self._make_habitat_configuration()
+        self._configuration = self.make_habitat_configuration()
         
         self._simulator = habitat_sim.Simulator(self._configuration)
 
@@ -79,8 +81,8 @@ class HabitatNavigationEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(4, self._height, self._width, 4), dtype=np.uint8  # type: ignore
         )
-        # The channels are RGBA
 
+        # The channels are RGBA
         self.action_space = gym.spaces.Box(
             low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32
         )
@@ -99,6 +101,11 @@ class HabitatNavigationEnv(gym.Env):
         ).astype(np.uint8)
         self._wall_height, self._wall_width = self._walls.shape
 
+        self.maze_observation_space = gym.spaces.Box(
+            low=np.array([0.0, 0.0]),
+            high=np.array([self._wall_height, self._wall_width]),
+            dtype=np.float32)
+
         # discrete maze all-pair-shortest-path load or calculation
         t0 = time.time()
         path_apsp = None
@@ -110,7 +117,7 @@ class HabitatNavigationEnv(gym.Env):
                 self._apsp = pickle.load(f)
         else:
             print("[INFO] Calling the APSP construction function")
-            self._apsp = self._compute_apsp(self._walls)
+            self._apsp = self.compute_apsp(self._walls)
             print("APSP construction time in (s): ", time.time() - t0)
             if path_apsp and (not path_apsp.exists()):
                 path_apsp.parent.mkdir(exist_ok=True, parents=True)
@@ -123,9 +130,10 @@ class HabitatNavigationEnv(gym.Env):
 
     @property
     def walls(self):
+        """0 is obstacle, 1 is empty"""
         return self._walls
 
-    def _make_habitat_configuration(self):
+    def make_habitat_configuration(self):
 
         simulator_cfg = habitat_sim.SimulatorConfiguration()
         simulator_cfg.scene_id = self._simulator_settings["scene"]
@@ -186,18 +194,18 @@ class HabitatNavigationEnv(gym.Env):
 
         return habitat_sim.Configuration(simulator_cfg, [agent_cfg])
 
-    def _get_distance(self, position: NDArray, goal: NDArray) -> float:
+    def get_distance(self, position: NDArray, goal: NDArray) -> float:
         """Compute the shortest path distance.
 
         NOTE: This distance is *not* used for training. Further, the position and the goal arguments represent
         the 2D coordinates ([x, y])
 
         """
-        (i1, j1) = self._discretize_state(position)
-        (i2, j2) = self._discretize_state(goal)
+        (i1, j1) = self.get_grid_xy_from_habitat_xy(position)
+        (i2, j2) = self.get_grid_xy_from_habitat_xy(goal)
         return self._apsp[i1, j1, i2, j2]
 
-    def _discretize_state(self, position: NDArray) -> Tuple[int, int]:
+    def get_grid_xy_from_habitat_xy(self, position: NDArray) -> Tuple[int, int]:
         r"""Return gridworld index of realworld coordinates assuming top-left corner
         is the origin. The real world coordinates of lower left corner are
         (coordinate_min, coordinate_min) and of top right corner are
@@ -219,7 +227,7 @@ class HabitatNavigationEnv(gym.Env):
         )
         return grid_x, grid_y
 
-    def _undiscretize_state(
+    def get_xy_in_habitat_from_xy_in_grid(
         self, grid_position: Tuple[int, int]
     ) -> Tuple[float, float]:
 
@@ -229,21 +237,22 @@ class HabitatNavigationEnv(gym.Env):
         realworld_y = lower_bound[0] + grid_position[1] * self._meters_per_pixel
         return realworld_x, realworld_y
 
-    def _convert_sim_to_grid(self, position: NDArray) -> NDArray:
+    def convert_xyz_to_xy_in_habitat(self, position: NDArray) -> NDArray:
         """
         Convert the simulation 3D coordinates ([y, z, x]) to grid coordinates ([x, y])
         """
         return np.array([position[2], position[0]])
 
-    def _convert_grid_to_sim(self, position: NDArray) -> NDArray:
+    def convert_xy_to_xyz_in_habitat(self, position: NDArray) -> NDArray:
         """
         Convert the grid coordinates ([x, y]) to simulation 3D coordinates ([y, z, x])
         """
         return np.array([position[1], self._vertical_slice, position[0]])
 
-    def _compute_apsp(self, walls: NDArray):
-
-        # NOTE: walls[i, j] is True if (i, j) is traversable and False otherwise
+    def compute_apsp(self, walls: NDArray):
+        """
+        NOTE: walls[i, j] is True if (i, j) is traversable and False otherwise
+        """
 
         (height, width) = walls.shape
         g = nx.Graph()
@@ -277,14 +286,33 @@ class HabitatNavigationEnv(gym.Env):
                 dist[i1, j1, i2, j2] = d
         return dist
 
-    def _is_blocked(self, agent_position: NDArray) -> bool:
+    def maze_discretize_state(self, state: Type2DMazePos):
+        (i, j) = np.floor(state).astype(np.int64)
+        # Round down to the nearest cell if at the boundary.
+        if i == self._wall_height:
+            i -= 1
+        if j == self._wall_width:
+            j -= 1
+        return (i, j)
+    
+    def is_blocked_maze(self, state: Type2DMazePos) -> bool:
         """
+        check occupancy through 2D maze matrix, the same as the point env
+        """
+        if not self.maze_observation_space.contains(state):
+            return True
+        (i, j) = self.maze_discretize_state(state)
+        return (self._walls[i, j] == 0)
+
+    def is_blocked_habitat(self, agent_position: NDArray) -> bool:
+        """
+        check occupancy through habitat
         Determines whether the agent is blocked given the agent position ([x, y]).
         """
-        agent_sim_position = self._convert_grid_to_sim(agent_position)
+        agent_sim_position = self.convert_xy_to_xyz_in_habitat(agent_position)
         return not self._simulator.pathfinder.is_navigable(agent_sim_position)
 
-    def _get_agent_position(self) -> NDArray:
+    def get_xy_in_habitat(self) -> NDArray:
         """
         Returns the position ([x, y]) of the agent in the environment.
         """
@@ -293,14 +321,14 @@ class HabitatNavigationEnv(gym.Env):
         ).get_state()
         return np.array([agent_state.position[2], agent_state.position[0]])
 
-    def _update_agent_position(self, agent_position: NDArray):
+    def update_agent_position(self, agent_position: NDArray):
         """
         Given the agent position ([x, y]), update the agent state in the environment ([y, z, x]).
         """
         agent_state = self._simulator.get_agent(
             self._simulator_settings["default_agent"]
         ).get_state()
-        agent_state.position = self._convert_grid_to_sim(agent_position)
+        agent_state.position = self.convert_xy_to_xyz_in_habitat(agent_position)
         agent_state.sensor_states = {}
         self._agent.set_state(agent_state)
 
@@ -332,13 +360,13 @@ class HabitatNavigationEnv(gym.Env):
         dt = 1.0 / num_substeps
         for _ in np.linspace(0, 1, num_substeps):
             for axis, axis_action in enumerate(action):
-                new_state = self._get_agent_position()
+                new_state = self.get_xy_in_habitat()
                 new_state[axis] += dt * axis_action
-                if not self._is_blocked(new_state):
-                    self._update_agent_position(new_state)
+                if not self.is_blocked_habitat(new_state):
+                    self.update_agent_position(new_state)
 
         done = False
-        agent_position = self._get_agent_position()
+        agent_position = self.get_xy_in_habitat()
         rew = float(-1.0 * np.linalg.norm(agent_position))
 
         new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
@@ -457,7 +485,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             (int(goal[0]), int(goal[1]))
         )
         undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        assert not self.env._is_blocked(undiscretized_goal)
+        assert not self.env.is_blocked_habitat(undiscretized_goal)
 
         return (agent_position, undiscretized_goal)
 
