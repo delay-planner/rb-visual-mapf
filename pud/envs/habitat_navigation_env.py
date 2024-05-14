@@ -271,7 +271,7 @@ class HabitatNavigationEnv(gym.Env):
         self.state_grid = self._sample_empty_state()
         return self.state_grid.copy()
 
-    def _get_distance(self, obs:TypeGridXY, goal:TypeGridXY):
+    def get_distance(self, obs:TypeGridXY, goal:TypeGridXY):
         """Compute the shortest path distance.
 
         Note: This distance is *not* used for training."""
@@ -303,8 +303,8 @@ class HabitatNavigationEnv(gym.Env):
         rew = -1.0
         return self.state_grid.copy(), rew, done, {}
 
-    def sync_n_get_sensor_obs(self):
-        habitat_xy = self.get_habitat_xy_from_grid_xy(self.state_grid)
+    def get_sensor_obs_at_grid_xy(self, state_grid:TypeGridXY):
+        habitat_xy = self.get_habitat_xy_from_grid_xy(state_grid)
         self.set_agent_pos_w_habitatxy(habitat_xy)
         return self.get_sensor_observation()
 
@@ -553,7 +553,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             dtype=np.float32,
         )
         goal += np.random.uniform(size=2)
-        dist_to_goal = self._get_distance(obs, goal)
+        dist_to_goal = self.get_distance(obs, goal)
         assert min_dist <= dist_to_goal <= max_dist
         assert not self.env._is_blocked(goal)
         return (obs, goal)
@@ -570,11 +570,15 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         """
         return (obs, self.env._sample_empty_state())
 
-    def _normalize_obs(self, obs: TypeGridXY):
-        return np.array([
-            obs[0] / float(self.env._height),
-            obs[1] / float(self.env._width)
-        ])
+    #def _normalize_obs(self, obs: TypeGridXY):
+    #    return np.array([
+    #        obs[0] / float(self.env._height),
+    #        obs[1] / float(self.env._width)
+    #    ])
+
+    def _normalize_obs(self, obs:TypeGridXY):
+        """get visual obs"""
+        return self.get_sensor_obs_at_grid_xy(obs)
 
     def reset(self):
         goal = None
@@ -610,6 +614,9 @@ def habitat_env_load_fn(
     gym_env_wrappers: Union[Tuple[GoalConditionedHabitatPointWrapper], None] = (
         GoalConditionedHabitatPointWrapper,
     ),  # type: ignore
+    apsp_path:str="",
+    action_noise:float=1.0,
+    simulator_settings:dict={},
     device:str="cpu",
 ) -> gym.Env:
     """Loads the selected environment and wraps it with the specified wrappers.
@@ -629,7 +636,14 @@ def habitat_env_load_fn(
       An environment instance.
     """
 
-    env = HabitatNavigationEnv(scene=scene, height=height, device=device)
+    env = HabitatNavigationEnv(
+        scene=scene, 
+        height=height, 
+        action_noise=action_noise,
+        simulator_settings=simulator_settings,
+        apsp_path=apsp_path,
+        device=device,
+        )
 
     if gym_env_wrappers is not None:
         for wrapper in gym_env_wrappers:
