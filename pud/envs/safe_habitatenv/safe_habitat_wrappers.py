@@ -122,11 +122,11 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         )
         # goal += np.random.uniform(size=2)
 
-        undiscretized_goal_x, undiscretized_goal_y = self.env.get_xy_in_habitat_from_xy_in_grid(
+        undiscretized_goal_x, undiscretized_goal_y = self.env.get_habitat_xy_from_grid_xy(
             (goal[0], goal[1])
         )
         undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        dist_to_goal = self.env.get_distance(agent_position, undiscretized_goal)
+        dist_to_goal = self.env.get_distance_from_habitat_xy(agent_position, undiscretized_goal)
 
         assert min_dist <= dist_to_goal <= max_dist
         assert not self.env._is_blocked(undiscretized_goal)
@@ -187,14 +187,14 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
             (4, self.env._height, self.env._width, 4), dtype=np.uint8
         )
         agent_current_position = self.env.get_xy_in_habitat()
-        self.env.update_agent_position(goal)
+        self.env.set_agent_pos_w_habitatxy(goal)
         goal_observations = self.env._simulator.get_sensor_observations()
         for idx, (key, value) in enumerate(goal_observations.items()):
             assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
             self._goal_observation[idx] = value
         self._goal_position = goal
 
-        self.env.update_agent_position(agent_current_position)
+        self.env.set_agent_pos_w_habitatxy(agent_current_position)
 
         return {
             "observation": obs,
