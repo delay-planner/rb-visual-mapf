@@ -1,5 +1,6 @@
 import unittest
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn, HabitatNavigationEnv
+from pud.algos.visual_buffer import VisualReplayBuffer
 
 scene = "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
 device = "cpu"
@@ -24,6 +25,23 @@ env = habitat_env_load_fn(
             device=device,
         )
 
+
+latent_dimensions = 512
+obs_dim = env.observation_space["observation"].shape  # type: ignore
+goal_dim = env.observation_space["goal"].shape  # type: ignore
+state_dim = (
+    latent_dimensions * obs_dim[0] * 2
+)  # For each image along cardinal directions and the same for the goal
+
+action_dim = env.action_space.shape[0]  # type: ignore
+max_action = float(env.action_space.high[0])  # type: ignore
+
+buffer = VisualReplayBuffer(
+    obs_dim=obs_dim,
+    goal_dim=goal_dim,
+    action_dim=action_dim,
+    max_size=1000,
+    )
 
 class TestGoalConditionedHabitatEnv(unittest.TestCase):
     def setUp(self):
