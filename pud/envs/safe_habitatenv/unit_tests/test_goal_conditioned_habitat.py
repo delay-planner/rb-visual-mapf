@@ -1,6 +1,10 @@
 import unittest
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn, HabitatNavigationEnv
 from pud.algos.visual_buffer import VisualReplayBuffer
+#from pud.visual_encode import Encoder
+import torch
+from torch import nn
+import numpy as np
 
 scene = "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
 device = "cpu"
@@ -43,15 +47,186 @@ buffer = VisualReplayBuffer(
     max_size=1000,
     )
 
-class TestGoalConditionedHabitatEnv(unittest.TestCase):
-    def setUp(self):
-        import IPython
-        IPython.embed(colors="Linux")
+state = env.reset()
+obs = state["observation"]
+obs_t = torch.from_numpy(obs).permute(0, 3, 1, 2).float()
 
-        env
 
-    def test_something(self):
-        pass
+class VisualEncoder(nn.Module):
+    def __init__(self,
+            in_channels:int=4,
+            embedding_size:int=256,
+            act_fn=nn.SELU,
+            ):
+        super(VisualEncoder, self).__init__()
+        self.conv_net = nn.Sequential(
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=16, 
+                kernel_size=8, 
+                stride=4
+            ),  # 64x64 -> 15x15
+            act_fn(),
+            nn.Conv2d(16, 32, kernel_size=4, stride=4),  # 15x15 -> 3x3
+            act_fn(),
+            nn.Flatten(),
+        )
+        # 4 direction obs in batch dim x embedding size
+        self.l1 = nn.Linear(4*32*3*3, embedding_size)
 
-if __name__ == "__main__":
-    unittest.main()
+    def forward(self, x):
+        out = self.conv_net(x)
+        num_cat_channels, _ = out.shape
+        assert num_cat_channels%4 == 0
+        batch_size = int(num_cat_channels/4)
+        out = out.reshape(batch_size, -1)
+        out = self.l1(out)
+        return out
+    
+class VisualDecoder (nn.Module):
+    def __init__(self, 
+            input_channel:int=4,
+            embedding_size:int=256,
+            act_fn=nn.SELU,
+            ):
+        super(VisualDecoder, self).__init__()
+        self.l1 = nn.Linear(embedding_size, 1152)
+        self.deconv1 = nn.ConvTranspose2d(
+                            in_channels=32,
+                            out_channels=16,
+                            kernel_size=4,
+                            stride=4,)
+            
+        self.a1 = act_fn()
+        self.deconv2 = nn.ConvTranspose2d(
+                            in_channels=16,
+                            out_channels=input_channel,
+                            kernel_size=8,
+                            stride=4,
+                            )
+
+    def forward(self, x):
+        out = self.l1(x)
+        out = out.reshape([4, 32, 3, 3])
+
+
+oo1 = torch.rand(12, 4, 64, 64).float()
+oo2 =torch.rand(4, 4, 64, 64).float()
+
+e1 = VisualEncoder()
+e1 = e1.float()
+e1(oo1)
+
+rtol = 1e-4
+with torch.no_grad():
+    eq1 = torch.allclose(
+        e1(oo1)[0:1], e1(oo1[:4]), rtol=rtol
+    )
+
+    eq2 = torch.allclose(
+        e1(oo1)[1:2], e1(oo1[4:8]), rtol=rtol
+    )
+
+    eq3 = torch.allclose(
+        e1(oo1)[2:3], e1(oo1[8:]), rtol=rtol
+    )
+
+    eq4 = torch.allclose(
+        e1(oo1)[1:2], e1(oo2), rtol=rtol
+    )
+
+    print(eq1, eq2, eq3, eq4)
+
+
+e1(oo2)
+
+
+# make sure the embedding is image-specific, even for goal-conditioned encoders
+input_channels = 4
+conv1 = nn.Sequential(
+    nn.Conv2d(
+        in_channels=input_channels,
+        out_channels=16, 
+        kernel_size=8, 
+        stride=4
+    ),  # 64x64 -> 15x15
+)
+
+conv2 =  nn.Conv2d(16, 32, kernel_size=4, stride=4)  # 15x15 -> 3x3
+
+obs_t.shape
+
+obs_t = oo1
+out1_1 = conv1(obs_t)
+out1_1.shape  # 4, 16, 15, 15
+out1_1_2 = conv2(out1_1)
+
+l1_size = list(out1_1_2.shape)[:] # 4, 32, 3, 3
+l1 = nn.Linear(np.prod(l1_size), 256)
+
+out1_2 = torch.flatten(out1_1_2, start_dim=1)
+
+out1_2r = out1_2.reshape(2, 4*288)
+
+out1_2.shape
+
+torch.allclose(
+    torch.flatten(out1_2[:4]),
+    out1_2r[0]
+)
+
+torch.allclose(
+    torch.flatten(out1_2[4:]),
+    out1_2r[1]
+)
+
+
+
+emb = l1()
+
+## decode
+l2 = nn.Linear(256, out1_size)
+out2 = l2(emb)
+
+#torch.Size([4, 32, 3, 3])
+out2_1 = out2.reshape([4, 32, 3, 3])
+out2_1.shape
+
+ctn1 = nn.ConvTranspose2d(
+    in_channels=32,
+    out_channels=16,
+    kernel_size=4,
+    stride=4,
+)
+out2_2 = ctn1(out2_1, output_size=torch.Size([4, 16, 15, 15]))
+out2_2.shape
+
+ctn2 = nn.ConvTranspose2d(
+    in_channels=16,
+    out_channels=4,
+    kernel_size=8,
+    stride=4,
+)
+
+out2_3 = ctn2(out2_2, output_size=obs_t.shape)
+out2_3.shape
+
+import IPython
+IPython.embed(colors="Linux")
+
+
+
+
+## auto encoder
+#class TestGoalConditionedHabitatEnv(unittest.TestCase):
+#    def setUp(self):
+#        import IPython
+#        IPython.embed(colors="Linux")
+
+#        env
+
+#    def test_something(self):
+#        pass
+
+#if __name__ == "__main__":
+#    unittest.main()
