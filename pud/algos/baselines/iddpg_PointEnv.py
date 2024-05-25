@@ -7,7 +7,7 @@ from tensordict import unravel_key
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from torchrl.envs import Transform
-from torchrl.data import ReplayBuffer
+from torchrl.data import TensorDictReplayBuffer
 from torchrl.collectors import SyncDataCollector
 from torchrl._utils import logger as torchrl_logger
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
@@ -268,7 +268,7 @@ def train(cfg):
         ),
     )
 
-    replay_buffer = ReplayBuffer(
+    replay_buffer = TensorDictReplayBuffer(
         storage=LazyTensorStorage(cfg.buffer.memory_size, device=cfg.train.device),  # type: ignore
         sampler=SamplerWithoutReplacement(),
         batch_size=cfg.train.minibatch_size,

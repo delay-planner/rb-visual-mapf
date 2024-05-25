@@ -12,7 +12,7 @@ env:
 
 model:
   shared_parameters: True
-  centralised_critic: False # MADDPG if True, IDDPG if False
+  centralised_critic: False # MAPPO if True, IPPO if False
 
 collector:
   frames_per_batch: 61_440 # Frames sampled each sampling iteration
@@ -24,7 +24,9 @@ buffer:
 
 loss:
   gamma: 0.9
-  tau: 0.005 # For target net
+  lmbda: 0.9
+  entropy_eps: 0
+  clip_epsilon: 0.2
 
 train:
   num_epochs: 45  # optimization steps per batch of data collected
@@ -32,7 +34,7 @@ train:
   lr: 5e-5
   max_grad_norm: 40.0
   device: ???
-  ckpt_path: /home/mers-pluto/Desktop/Work/cc-sorb-rev/outputs/2024-05-24/15-35-55/train_IDDPG_CentralObstacle/checkpoint_160.pth
+  ckpt_path:
 
 eval:
   evaluation_interval: 5
@@ -42,4 +44,4 @@ logger:
   backend: tensorboard # Delete to remove logging
   project_name: null
   group_name: null
-  logdir: /train_IDDPG_CentralObstacle/
+  logdir: /train_IPPO_CentralObstacle/

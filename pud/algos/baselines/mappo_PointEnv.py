@@ -3,27 +3,25 @@ import time
 import torch
 import hydra
 
+from torch import nn
+
 from tensordict import unravel_key
+from tensordict.nn.distributions import NormalParamExtractor
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from torchrl.envs import Transform
 from torchrl.data import TensorDictReplayBuffer
 from torchrl.collectors import SyncDataCollector
 from torchrl._utils import logger as torchrl_logger
+from torchrl.modules import ProbabilisticActor, TanhNormal
+from torchrl.modules.models.multiagent import MultiAgentMLP
+from torchrl.objectives import ClipPPOLoss, ValueEstimators
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
-from torchrl.objectives import DDPGLoss, SoftUpdate, ValueEstimators
+from torchrl.envs.utils import ExplorationType, set_exploration_type
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-from torchrl.modules import (
-    AdditiveGaussianWrapper,
-    MultiAgentMLP,
-    ProbabilisticActor,
-    TanhDelta,
-)
 from torchrl.envs import (
     check_env_specs,
-    ExplorationType,
     RewardSum,
-    set_exploration_type,
     TransformedEnv,
     StepCounter,
 )
@@ -40,7 +38,6 @@ def save_checkpoint(
     optimizer,
     replay_buffer,
     loss_module,
-    exploration_policy,
 ):
     checkpoint = {
         "collector": collector.state_dict(),
@@ -49,7 +46,6 @@ def save_checkpoint(
         "optimizer": optimizer.state_dict(),
         "replay_buffer": replay_buffer.state_dict(),
         "loss_module": loss_module.state_dict(),
-        "exploration_policy": exploration_policy.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
     torchrl_logger.info(f"Checkpoint saved at {checkpoint_path}")
@@ -63,7 +59,6 @@ def load_checkpoint(
     optimizer,
     replay_buffer,
     loss_module,
-    exploration_policy,
 ):
     torchrl_logger.info(f"Loading checkpoint from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path)
@@ -73,7 +68,6 @@ def load_checkpoint(
     optimizer.load_state_dict(checkpoint["optimizer"])
     replay_buffer.load_state_dict(checkpoint["replay_buffer"])
     loss_module.load_state_dict(checkpoint["loss_module"])
-    exploration_policy.load_state_dict(checkpoint["exploration_policy"])
     return (
         collector,
         policy,
@@ -81,7 +75,6 @@ def load_checkpoint(
         optimizer,
         replay_buffer,
         loss_module,
-        exploration_policy,
     )
 
 
@@ -118,7 +111,7 @@ class DoneTransform(Transform):
 @hydra.main(
     version_base="1.1",
     config_path="../../../configs",
-    config_name="config_MADDPG_PointEnv",
+    config_name="config_MAPPO_PointEnv",
 )
 def train(cfg):
 
@@ -177,45 +170,44 @@ def train(cfg):
         in_keys=[("agents", "observation", "state"), ("agents", "observation", "goal")],
         out_keys=[("agents", "observation", "goal_conditioned_state")],
     )
-    policy_net = MultiAgentMLP(
-        n_agent_inputs=transformedEnv.observation_spec["agents", "observation"].shape[
-            -1
-        ]
-        * 2,  # Concatenated state and goal
-        n_agent_outputs=transformedEnv.full_action_spec["agents", "action"].shape[-1],
-        n_agents=cfg.env.num_agents,
-        centralised=False,
-        share_params=cfg.model.shared_parameters,
-        device=cfg.train.device,
-        depth=2,
-        num_cells=256,
-        activation_class=torch.nn.Tanh,
+    policy_net = nn.Sequential(
+        MultiAgentMLP(
+            n_agent_inputs=transformedEnv.observation_spec[
+                "agents", "observation"
+            ].shape[-1]
+            * 2,  # Concatenated state and goal
+            n_agent_outputs=2
+            * transformedEnv.full_action_spec["agents", "action"].shape[-1],
+            n_agents=cfg.env.num_agents,
+            centralised=False,
+            share_params=cfg.model.shared_parameters,
+            device=cfg.train.device,
+            depth=2,
+            num_cells=256,
+            activation_class=torch.nn.Tanh,
+        ),
+        NormalParamExtractor(),
     )
 
     policy_mod = TensorDictModule(
         policy_net,
         in_keys=[("agents", "observation", "goal_conditioned_state")],
-        out_keys=[("agents", "param")],
+        out_keys=[("agents", "loc"), ("agents", "scale")],
     )
     policy_module = TensorDictSequential(gc_module, policy_mod)
 
     policy = ProbabilisticActor(
         module=policy_module,
         spec=transformedEnv.full_action_spec["agents", "action"],
-        in_keys=[("agents", "param")],
+        in_keys=[("agents", "loc"), ("agents", "scale")],
         out_keys=[("agents", "action")],
-        distribution_class=TanhDelta,
+        distribution_class=TanhNormal,
         distribution_kwargs={
             "min": transformedEnv.full_action_spec["agents", "action"].space.low,  # type: ignore
             "max": transformedEnv.full_action_spec["agents", "action"].space.high,  # type: ignore
         },
-        return_log_prob=False,
-    )
-
-    exploration_policy = AdditiveGaussianWrapper(
-        policy=policy,
-        annealing_num_steps=int(cfg.collector.total_frames * (1 / 2)),
-        action_key=("agents", "action"),
+        return_log_prob=True,
+        log_prob_key=("agents", "sample_log_prob"),
     )
 
     gc_module = TensorDictModule(
@@ -224,20 +216,11 @@ def train(cfg):
         out_keys=[("agents", "observation", "goal_conditioned_state")],
     )
 
-    cat_module = TensorDictModule(
-        lambda obs, action: torch.cat([obs, action], dim=-1),
-        in_keys=[
-            ("agents", "observation", "goal_conditioned_state"),
-            ("agents", "action"),
-        ],
-        out_keys=[("agents", "obs_action")],
-    )
-
     critic_net = MultiAgentMLP(
-        n_agent_inputs=(
-            transformedEnv.observation_spec["agents", "observation"].shape[-1] * 2
-        )
-        + transformedEnv.full_action_spec["agents", "action"].shape[-1],
+        n_agent_inputs=transformedEnv.observation_spec[
+            "agents", "observation"
+        ].shape[-1]
+        * 2,
         n_agent_outputs=1,
         n_agents=cfg.env.num_agents,
         centralised=cfg.model.centralised_critic,
@@ -248,17 +231,17 @@ def train(cfg):
         activation_class=torch.nn.Tanh,
     )
 
-    critic_module = TensorDictModule(
-        module=critic_net,
-        in_keys=[("agents", "obs_action")],
-        out_keys=[("agents", "state_action_value")],
+    critic_mod = TensorDictModule(
+        critic_net,
+        in_keys=[("agents", "observation", "goal_conditioned_state")],
+        out_keys=[("agents", "state_value")],
     )
 
-    critic = TensorDictSequential(gc_module, cat_module, critic_module)
+    critic = TensorDictSequential(gc_module, critic_mod)
 
     collector = SyncDataCollector(
         transformedEnv,
-        exploration_policy,
+        policy,
         device=cfg.env.device,
         storing_device=cfg.train.device,
         frames_per_batch=cfg.collector.frames_per_batch,
@@ -274,27 +257,32 @@ def train(cfg):
         batch_size=cfg.train.minibatch_size,
     )
 
-    loss_module = DDPGLoss(
+    loss_module = ClipPPOLoss(
         actor_network=policy,
-        value_network=critic,
-        delay_value=True,
+        critic_network=critic,
+        clip_epsilon=cfg.loss.clip_epsilon,
+        entropy_coef=cfg.loss.entropy_eps,
+        normalize_advantage=False,
     )
     loss_module.set_keys(
-        state_action_value=("agents", "state_action_value"),
         reward=("agents", "reward"),
+        action=("agents", "action"),
+        sample_log_prob=("agents", "sample_log_prob"),
+        value=("agents", "state_value"),
         done=("agents", "done"),
         terminated=("agents", "terminated"),
     )
-    loss_module.make_value_estimator(ValueEstimators.TD0, gamma=cfg.loss.gamma)
+    loss_module.make_value_estimator(
+        ValueEstimators.GAE, gamma=cfg.loss.gamma, lmbda=cfg.loss.lmbda
+    )
 
-    target_updaters = SoftUpdate(loss_module, eps=1 - cfg.loss.tau)
     optimizer = torch.optim.Adam(loss_module.parameters(), lr=float(cfg.train.lr))
 
     if cfg.logger.backend:
         model_name = (
             ("Het" if not cfg.model.shared_parameters else "")
             + ("MA" if cfg.model.centralised_critic else "I")
-            + "DDPG"
+            + "PPO"
         )
         logger = init_logging(cfg, model_name)
 
@@ -310,7 +298,6 @@ def train(cfg):
             optimizer,
             replay_buffer,
             loss_module,
-            exploration_policy,
         ) = load_checkpoint(
             cfg.train.ckpt_path,
             collector,
@@ -319,13 +306,19 @@ def train(cfg):
             optimizer,
             replay_buffer,
             loss_module,
-            exploration_policy,
         )
 
     for iteration, tensordict_data in enumerate(collector):
         torchrl_logger.info(f"\nIteration {iteration}")
 
         sampling_time = time.time() - sampling_start
+
+        with torch.no_grad():
+            loss_module.value_estimator(
+                tensordict_data,
+                params=loss_module.critic_network_params,
+                target_params=loss_module.target_critic_network_params,
+            )
 
         current_frames = tensordict_data.numel()
         total_frames += current_frames
@@ -342,7 +335,11 @@ def train(cfg):
                 loss_vals = loss_module(subdata)
                 training_tds.append(loss_vals.detach())
 
-                loss_value = loss_vals["loss_actor"] + loss_vals["loss_value"]
+                loss_value = (
+                    loss_vals["loss_objective"]
+                    + loss_vals["loss_critic"]
+                    + loss_vals["loss_entropy"]
+                )
                 loss_value.backward()
 
                 total_norm = torch.nn.utils.clip_grad_norm_(
@@ -352,9 +349,7 @@ def train(cfg):
 
                 optimizer.step()
                 optimizer.zero_grad()
-                target_updaters.step()
 
-        exploration_policy.step(frames=current_frames)
         collector.update_policy_weights_()
 
         training_time = time.time() - training_start
@@ -411,7 +406,6 @@ def train(cfg):
                 optimizer,
                 replay_buffer,
                 loss_module,
-                exploration_policy,
             )
 
         sampling_start = time.time()
