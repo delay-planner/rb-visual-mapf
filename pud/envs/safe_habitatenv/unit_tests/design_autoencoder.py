@@ -1,4 +1,3 @@
-import unittest
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn, HabitatNavigationEnv
 from pud.algos.visual_buffer import VisualReplayBuffer
 #from pud.visual_encode import Encoder
@@ -58,6 +57,11 @@ class VisualEncoder(nn.Module):
             embedding_size:int=256,
             act_fn=nn.SELU,
             ):
+        """
+        conv are performed on individual images (4 directions)
+        -> image embeddings
+        state embedding <- MLP(4 x image embeddings)
+        """
         super(VisualEncoder, self).__init__()
         self.conv_net = nn.Sequential(
             nn.Conv2d(
@@ -89,13 +93,19 @@ class VisualDecoder (nn.Module):
             embedding_size:int=256,
             act_fn=nn.SELU,
             ):
+        """
+        4 * image embeddings <- MLP (state embedding)
+        each image emedding is deconved into full images (4x64x64)
+        """
         super(VisualDecoder, self).__init__()
-        self.l1 = nn.Linear(embedding_size, 1152)
+        self.l1 = nn.Linear(embedding_size, 4*32*3*3)
         self.deconv1 = nn.ConvTranspose2d(
                             in_channels=32,
                             out_channels=16,
                             kernel_size=4,
                             stride=4,)
+        
+        self.output_size_1 = torch.Size([-1, 16, 15, 15])
             
         self.a1 = act_fn()
         self.deconv2 = nn.ConvTranspose2d(
@@ -104,16 +114,32 @@ class VisualDecoder (nn.Module):
                             kernel_size=8,
                             stride=4,
                             )
+        # batch_size, num_channel, image sizes
+        self.output_size_2 = torch.Size([-1, 4, 64, 64])
 
-    def forward(self, x):
-        out = self.l1(x)
-        out = out.reshape([4, 32, 3, 3])
+    def forward(self, emb):
+        batch_size, emb_size = emb.shape
+        out = self.l1(emb)
+        out = out.reshape([batch_size*4, 32, 3, 3])
+        out = self.deconv1(out, output_size=self.output_size_1)
+        out = self.deconv2(out, output_size=self.output_size_2)
+        return out
+        
+import IPython
+IPython.embed(colors="Linux")
 
+# --- test batch encoding ----
 
 oo1 = torch.rand(12, 4, 64, 64).float()
 oo2 =torch.rand(4, 4, 64, 64).float()
 
 e1 = VisualEncoder()
+d1 = VisualDecoder()
+
+emb = e1(oo1)
+roo1 = d1(emb)
+
+
 e1 = e1.float()
 e1(oo1)
 
@@ -140,6 +166,14 @@ with torch.no_grad():
 
 e1(oo2)
 
+# design decoder
+# decoder seems not need non-linear activation
+# reference: https://stackoverflow.com/questions/54313572/why-is-there-no-activation-function-in-upsampling-layer-of-u-net
+
+import IPython
+IPython.embed(colors="LightBG")
+
+emb = e1(oo1) # batch_size (e.g.,12/4=3), 256
 
 # make sure the embedding is image-specific, even for goal-conditioned encoders
 input_channels = 4
@@ -158,11 +192,13 @@ obs_t.shape
 
 obs_t = oo1
 out1_1 = conv1(obs_t)
-out1_1.shape  # 4, 16, 15, 15
+out1_1.shape  # (3x4), 16, 15, 15
 out1_1_2 = conv2(out1_1)
 
-l1_size = list(out1_1_2.shape)[:] # 4, 32, 3, 3
-l1 = nn.Linear(np.prod(l1_size), 256)
+#l1_size = list(out1_1_2.shape)[:] # 4, 32, 3, 3
+#l1 = nn.Linear(np.prod(l1_size), 256)
+
+l1 = nn.Linear(32*3*3, )
 
 out1_2 = torch.flatten(out1_1_2, start_dim=1)
 
@@ -185,12 +221,15 @@ torch.allclose(
 emb = l1()
 
 ## decode
-l2 = nn.Linear(256, out1_size)
+l2 = nn.Linear(256, 4*32*3*3)
 out2 = l2(emb)
 
 #torch.Size([4, 32, 3, 3])
-out2_1 = out2.reshape([4, 32, 3, 3])
-out2_1.shape
+out2_1 = out2.reshape([-1, 32, 3, 3])
+out2_1.shape # 3*4, 32, 3, 3
+
+# verify reshape makes sense
+torch.allclose(out2[0].flatten(), out2_1[0:4].flatten())
 
 ctn1 = nn.ConvTranspose2d(
     in_channels=32,
@@ -198,7 +237,7 @@ ctn1 = nn.ConvTranspose2d(
     kernel_size=4,
     stride=4,
 )
-out2_2 = ctn1(out2_1, output_size=torch.Size([4, 16, 15, 15]))
+out2_2 = ctn1(out2_1, output_size=torch.Size([-1, 16, 15, 15]))
 out2_2.shape
 
 ctn2 = nn.ConvTranspose2d(
@@ -210,11 +249,6 @@ ctn2 = nn.ConvTranspose2d(
 
 out2_3 = ctn2(out2_2, output_size=obs_t.shape)
 out2_3.shape
-
-import IPython
-IPython.embed(colors="Linux")
-
-
 
 
 ## auto encoder
