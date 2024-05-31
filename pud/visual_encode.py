@@ -35,6 +35,30 @@ class VisualEncoder(nn.Module):
         out = out.reshape(batch_size, -1)
         out = self.l1(out)
         return out
-    
-    #def reset_parameters(self):
-    #    pass
+
+class VisualDecoder (nn.Module):
+    def __init__(self, emb_size:int=256):
+        super(VisualDecoder, self).__init__()
+
+        self.l_emb = nn.Linear(emb_size, 4*32*3*3)
+        self.deconv1 = nn.ConvTranspose2d(
+                            in_channels=32,
+                            out_channels=16,
+                            kernel_size=4,
+                            stride=4,
+                        )
+        self.deconv2 = nn.ConvTranspose2d(
+                    in_channels=16,
+                    out_channels=4,
+                    kernel_size=8,
+                    stride=4,
+                    )
+
+    def forward(self, emb:torch.Tensor):
+        batch_size, emb_dim = emb.shape
+        out = self.l_emb(emb)
+        #torch.Size([4, 32, 3, 3])
+        out = out.reshape([batch_size*4, 32, 3, 3])
+        out = self.deconv1(out, output_size=torch.Size([4, 16, 15, 15]))
+        out = self.deconv2(out, output_size=[batch_size*4, 4, 64, 64])
+        return out
