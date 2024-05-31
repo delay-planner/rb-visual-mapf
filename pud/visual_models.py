@@ -2,7 +2,9 @@ import torch
 from torch import nn
 from typing import Union
 from torch.nn import functional as F
+import numpy as np
 from pud.utils import variance_initializer_
+from pud.algos.data_struct import inp_to_device
 
 
 class VisualEncoder(nn.Module):
@@ -27,7 +29,8 @@ class VisualEncoder(nn.Module):
         # 4 direction obs in batch dim x embedding size
         self.l1 = nn.Linear(4*32*3*3, embedding_size)
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor):
+        x = x.permute(0, 3, 1, 2) # batch_dim, channel_dim, *image_size
         out = self.conv_net(x)
         num_cat_channels, _ = out.shape
         assert num_cat_channels%4 == 0
@@ -35,6 +38,28 @@ class VisualEncoder(nn.Module):
         out = out.reshape(batch_size, -1)
         out = self.l1(out)
         return out
+    
+    def get_latent_state(self, 
+            image_state:Union[torch.Tensor, dict, np.ndarray],
+            device:torch.device):
+        """convert image state to latent state"""
+        # move input to torch device
+        inp = inp_to_device(image_state, device=device)
+
+        if torch.is_tensor(inp):
+            return self.forward(inp)
+        elif isinstance(inp, dict):
+            latent_obs = self.forward(inp["observation"].float())
+            latent_goal = self.forward(inp["goal"].float())
+            latent_state = {}
+            for key in inp:
+                if key == "observation":
+                    latent_state[key] = latent_obs
+                elif key == "goal":
+                    latent_state[key] = latent_goal
+                else:
+                    latent_state[key] = inp[key]
+            return latent_state
 
 class VisualDecoder (nn.Module):
     def __init__(self, emb_size:int=256):
@@ -62,3 +87,4 @@ class VisualDecoder (nn.Module):
         out = self.deconv1(out, output_size=torch.Size([4, 16, 15, 15]))
         out = self.deconv2(out, output_size=[batch_size*4, 4, 64, 64])
         return out
+    

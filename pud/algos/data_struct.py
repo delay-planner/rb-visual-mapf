@@ -26,15 +26,13 @@ def inp_to_device(
         inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
         device:torch.device,
         ):
-    """convert dict inps to torch"""
+    """convert dict inps to torch, skip other fields"""
     if isinstance(inp, dict):
         for key in inp:
             if isinstance(inp[key], np.ndarray):
                 inp[key] = torch.from_numpy(inp[key]).to(device)
             elif isinstance(inp[key], torch.Tensor):
                 inp[key] = inp[key].to(device)
-            else:
-                raise Exception("data type mismatch")
         return inp
     
     if isinstance(inp, np.ndarray):
