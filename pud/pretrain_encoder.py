@@ -1,4 +1,4 @@
-from pud.visual_encode import VisualEncoder, VisualDecoder
+from pud.visual_models import VisualEncoder, VisualDecoder
 
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn
 import torch
@@ -141,10 +141,4 @@ if __name__ == "__main__":
 
             recon_path = recon_dir.joinpath("recon_{:0>6d}.jpg".format(i))
             #todo: write images from array
-
-
-
-
-
-
 

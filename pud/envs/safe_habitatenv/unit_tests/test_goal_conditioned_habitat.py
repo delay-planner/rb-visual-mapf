@@ -1,9 +1,10 @@
 import unittest
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn, HabitatNavigationEnv
 from pud.algos.visual_buffer import VisualReplayBuffer
-#from pud.visual_encode import Encoder
+from pud.visual_models import VisualEncoder, VisualDecoder
 import torch
 from torch import nn
+from pud.algos.data_struct import inp_to_device
 import numpy as np
 
 scene = "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
@@ -29,7 +30,6 @@ env = habitat_env_load_fn(
             device=device,
         )
 
-
 latent_dimensions = 512
 obs_dim = env.observation_space["observation"].shape  # type: ignore
 goal_dim = env.observation_space["goal"].shape  # type: ignore
@@ -49,73 +49,20 @@ buffer = VisualReplayBuffer(
 
 state = env.reset()
 obs = state["observation"]
-obs_t = torch.from_numpy(obs).permute(0, 3, 1, 2).float()
+#obs_t = torch.from_numpy(obs).permute(0, 3, 1, 2).float()
 
 
-class VisualEncoder(nn.Module):
-    def __init__(self,
-            in_channels:int=4,
-            embedding_size:int=256,
-            act_fn=nn.SELU,
-            ):
-        super(VisualEncoder, self).__init__()
-        self.conv_net = nn.Sequential(
-            nn.Conv2d(
-                in_channels=in_channels,
-                out_channels=16, 
-                kernel_size=8, 
-                stride=4
-            ),  # 64x64 -> 15x15
-            act_fn(),
-            nn.Conv2d(16, 32, kernel_size=4, stride=4),  # 15x15 -> 3x3
-            act_fn(),
-            nn.Flatten(),
-        )
-        # 4 direction obs in batch dim x embedding size
-        self.l1 = nn.Linear(4*32*3*3, embedding_size)
-
-    def forward(self, x):
-        out = self.conv_net(x)
-        num_cat_channels, _ = out.shape
-        assert num_cat_channels%4 == 0
-        batch_size = int(num_cat_channels/4)
-        out = out.reshape(batch_size, -1)
-        out = self.l1(out)
-        return out
-    
-class VisualDecoder (nn.Module):
-    def __init__(self, 
-            input_channel:int=4,
-            embedding_size:int=256,
-            act_fn=nn.SELU,
-            ):
-        super(VisualDecoder, self).__init__()
-        self.l1 = nn.Linear(embedding_size, 1152)
-        self.deconv1 = nn.ConvTranspose2d(
-                            in_channels=32,
-                            out_channels=16,
-                            kernel_size=4,
-                            stride=4,)
-            
-        self.a1 = act_fn()
-        self.deconv2 = nn.ConvTranspose2d(
-                            in_channels=16,
-                            out_channels=input_channel,
-                            kernel_size=8,
-                            stride=4,
-                            )
-
-    def forward(self, x):
-        out = self.l1(x)
-        out = out.reshape([4, 32, 3, 3])
-
-
-oo1 = torch.rand(12, 4, 64, 64).float()
-oo2 =torch.rand(4, 4, 64, 64).float()
+oo1 = torch.rand(12, 64, 64, 4).float()
+oo2 =torch.rand(4, 64, 64, 4).float()
 
 e1 = VisualEncoder()
 e1 = e1.float()
-e1(oo1)
+tmp = e1(oo1)
+
+e1.get_latent_state(state, torch.device("cpu"))
+
+emb = e1(state)
+emb.shape
 
 rtol = 1e-4
 with torch.no_grad():
@@ -139,6 +86,15 @@ with torch.no_grad():
 
 
 e1(oo2)
+
+import IPython
+IPython.embed(colors="Linux")
+
+
+
+
+
+emb = e1(oo1)
 
 
 # make sure the embedding is image-specific, even for goal-conditioned encoders
@@ -182,14 +138,14 @@ torch.allclose(
 
 
 
-emb = l1()
-
 ## decode
-l2 = nn.Linear(256, out1_size)
+batch_size, emb_dim = emb.shape
+
+l2 = nn.Linear(256, 4*32*3*3)
 out2 = l2(emb)
 
 #torch.Size([4, 32, 3, 3])
-out2_1 = out2.reshape([4, 32, 3, 3])
+out2_1 = out2.reshape([batch_size*4, 32, 3, 3])
 out2_1.shape
 
 ctn1 = nn.ConvTranspose2d(
@@ -208,7 +164,7 @@ ctn2 = nn.ConvTranspose2d(
     stride=4,
 )
 
-out2_3 = ctn2(out2_2, output_size=obs_t.shape)
+out2_3 = ctn2(out2_2, output_size=[-1, 4, 64, 64])
 out2_3.shape
 
 import IPython
