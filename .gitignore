@@ -6,6 +6,7 @@ pud/algos/lr_scheduler/output
 temp/
 external_data/
 .vscode/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
