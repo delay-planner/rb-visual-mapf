@@ -84,7 +84,8 @@ if __name__ == "__main__":
     writer = SummaryWriter(log_dir=tb_dir.as_posix())
 
     scene = args.scene
-    device = "cpu"
+    device = args.device
+    torch_device = torch.device(args.device)
     simulator_settings = dict(
         scene= "scene_datasets/habitat-test-scenes/skokloster-castle.glb",
         width= 64,
@@ -115,6 +116,9 @@ if __name__ == "__main__":
     enc = VisualEncoder(embedding_size=args.emb_dim)
     dec = VisualDecoder(emb_size=args.emb_dim)
 
+    enc.to(torch_device)
+    dec.to(torch_device)
+
 
     loss_fn = nn.MSELoss()
     opt = torch.optim.Adam(params=list(enc.parameters())+list(dec.parameters()),
@@ -131,6 +135,7 @@ if __name__ == "__main__":
             state = env.reset()
             obs[j*4:j*4+4] = state["observation"]
         obs_t = torch.from_numpy(obs).float()
+        obs_t = obs_t.to(torch_device)
         obs_t = obs_t / 255. # normalize images into 0-1
         emb = enc(obs_t)
         rec = dec(emb)
