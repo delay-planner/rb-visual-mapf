@@ -8,6 +8,11 @@ from pud.algos.data_struct import inp_to_device
 
 
 class VisualEncoder(nn.Module):
+    """
+    conv are performed on individual images (4 directions)
+    -> image embeddings
+    state embedding <- MLP(4 x image embeddings)
+    """
     def __init__(self,
             in_channels:int=4,
             embedding_size:int=256,
