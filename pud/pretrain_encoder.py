@@ -10,6 +10,19 @@ import argparse
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+
+def visualize_reconstruction(obs:np.ndarray, rec:np.ndarray, outfile=""):
+    fig, ax = plt.subplots(nrows=1, ncols=2, sharey=True)
+    ax[0].imshow((rec[0]*255).astype(dtype="uint8"))
+    ax[0].set_title("reconstruction")
+
+    ax[1].imshow(obs[0].astype(dtype="uint8"))
+    ax[1].set_title("ground truth")    
+    fig.tight_layout()
+    if len(outfile) > 0:
+        fig.savefig(fname=outfile, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--emb_dim",
@@ -111,12 +124,14 @@ if __name__ == "__main__":
     train_batch_size = args.train_batch_size
     num_itrs = args.train_itrs
 
-    for i in tqdm(range(num_itrs),total=num_itrs, disable=True):
+    obs, rec = [None] * 2
+    for i in tqdm(range(num_itrs),total=num_itrs, disable=False):
         obs = np.zeros([train_batch_size*4, 64, 64 ,4])
         for j in range(train_batch_size):
             state = env.reset()
             obs[j*4:j*4+4] = state["observation"]
-        obs_t = torch.from_numpy(obs).permute(0, 3, 1, 2).float()
+        obs_t = torch.from_numpy(obs).float()
+        obs_t = obs_t / 255. # normalize images into 0-1
         emb = enc(obs_t)
         rec = dec(emb)
 
@@ -141,4 +156,6 @@ if __name__ == "__main__":
 
             recon_path = recon_dir.joinpath("recon_{:0>6d}.jpg".format(i))
             #todo: write images from array
-
+            rec_np = rec.detach().cpu().numpy()
+            visualize_reconstruction(obs=obs, rec=rec_np, 
+                    outfile=recon_path.as_posix())

@@ -91,5 +91,9 @@ class VisualDecoder (nn.Module):
         out = out.reshape([batch_size*4, 32, 3, 3])
         out = self.deconv1(out, output_size=torch.Size([4, 16, 15, 15]))
         out = self.deconv2(out, output_size=[batch_size*4, 4, 64, 64])
+        # batch_dim, channel_dim, image size 1, image size 2
+        # to 
+        # batch_dim, image size 1, image size 2, channel dim
+        out = out.permute(0, 2, 3, 1) # batch_dim, channel_dim, *image_size
         return out
     
