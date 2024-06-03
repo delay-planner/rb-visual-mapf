@@ -2,6 +2,7 @@ workdirs
 pud/envs/precompiles/*
 pud/envs/safe_pointenv/unit_tests/outputs/*
 runs
+runs_debug
 pud/algos/lr_scheduler/output
 temp/
 external_data/
