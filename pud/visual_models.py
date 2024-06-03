@@ -5,6 +5,7 @@ from torch.nn import functional as F
 import numpy as np
 from pud.utils import variance_initializer_
 from pud.algos.data_struct import inp_to_device
+from pud.ddpg import UVFDDPG
 
 
 class VisualEncoder(nn.Module):
@@ -97,3 +98,32 @@ class VisualDecoder (nn.Module):
         out = out.permute(0, 2, 3, 1) # batch_dim, channel_dim, *image_size
         return out
     
+
+
+class VisualUVFDDPG (UVFDDPG):
+    def __init__(
+            self,
+            # encoder args
+            in_channels:int,
+            embedding_size:int,
+            act_fn,
+            device:str,
+            # policy args
+            uvfddpg_kwargs:dict,
+            ):
+        super(VisualUVFDDPG, self).__init__(**uvfddpg_kwargs)
+        self.encoder = VisualEncoder(
+            in_channels=in_channels,
+            embedding_size=embedding_size,
+            act_fn=act_fn,
+        )
+        self.device = torch.device(device)
+
+    def select_action(self, state):
+        latent_state = self.encoder.get_latent_state(state, device=self.device)
+        with torch.no_grad():
+            return self.actor(latent_state).cpu().detach().numpy().flatten()
+
+    def get_q_values(self, state, aggregate='mean'):
+        latent_state = self.encoder.get_latent_state(state, device=self.device)
+        return super().get_q_values(latent_state, aggregate)
