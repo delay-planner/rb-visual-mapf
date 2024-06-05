@@ -4,7 +4,7 @@ from pud.algos.visual_buffer import VisualReplayBuffer
 from pud.visual_models import VisualEncoder, VisualDecoder
 import torch
 from torch import nn
-from pud.algos.data_struct import inp_to_device
+from pud.algos.data_struct import inp_to_torch_device
 import numpy as np
 
 scene = "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
