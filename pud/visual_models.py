@@ -5,7 +5,8 @@ from torch.nn import functional as F
 import numpy as np
 from pud.utils import variance_initializer_
 from pud.algos.data_struct import inp_to_torch_device
-from pud.ddpg import UVFDDPG
+from pud.ddpg import UVFDDPG, Actor, Critic
+from termcolor import colored
 
 
 class VisualEncoder(nn.Module):
@@ -109,6 +110,47 @@ class VisualDecoder (nn.Module):
         # batch_dim, image size 1, image size 2, channel dim
         out = out.permute(0, 2, 3, 1) # batch_dim, channel_dim, *image_size
         return out
+
+class VisualActor(nn.Module): # TODO: [256, 256], MLP class
+    def __init__(self, 
+            state_dim, 
+            action_dim, 
+            max_action, 
+            embedding_size:int, 
+            act_fn=nn.SELU,
+            device=torch.device("cpu"),
+            ):
+        super().__init__()
+
+        self.encoder = VisualEncoder(
+                    in_channels=4, 
+                    embedding_size=embedding_size, 
+                    act_fn=act_fn
+                    )
+        self.l1 = nn.Linear(state_dim, 256)
+        self.l2 = nn.Linear(256, 256)
+        self.l3 = nn.Linear(256, action_dim)
+        self.device = device
+
+        self.max_action = max_action
+        self.reset_parameters()
+
+    def forward(self, state):
+        state = self.encoder.get_latent_state(state, self.device)
+        a = F.relu(self.l1(state))
+        a = F.relu(self.l2(a))
+        a = torch.tanh(self.l3(a))
+        a = self.max_action * a 
+        return a
+
+    def reset_parameters(self):
+        variance_initializer_(self.encoder.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        variance_initializer_(self.l1.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        torch.nn.init.zeros_(self.l1.bias)
+        variance_initializer_(self.l2.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        torch.nn.init.zeros_(self.l2.bias)
+        nn.init.uniform_(self.l3.weight, -0.003, 0.003)
+        torch.nn.init.zeros_(self.l3.bias)
     
 
 
@@ -129,10 +171,15 @@ class VisualUVFDDPG (UVFDDPG):
             embedding_size=embedding_size,
             act_fn=act_fn,
         )
-        self.actor_optimizer = torch.optim.Adam(
-            list(self.actor.parameters()) + list(self.encoder.parameters()), 
-            lr=3e-4, eps=1e-07)
+        #self.actor_optimizer = torch.optim.Adam(
+        #    list(self.actor.parameters()) + list(self.encoder.parameters()), 
+        #    lr=3e-4, eps=1e-07)
         self.device = torch.device(device)
+
+    def load_pretrained_encoder(self, ckpt_path:str):
+        ckpt = torch.load(ckpt_path)
+        self.encoder.load_state_dict(ckpt.state_dict())
+        print("[{}] loaded ckpt: {}".format(colored("success", color="green"),ckpt))
 
     def select_action(self, state):
         latent_state = self.encoder.get_latent_state(state, device=self.device)
