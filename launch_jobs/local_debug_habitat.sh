@@ -32,7 +32,7 @@ if [[ -n ${debugger_port} ]]; then
     python -m debugpy \
         --listen localhost:${debugger_port} \
         --wait-for-client \
-        pud/envs/safe_habitatenv/unit_tests/test_visual_collector.py \
+        pud/envs/safe_habitatenv/unit_tests/train_uvfddpg_habitat.py \
         --scene $scene \
         --apsp_path $apsp_path \
         --cfg $config \
@@ -44,7 +44,7 @@ if [[ -n ${debugger_port} ]]; then
         --pbar
 else
     echo "[INFO] running in normal mode"
-    python pud/envs/safe_habitatenv/unit_tests/test_visual_collector.py \
+    python pud/envs/safe_habitatenv/unit_tests/train_uvfddpg_habitat.py \
         --scene $scene \
         --apsp_path $apsp_path \
         --cfg $config \
