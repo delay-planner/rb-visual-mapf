@@ -145,6 +145,9 @@ class VisualUVFDDPG (UVFDDPG):
 
     def get_dist_to_goal(self, state, **kwargs):
         with torch.no_grad():
+            if isinstance(state["observation"], list):
+                state["observation"] = np.stack(state["observation"])
+                state["goal"] = np.stack(state["goal"])
             q_values = self.get_q_values(state, **kwargs)
             return -1.0 * q_values.cpu().detach().numpy().squeeze(-1)
 

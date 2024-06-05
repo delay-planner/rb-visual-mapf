@@ -491,7 +491,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             
         )
 
-    def _set_sample_goal_args(
+    def set_sample_goal_args(
         self,
         prob_constraint: Union[float, None] = None,
         min_dist: Union[float, None] = None,
