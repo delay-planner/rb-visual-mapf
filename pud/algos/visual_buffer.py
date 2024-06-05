@@ -1,5 +1,6 @@
 import numpy as np
 from pud.buffer import ReplayBuffer
+from pud.algos.data_struct import inp_to_numpy
 
 class VisualReplayBuffer (ReplayBuffer):
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
@@ -27,3 +28,7 @@ class VisualReplayBuffer (ReplayBuffer):
         self.reward = np.zeros((max_size, 1))
         self.done = np.zeros((max_size, 1))
 
+    def add(self, state, action, next_state, reward, done):
+        state = inp_to_numpy(state)
+        next_state = inp_to_numpy(next_state)
+        super().add(state, action, next_state, reward, done)
