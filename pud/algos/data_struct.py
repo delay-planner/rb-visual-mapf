@@ -22,7 +22,7 @@ def dict_expand(D:dict, keys:list):
 
         d = d[k]
 
-def inp_to_device(
+def inp_to_torch_device(
         inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
         device:torch.device,
         ):
@@ -42,6 +42,23 @@ def inp_to_device(
     else:
         raise Exception("data type mismatch")
     return inp
+
+def inp_to_numpy(
+        inp:Union[torch.Tensor, Dict[str, torch.Tensor]], 
+        ):
+    """convert dict inps to torch, skip other fields"""
+    if isinstance(inp, dict):
+        for key in inp:
+            if isinstance(inp[key], torch.Tensor):
+                inp[key] = inp[key].detach().cpu().numpy()
+        return inp
+    
+    if isinstance(inp, torch.Tensor):
+        inp = inp.detach().cpu().numpy()
+    else:
+        raise Exception("data type mismatch")
+    return inp
+
 
 def init_embedded_dict(D:dict, embeds:List[tuple]=[]):
     """
