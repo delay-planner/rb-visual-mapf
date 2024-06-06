@@ -9,6 +9,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.visual_models import VisualUVFDDPG
+from pud.vision_agent import VisionUVFDDPG
 from pud.ddpg import GoalConditionedCritic
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn
 #from pud.algos.constrained_buffer import ConstrainedReplayBuffer
@@ -189,14 +190,14 @@ if __name__ == "__main__":
     uvfddpg_kwargs["action_dim"] = env.action_space.shape[0]
     uvfddpg_kwargs["max_action"] = float(env.action_space.high[0])
     
-    agent = VisualUVFDDPG(
+    agent = VisionUVFDDPG(
         in_channels=4,
         embedding_size=256,
         act_fn=torch.nn.SELU,
         device=cfg.device,
         uvfddpg_kwargs=uvfddpg_kwargs,
     )
-    agent.load_pretrained_encoder(ckpt_path="runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
+    #agent.load_pretrained_encoder(ckpt_path="runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
     agent.to(torch.device(cfg.device))
 
     obs = env.reset()

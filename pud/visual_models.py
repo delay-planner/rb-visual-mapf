@@ -80,6 +80,13 @@ class VisualEncoder(nn.Module):
                     latent_state[key] = inp[key]
             return latent_state
 
+    def reset_parameters(self):
+        for i in range(len(self.conv_net)):
+            if hasattr(self.conv_net[i], "weight"):
+                torch.nn.init.xavier_uniform_(self.conv_net[i].weight)
+        variance_initializer_(self.l1.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        torch.nn.init.zeros_(self.l1.bias)
+
 class VisualDecoder (nn.Module):
     def __init__(self, emb_size:int=256):
         super(VisualDecoder, self).__init__()
@@ -111,47 +118,11 @@ class VisualDecoder (nn.Module):
         out = out.permute(0, 2, 3, 1) # batch_dim, channel_dim, *image_size
         return out
 
-class VisualActor(nn.Module): # TODO: [256, 256], MLP class
-    def __init__(self, 
-            state_dim, 
-            action_dim, 
-            max_action, 
-            embedding_size:int, 
-            act_fn=nn.SELU,
-            device=torch.device("cpu"),
-            ):
-        super().__init__()
-
-        self.encoder = VisualEncoder(
-                    in_channels=4, 
-                    embedding_size=embedding_size, 
-                    act_fn=act_fn
-                    )
-        self.l1 = nn.Linear(state_dim, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, action_dim)
-        self.device = device
-
-        self.max_action = max_action
-        self.reset_parameters()
-
-    def forward(self, state):
-        state = self.encoder.get_latent_state(state, self.device)
-        a = F.relu(self.l1(state))
-        a = F.relu(self.l2(a))
-        a = torch.tanh(self.l3(a))
-        a = self.max_action * a 
-        return a
-
     def reset_parameters(self):
-        variance_initializer_(self.encoder.weight, scale=1./3., mode='fan_in', distribution='uniform')
-        variance_initializer_(self.l1.weight, scale=1./3., mode='fan_in', distribution='uniform')
-        torch.nn.init.zeros_(self.l1.bias)
-        variance_initializer_(self.l2.weight, scale=1./3., mode='fan_in', distribution='uniform')
-        torch.nn.init.zeros_(self.l2.bias)
-        nn.init.uniform_(self.l3.weight, -0.003, 0.003)
-        torch.nn.init.zeros_(self.l3.bias)
-    
+        variance_initializer_(self.l_emb.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        torch.nn.init.zeros_(self.l_emb.bias)
+        torch.nn.init.xavier_uniform_(self.deconv1.weight)
+        torch.nn.init.xavier_uniform_(self.deconv2.weight)
 
 
 class VisualUVFDDPG (UVFDDPG):
