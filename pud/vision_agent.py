@@ -9,6 +9,7 @@ from pud.algos.data_struct import inp_to_torch_device
 from pud.ddpg import UVFDDPG, merge_obs_goal, EnsembledCritic
 from pud.visual_models import VisualEncoder
 from termcolor import colored
+import functools
 
 class VisualActor(nn.Module): # TODO: [256, 256], MLP class
     def __init__(self, 
@@ -114,6 +115,9 @@ class VisionUVFDDPG (nn.Module):
             ActorCls=VisualGoalConditionedActor, 
             CriticCls=VisualGoalConditionedCritic,
             ensemble_size:int=2,
+            num_bins:int=20,
+            actor_update_interval:int=1,
+            use_distributional_rl:bool=True,
             # policy args
             ):
         super(VisionUVFDDPG, self).__init__()
@@ -125,7 +129,13 @@ class VisionUVFDDPG (nn.Module):
         self.tau = uvfddpg_kwargs["tau"]
         self.ensemble_size = ensemble_size
         self.device = torch.device(device)
-        
+        self.use_distributional_rl = use_distributional_rl
+        self.num_bins = num_bins
+        self.actor_update_interval = actor_update_interval
+
+        if self.use_distributional_rl:
+            self.discount = 1
+            CriticCls = functools.partial(CriticCls, output_dim=self.num_bins)
 
         self.actor = ActorCls(
             state_dim=embedding_size*2,
@@ -212,3 +222,40 @@ class VisionUVFDDPG (nn.Module):
                 self.update_critic_target()
 
         return opt_info
+
+    def critic_loss(self, current_q, target_q, reward, done):
+        if not isinstance(current_q, list):
+            current_q_list = [current_q]
+            target_q_list = [target_q]
+        else:
+            current_q_list = current_q
+            target_q_list = target_q
+
+        critic_loss_list = []
+        for current_q, target_q in zip(current_q_list, target_q_list):
+            if self.use_distributional_rl:
+                # Compute distributional td targets
+                target_q_probs = F.softmax(target_q, dim=1)
+                batch_size = target_q_probs.shape[0]
+                one_hot = torch.zeros(batch_size, self.num_bins).to(reward.device)
+                one_hot[:, 0] = 1
+
+                # Calculate the shifted probabilities
+                # Fist column: Since episode didn't terminate, probability that the
+                # distance is 1 equals 0.
+                col_1 = torch.zeros((batch_size, 1)).to(reward.device)
+                # Middle columns: Simply the shifted probabilities.
+                col_middle = target_q_probs[:, :-2]
+                # Last column: Probability of taking at least n steps is sum of
+                # last two columns in unshifted predictions:
+                col_last = torch.sum(target_q_probs[:, -2:], dim=1, keepdim=True)
+                shifted_target_q_probs = torch.cat([col_1, col_middle, col_last], dim=1)
+                assert one_hot.shape == shifted_target_q_probs.shape
+                td_targets = torch.where(done.bool(), one_hot, shifted_target_q_probs).detach()
+
+                critic_loss = torch.mean(-torch.sum(td_targets * torch.log_softmax(current_q, dim=1), dim=1)) # https://github.com/tensorflow/tensorflow/issues/21271
+            else:
+                critic_loss = super().critic_loss(current_q, target_q, reward, done)
+            critic_loss_list.append(critic_loss)
+        critic_loss = torch.mean(torch.stack(critic_loss_list))
+        return critic_loss
