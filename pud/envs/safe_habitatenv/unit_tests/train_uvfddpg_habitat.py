@@ -202,16 +202,16 @@ if __name__ == "__main__":
 
     obs = env.reset()
     done_count = 0
-    #num_steps = 200
-    #for _ in tqdm(range(num_steps), total=num_steps):
-    #    #at = env.action_space.sample()
-    #    at = agent.select_action(obs)
-    #    agent.get_q_values(obs)
-    #    new_obs, rew, done, info = env.step(at)
-    #    if done:
-    #        done_count += 1
+    num_steps = 200
+    for _ in tqdm(range(num_steps), total=num_steps):
+        #at = env.action_space.sample()
+        at = agent.select_action(obs)
+        agent.get_q_values(obs)
+        new_obs, rew, done, info = env.step(at)
+        if done:
+            done_count += 1
 
-    #    obs = new_obs
+        obs = new_obs
 
     # test collector
     replay_buffer = VisualReplayBuffer(

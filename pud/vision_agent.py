@@ -76,7 +76,6 @@ class VisualCritic(nn.Module):
         self.reset_parameters()
 
     def forward(self, state, action):
-        state = self.encoder.get_latent_state(state, self.device)
         q = F.relu(self.l1(state))
         q = F.relu(self.l2(torch.cat([q, action], dim=1)))
         q = self.l3(q)
@@ -114,9 +113,19 @@ class VisionUVFDDPG (nn.Module):
             uvfddpg_kwargs:dict,
             ActorCls=VisualGoalConditionedActor, 
             CriticCls=VisualGoalConditionedCritic,
+            ensemble_size:int=2,
             # policy args
             ):
         super(VisionUVFDDPG, self).__init__()
+        self.state_dim = embedding_size*2
+        self.action_dim = uvfddpg_kwargs["action_dim"]
+        self.max_action = uvfddpg_kwargs["max_action"]
+        self.discount = uvfddpg_kwargs["discount"]
+        self.targets_update_interval = uvfddpg_kwargs["targets_update_interval"]
+        self.tau = uvfddpg_kwargs["tau"]
+        self.ensemble_size = ensemble_size
+        self.device = torch.device(device)
+        
 
         self.actor = ActorCls(
             state_dim=embedding_size*2,
@@ -139,16 +148,67 @@ class VisionUVFDDPG (nn.Module):
             in_channels=in_channels,
             device=device,         
         )
-
-        self.critic_target = copy.deepcopy(self.critic)
-        self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4, eps=1e-07)
+
+        if self.ensemble_size > 1:
+            self.critic = EnsembledCritic(self.critic, ensemble_size=ensemble_size)
+            self.critic_target = copy.deepcopy(self.critic)
+            self.critic_target.load_state_dict(self.critic.state_dict())
+
+            # self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+            for i in range(1, len(self.critic.critics)): # first copy already added
+                critic_copy = self.critic.critics[i]
+                self.critic_optimizer.add_param_group({'params': critic_copy.parameters()})
+                # https://stackoverflow.com/questions/51756913/in-pytorch-how-do-you-use-add-param-group-with-a-optimizer
 
         self.optimize_iterations = 0
 
     def select_action(self, state):
-        self.actor(state)
-        import IPython
-        IPython.embed(colors="Linux")
+        with torch.no_grad():
+            return self.actor(state).cpu().detach().numpy().flatten()
+    
+    def get_q_values(self, state, aggregate='mean'):
+        actions = self.actor(state)
+        q_values = self.critic(state, actions)
+        return q_values
 
-        pass
+    def optimize(self, replay_buffer, iterations=1, batch_size=128):
+        opt_info = dict(actor_loss=[], critic_loss=[])
+        for _ in range(iterations):
+            self.optimize_iterations += 1
+
+            # Each of these are batches 
+            state, next_state, action, reward, done = replay_buffer.sample(batch_size)
+
+            state = inp_to_torch_device(state, self.device)
+            next_state = inp_to_torch_device(next_state, self.device)
+            action = inp_to_torch_device(action, self.device)
+            reward = inp_to_torch_device(reward, self.device)
+            done = inp_to_torch_device(done, self.device)
+
+            current_q = self.critic(state, action)
+            target_q = self.critic_target(next_state, self.actor_target(next_state))
+            critic_loss = self.critic_loss(current_q, target_q, reward, done)
+
+            # Optimize the critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
+            opt_info['critic_loss'].append(critic_loss.cpu().detach().numpy())
+
+            if self.optimize_iterations % self.actor_update_interval == 0:
+                # Compute actor loss
+                actor_loss = -self.get_q_values(state).mean()
+
+                # Optimize the actor 
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+                opt_info['actor_loss'].append(actor_loss.cpu().detach().numpy())
+
+            # Update the frozen target models
+            if self.optimize_iterations % self.targets_update_interval == 0:
+                self.update_actor_target()
+                self.update_critic_target()
+
+        return opt_info
