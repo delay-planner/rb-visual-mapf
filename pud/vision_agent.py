@@ -177,10 +177,52 @@ class VisionUVFDDPG (nn.Module):
         with torch.no_grad():
             return self.actor(state).cpu().detach().numpy().flatten()
     
-    def get_q_values(self, state, aggregate='mean'):
+    def _get_q_values(self, state, aggregate="mean"):
         actions = self.actor(state)
         q_values = self.critic(state, actions)
         return q_values
+
+    def get_q_values(self, state, aggregate="mean"):
+        q_values = self._get_q_values(state)
+        if not isinstance(q_values, list):
+            q_values_list = [q_values]
+        else:
+            q_values_list = q_values
+
+        expected_q_values_list = []
+        if self.use_distributional_rl:
+            for q_values in q_values_list:
+                q_probs = F.softmax(q_values, dim=1)
+                batch_size = q_probs.shape[0]
+                # NOTE: We want to compute the value of each bin, which is the
+                # negative distance. Without properly negating this, the actor is
+                # optimized to take the *worst* actions.
+                neg_bin_range = -torch.arange(1, self.num_bins + 1, dtype=torch.float).to(q_values.device)
+                tiled_bin_range = neg_bin_range.unsqueeze(0).repeat(batch_size, 1)
+                assert q_probs.shape == tiled_bin_range.shape
+                # Take the inner product between these two tensors
+                expected_q_values = torch.sum(q_probs * tiled_bin_range, dim=1, keepdim=True)
+                expected_q_values_list.append(expected_q_values)
+        else:
+            expected_q_values_list = q_values_list
+
+        expected_q_values = torch.stack(expected_q_values_list)
+        if aggregate is not None:
+            if aggregate == 'mean':
+                expected_q_values = torch.mean(expected_q_values, dim=0)
+            elif aggregate == 'min':
+                expected_q_values, _ = torch.min(expected_q_values, dim=0)
+            else:
+                raise ValueError
+
+        if not self.use_distributional_rl:
+            # Clip the q values if not using distributional RL. If using
+            # distributional RL, the q values are implicitly clipped.
+            min_q_value = -1.0 * self.num_bins
+            max_q_value = 0.0
+            expected_q_values = torch.clamp(expected_q_values, min_q_value, max_q_value)
+
+        return expected_q_values
 
     def optimize(self, replay_buffer, iterations=1, batch_size=128):
         opt_info = dict(actor_loss=[], critic_loss=[])
@@ -223,6 +265,23 @@ class VisionUVFDDPG (nn.Module):
 
         return opt_info
 
+    def update_actor_target(self):
+        for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def update_critic_target(self):
+        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def get_dist_to_goal(self, state, **kwargs):
+        with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation']),
+                goal=torch.FloatTensor(state['goal']),
+            )
+            q_values = self.get_q_values(state, **kwargs)
+            return -1.0 * q_values.cpu().detach().numpy().squeeze(-1)
+        
     def critic_loss(self, current_q, target_q, reward, done):
         if not isinstance(current_q, list):
             current_q_list = [current_q]
