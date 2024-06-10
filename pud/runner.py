@@ -63,22 +63,36 @@ def train_eval(
                 "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
             )
 
-            if i % eval_interval == 0:
-                for d_ref in eval_info:
+            #if i % eval_interval == 0:
+                #for d_ref in eval_info:
                     # dotmap has interal attributes like "_ipython_display_"
-                    if isinstance(d_ref, str) and d_ref.startswith("_"):
-                        continue
-                    tensorboard_writer.add_scalar(
-                        "Eval_{:0>2d}/pred_dist".format(d_ref),
-                        np.mean(eval_info[d_ref]["pred_dist"]),
-                        global_step=i,
-                    )
-                    tensorboard_writer.add_scalar(
-                        "Eval_{:0>2d}/pred_dist".format(d_ref),
-                        -np.mean(eval_info[d_ref]["returns"]),
-                        global_step=i,
-                    )
+                    #if isinstance(d_ref, str) and d_ref.startswith("_"):
+                    #    continue
+                    #tensorboard_writer.add_scalar(
+                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
+                    #    np.mean(eval_info[d_ref]["pred_dist"]),
+                    #    global_step=i,
+                    #)
+                    #tensorboard_writer.add_scalar(
+                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
+                    #    -np.mean(eval_info[d_ref]["returns"]),
+                    #    global_step=i,
+                    #)
+            
+            if i % eval_interval == 0:
+                field_header = "Eval Dist ~ "
+                for d_ref in eval_info:
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
+                    tag_scalar_dict={
+                        "pred": np.mean(eval_info[d_ref]["pred_dist"]),
+                        "val": -np.mean(eval_info[d_ref]["returns"]),
+                        }, global_step=i)
 
+                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/std".format(d_ref),
+                    tag_scalar_dict={
+                        "pred": np.std(eval_info[d_ref]["pred_dist"]),
+                        "val": -np.std(eval_info[d_ref]["returns"]),
+                        }, global_step=i)
 
 def eval_pointenv_dists(
     agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], verbose=True
