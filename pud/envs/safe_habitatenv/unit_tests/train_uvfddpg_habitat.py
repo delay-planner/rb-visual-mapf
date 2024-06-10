@@ -200,18 +200,18 @@ if __name__ == "__main__":
     #agent.load_pretrained_encoder(ckpt_path="runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
     agent.to(torch.device(cfg.device))
 
-    obs = env.reset()
-    done_count = 0
-    num_steps = 200
-    for _ in tqdm(range(num_steps), total=num_steps):
-        #at = env.action_space.sample()
-        at = agent.select_action(obs)
-        agent.get_q_values(obs)
-        new_obs, rew, done, info = env.step(at)
-        if done:
-            done_count += 1
+    #obs = env.reset()
+    #done_count = 0
+    #num_steps = 200
+    #for _ in tqdm(range(num_steps), total=num_steps):
+    #    #at = env.action_space.sample()
+    #    at = agent.select_action(obs)
+    #    agent.get_q_values(obs)
+    #    new_obs, rew, done, info = env.step(at)
+    #    if done:
+    #        done_count += 1
 
-        obs = new_obs
+    #    obs = new_obs
 
     # test collector
     replay_buffer = VisualReplayBuffer(
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         env,
         eval_env,
         eval_func=eval_pointenv_dists,
-        #tensorboard_writer=tb,
+        tensorboard_writer=tb,
         #pbar=args.pbar,
         #ckpt_dir=ckpt_dir,
         **cfg.runner,
