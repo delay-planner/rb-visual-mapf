@@ -175,7 +175,7 @@ class VisionUVFDDPG (nn.Module):
 
     def select_action(self, state):
         with torch.no_grad():
-            return self.actor(state).cpu().detach().numpy().flatten()
+            return self.actor(state).cpu().detach().numpy().squeeze()
     
     def _get_q_values(self, state, aggregate="mean"):
         actions = self.actor(state)

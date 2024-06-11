@@ -30,7 +30,7 @@ time_limit:
     max_episode_steps: 20
 runner:
     batch_size_opt: 64
-    collect_steps: 10 # 2
+    collect_steps: 100 # 2
     eval_interval: 1000 # 1000
     initial_collect_steps: 1000 # 1000
     num_iterations: 3000000

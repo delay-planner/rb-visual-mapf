@@ -26,6 +26,19 @@ class GaussianPolicy(BasePolicy):
         action = action.clip(-self.agent.max_action, self.agent.max_action)
         return action
 
+class VectorGaussianPolicy(BasePolicy):
+    def __init__(self, agent, noise_scale=1.0):
+        super().__init__(agent)
+        self.noise_scale = noise_scale
+
+    def select_action(self, state):
+        action = super().select_action(state)
+        action += np.random.normal(
+            0, self.agent.max_action * self.noise_scale, size=action.shape
+        )
+        action = action.clip(-self.agent.max_action, self.agent.max_action)
+        return action
+
 
 class SearchPolicy(BasePolicy):
     def __init__(
