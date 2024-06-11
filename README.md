@@ -7,6 +7,15 @@
 
 **Step 3**: pick the start and goal positions from the figure, click "View Data" button, copy the coords to a new file under [illustration_set](pud/envs/safe_pointenv/illustration_set) illustration following the specification [here](pud/envs/safe_pointenv/illustration_set/README.md).
 
+
+## Train with visual inputs (on merge  branch)
+```bash
+bash launch_jobs/local_debug_vec_habitat.sh
+```
+make sure to adjust the number of vector envs depending on your GPU memory and speed.
+
+With vector envs, the habitat environment class is unchanged, but there is a special collector that does batch inference to speed up action decision.
+
 ## Installing habitat-sim
 ### We require python>=3.9 and cmake>=3.10
 **Step 1**:
