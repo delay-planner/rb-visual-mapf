@@ -10,7 +10,7 @@ import random
 
 import habitat_sim
 from numpy.typing import NDArray
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, List
 import yaml
 from pud.envs.wrappers import TimeLimit
 from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
@@ -611,9 +611,10 @@ def habitat_env_load_fn(
     height: Union[float, None] = None,
     terminate_on_timeout: bool = False,
     max_episode_steps: Union[int, None] = None,
-    gym_env_wrappers: Union[Tuple[GoalConditionedHabitatPointWrapper], None] = (
+    gym_env_wrappers: Tuple[GoalConditionedHabitatPointWrapper] = (
         GoalConditionedHabitatPointWrapper,
     ),  # type: ignore
+    wrapper_kwargs: List[dict] = [],
     apsp_path:str="",
     action_noise:float=1.0,
     simulator_settings:dict={},
@@ -645,9 +646,11 @@ def habitat_env_load_fn(
         device=device,
         )
 
-    if gym_env_wrappers is not None:
-        for wrapper in gym_env_wrappers:
-            env = wrapper(env)  # type: ignore
+    for idx, wrapper in enumerate(gym_env_wrappers):
+        if idx < len(wrapper_kwargs):
+            env = wrapper(env, **wrapper_kwargs[idx])
+        else:
+            env = wrapper(env)
 
     if max_episode_steps is not None and max_episode_steps > 0:
         env = TimeLimit(

@@ -164,6 +164,7 @@ if __name__ == "__main__":
         gym_env_wrappers= (
             GoalConditionedHabitatPointWrapper,
         ),  # type: ignore
+        wrapper_kwargs=gym_env_wrapper_kwargs,
         apsp_path=cfg.env.apsp_path,
         simulator_settings=cfg.env.simulator_settings,
         device=cfg.device,
@@ -178,6 +179,7 @@ if __name__ == "__main__":
         gym_env_wrappers= (
             GoalConditionedHabitatPointWrapper,
         ),  # type: ignore
+        wrapper_kwargs=gym_env_wrapper_kwargs,
         apsp_path=cfg.env.apsp_path,
         simulator_settings=cfg.env.simulator_settings,
         device=cfg.device,
