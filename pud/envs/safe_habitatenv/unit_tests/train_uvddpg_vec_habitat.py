@@ -206,7 +206,16 @@ if __name__ == "__main__":
         device=cfg.device,
         uvfddpg_kwargs=uvfddpg_kwargs,
     )
-    #agent.load_pretrained_encoder(ckpt_path="runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
+
+    # load pretrained encoder
+    #encoder_ckpt = torch.load("runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
+    #agent.actor.encoder.load_state_dict(encoder_ckpt.state_dict())
+    #agent.actor_target.encoder.load_state_dict(encoder_ckpt.state_dict())
+    #for ii in range(len(agent.critic.critics)):
+    #    agent.critic.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
+    #    agent.critic_target.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
+
+
     agent.to(torch.device(cfg.device))
 
     #obs = env.reset()
@@ -241,7 +250,7 @@ if __name__ == "__main__":
         eval_func=eval_pointenv_dists,
         tensorboard_writer=tb,
         #pbar=args.pbar,
-        #ckpt_dir=ckpt_dir,
+        ckpt_dir=ckpt_dir,
         **cfg.runner,
     )
     torch.save(agent.state_dict(), ckpt_dir.joinpath("agent.pth"))
