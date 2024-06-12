@@ -100,7 +100,7 @@ def train_eval(
                         }, global_step=i)
 
 def eval_pointenv_dists(
-    agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], verbose=True
+    agent, eval_env, num_evals=10, eval_distances=[1,2,3,4], verbose=True
 ):
     eval_info = DotMap()
     for dist in eval_distances:
