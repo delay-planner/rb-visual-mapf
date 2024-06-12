@@ -13,7 +13,8 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 )
 from pud.envs.simple_navigation_env import set_env_difficulty
 from pud.algos.constrained_collector import ConstrainedCollector
-
+from pathlib import Path
+import torch
 
 def train_eval(
     policy,
@@ -31,6 +32,7 @@ def train_eval(
     eval_interval=10000,
     tensorboard_writer: Optional[SummaryWriter] = None,
     verbose=True,
+    ckpt_dir:Path=Path(""),
 ):
     collector = VectorCollector(
         policy, replay_buffer, env, initial_collect_steps=initial_collect_steps
@@ -48,6 +50,9 @@ def train_eval(
                 print(f"iteration = {i}, opt_info = {opt_info}")
 
         if i % eval_interval == 0:
+            if isinstance(ckpt_dir, Path):
+                torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
+
             agent.eval()
             if verbose:
                 print(f"evaluating iteration = {i}")
