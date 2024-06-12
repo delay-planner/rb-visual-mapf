@@ -13,7 +13,7 @@ echo "experiment directory: ${log_dir}"
 #config=configs/config_SafeHabitatEnv_Queue_debug.yaml
 config=configs/config_HabitatEnv.yaml
 #device="cpu"
-device="cuda:1"
+device="cuda:0"
 
 cd "${project_root}"
 
