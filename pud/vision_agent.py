@@ -329,3 +329,11 @@ class VisionUVFDDPG (nn.Module):
             "critic_optimizer": self.critic_optimizer.state_dict(),
         }
         return out
+
+    def load_state_dict(self, other:dict):
+        self.actor.load_state_dict(other["actor"])
+        self.actor_target.load_state_dict(other["actor_target"])
+        self.critic.load_state_dict(other["critic"])
+        self.critic_target.load_state_dict(other["critic_target"])
+        self.actor_optimizer.load_state_dict(other["actor_optimizer"])
+        self.critic_optimizer.load_state_dict(other["critic_optimizer"])
