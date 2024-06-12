@@ -31,7 +31,7 @@ time_limit:
 runner:
     batch_size_opt: 64
     collect_steps: 10 # 2
-    eval_interval: 1000 # 1000
+    eval_interval: 50 # 1000
     initial_collect_steps: 1000 # 1000
     num_iterations: 3000000
     opt_steps: 1
