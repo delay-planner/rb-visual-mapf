@@ -51,6 +51,8 @@ def train_eval(
 
         if i % eval_interval == 0:
             if isinstance(ckpt_dir, Path):
+                import IPython
+                IPython.embed(colors="Linux")
                 torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
 
             agent.eval()
