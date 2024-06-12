@@ -318,3 +318,14 @@ class VisionUVFDDPG (nn.Module):
             critic_loss_list.append(critic_loss)
         critic_loss = torch.mean(torch.stack(critic_loss_list))
         return critic_loss
+
+    def state_dict(self):
+        out = {
+            "actor": self.actor.state_dict(),
+            "actor_target": self.actor_target.state_dict(),
+            "critic": self.critic.state_dict(),
+            "critic_target": self.critic_target.state_dict(),
+            "actor_optimizer": self.actor_optimizer.state_dict(),
+            "critic_optimizer": self.critic_optimizer.state_dict(),
+        }
+        return out
