@@ -49,6 +49,7 @@ class VisualEncoder(nn.Module):
 
     def forward(self, x:torch.Tensor):
         x = x.permute(0, 3, 1, 2) # batch_dim, channel_dim, *image_size
+        x = x / 255.
         out = self.conv_net(x)
         num_cat_channels, _ = out.shape
         assert num_cat_channels%4 == 0
