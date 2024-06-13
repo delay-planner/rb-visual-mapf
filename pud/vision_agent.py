@@ -13,7 +13,9 @@ import functools
 
 class VisualActor(nn.Module): # TODO: [256, 256], MLP class
     def __init__(self, 
-            state_dim,
+            state_dim:int,
+            width:int,
+            height:int,
             action_dim, 
             max_action, 
             embedding_size:int=256, 
@@ -26,6 +28,8 @@ class VisualActor(nn.Module): # TODO: [256, 256], MLP class
         self.encoder = VisualEncoder(
                     in_channels=in_channels, 
                     embedding_size=embedding_size, 
+                    width=width,
+                    height=height,
                     act_fn=act_fn
                     )
         self.l1 = nn.Linear(state_dim, 256)
@@ -55,6 +59,8 @@ class VisualActor(nn.Module): # TODO: [256, 256], MLP class
 class VisualCritic(nn.Module):
     def __init__(self, 
             state_dim,
+            width:int,
+            height:int,
             action_dim, 
             embedding_size:int, 
             act_fn=nn.SELU,
@@ -67,6 +73,8 @@ class VisualCritic(nn.Module):
         self.encoder = VisualEncoder(
                     in_channels=in_channels, 
                     embedding_size=embedding_size, 
+                    width=width,
+                    height=height,
                     act_fn=act_fn
                     )
         self.l1 = nn.Linear(state_dim, 256)
@@ -107,6 +115,8 @@ class VisionUVFDDPG (nn.Module):
     def __init__(
             self,
             # encoder args
+            width:int,
+            height:int,
             in_channels:int,
             embedding_size:int,
             act_fn,
@@ -138,6 +148,8 @@ class VisionUVFDDPG (nn.Module):
             CriticCls = functools.partial(CriticCls, output_dim=self.num_bins)
 
         self.actor = ActorCls(
+            width=width,
+            height=height,
             state_dim=embedding_size*2,
             action_dim=uvfddpg_kwargs["action_dim"], 
             max_action=uvfddpg_kwargs["max_action"], 
@@ -151,6 +163,8 @@ class VisionUVFDDPG (nn.Module):
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4, eps=1e-07)
 
         self.critic = CriticCls(
+            width=width,
+            height=height,
             state_dim=embedding_size*2,
             action_dim=uvfddpg_kwargs["action_dim"], 
             embedding_size=embedding_size,

@@ -50,6 +50,10 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="number of envs for batch inference")
+    parser.add_argument("--embedding_size",
+        type=int,
+        default=48,
+        help="")
     parser.add_argument("--ckpt",
         type=str,
         default="",
@@ -200,8 +204,10 @@ if __name__ == "__main__":
     uvfddpg_kwargs["max_action"] = float(env.action_space.high[0])
     
     agent = VisionUVFDDPG(
+        width=cfg.env.simulator_settings.width,
+        height=cfg.env.simulator_settings.height,
         in_channels=4,
-        embedding_size=256,
+        embedding_size=args.embedding_size,
         act_fn=torch.nn.SELU,
         device=cfg.device,
         uvfddpg_kwargs=uvfddpg_kwargs,
@@ -233,10 +239,10 @@ if __name__ == "__main__":
 
     # test collector
     replay_buffer = VisualReplayBuffer(
-        obs_dim=(4, 64, 64, 4),
-        goal_dim=(4, 64, 64, 4),
+        obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+        goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
         action_dim=env.action_space.shape[0],
-        max_size=1000,
+        max_size=cfg.replay_buffer.max_size,
         )
 
     policy = VectorGaussianPolicy(agent)
