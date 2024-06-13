@@ -18,9 +18,12 @@ class VisualEncoder(nn.Module):
     def __init__(self,
             in_channels:int=4,
             embedding_size:int=256,
+            width:int=32,
+            height:int=32,
             act_fn=nn.SELU,
             ):
         super(VisualEncoder, self).__init__()
+
         self.conv_net = nn.Sequential(
             nn.Conv2d(
                 in_channels=in_channels,
@@ -33,8 +36,16 @@ class VisualEncoder(nn.Module):
             act_fn(),
             nn.Flatten(),
         )
+        # lazy calculate embedding input size
+        l1_inp_size = None
+        with torch.no_grad():
+            img_size = (width, height)
+            tmp = torch.zeros(4,4,*img_size)
+            tmp_out = self.conv_net(tmp)
+            l1_inp_size = np.prod(list(tmp_out.shape))
+
         # 4 direction obs in batch dim x embedding size
-        self.l1 = nn.Linear(4*32*3*3, embedding_size)
+        self.l1 = nn.Linear(l1_inp_size, embedding_size)
 
     def forward(self, x:torch.Tensor):
         x = x.permute(0, 3, 1, 2) # batch_dim, channel_dim, *image_size
