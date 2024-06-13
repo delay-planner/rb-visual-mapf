@@ -14,8 +14,8 @@ env:
     cost_limit: 1.0
     simulator_settings:
         scene: "external_data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
-        width: 64
-        height: 64
+        width: 32
+        height: 32
         default_agent: 0
         sensor_height: 1.5
 wrappers:
