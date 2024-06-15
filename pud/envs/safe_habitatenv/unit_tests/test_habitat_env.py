@@ -49,12 +49,14 @@ class TestHabitatEnv(unittest.TestCase):
             sensor_height= 1.5,
         )
         self.apsp_path = "pud/envs/safe_habitatenv/apsps/skokloster/apsp.pickle"
+        self.sensor_type = "depth"
 
     def test_obs(self):
         env = HabitatNavigationEnv(
             scene=self.scene,
             height=0,
             simulator_settings=self.simulator_settings,
+            sensor_type=self.sensor_type,
             device=self.device,
             apsp_path=self.apsp_path,
             )
@@ -75,14 +77,15 @@ class TestHabitatEnv(unittest.TestCase):
 
         for i in range(len(obs_list)):
             np.allclose(obs_list[i], obs_list_2[i])
-        
 
-        ## get 3 obs
+        # below only works for rgb
+        #assert env.sensor_type == "rgb"
+        #idx = 0
         #fig, ax = plt.subplots(nrows=2, ncols=2)
         #for i in range(2):
         #    for j in range(2):
-        #        ax[i,j].imshow((obs[i*2+j]).astype(dtype="uint8"))
-        #fig.savefig("runs/tmp_plots/view_32_{}.jpg".format(idx), dpi=300, bbox_inches="tight")
+        #        ax[i,j].imshow((obs_list[i*2+j]).astype(dtype="uint8"))
+        #fig.savefig("runs/tmp_plots/view_depth_32_{}.jpg".format(idx), dpi=300, bbox_inches="tight")
         #plt.close(fig)
 
     def compare_occupancy(self):

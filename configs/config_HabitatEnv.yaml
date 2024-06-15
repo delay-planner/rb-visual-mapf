@@ -12,6 +12,7 @@ env:
     scene: "external_data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
     apsp_path: "pud/envs/safe_habitatenv/apsps/skokloster/apsp.pickle"
     cost_limit: 1.0
+    sensor_type: "depth"
     simulator_settings:
         scene: "external_data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
         width: 32
@@ -31,7 +32,7 @@ time_limit:
 runner:
     batch_size_opt: 64
     collect_steps: 10 # 2
-    eval_interval: 50 # 1000
+    eval_interval: 1000 # 1000
     initial_collect_steps: 1000 # 1000
     num_iterations: 3000000
     opt_steps: 1
