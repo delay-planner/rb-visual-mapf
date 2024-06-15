@@ -43,8 +43,8 @@ class TestHabitatEnv(unittest.TestCase):
         self.device = "cpu"
         self.simulator_settings = dict(
             scene= "scene_datasets/habitat-test-scenes/skokloster-castle.glb",
-            width= 256,
-            height= 256,
+            width= 32,
+            height= 32,
             default_agent= 0,
             sensor_height= 1.5,
         )
@@ -59,11 +59,6 @@ class TestHabitatEnv(unittest.TestCase):
             apsp_path=self.apsp_path,
             )
 
-        env._walls
-
-        import IPython
-        IPython.embed(colors="Linux")
-
         selected_points = [
             [0.4837957993182139, 0.5812356979405034],
             [0.4679084039817981, 0.5240274599542334],
@@ -75,23 +70,20 @@ class TestHabitatEnv(unittest.TestCase):
         grid_size = np.array(env._walls.shape)
         grid_pos = pnts_arr * grid_size
 
-        idx = 2
-        obs = env.get_sensor_obs_at_grid_xy(grid_pos[idx])
+        obs_list = [env.get_sensor_obs_at_grid_xy(grid_pos[idx]) for idx in range(len(selected_points))]
+        obs_list_2 = [env.get_sensor_obs_at_grid_xy(grid_pos[idx]) for idx in range(len(selected_points))]
+
+        for i in range(len(obs_list)):
+            np.allclose(obs_list[i], obs_list_2[i])
         
-        fig, ax = plt.subplots(nrows=2, ncols=2)
-        for i in range(2):
-            for j in range(2):
-                ax[i,j].imshow((obs[i*2+j]).astype(dtype="uint8"))
-        fig.savefig("runs/tmp_plots/view_{}.jpg".format(idx), dpi=300, bbox_inches="tight")
-        plt.close(fig)
 
-
-
-
-        import IPython
-        IPython.embed(colors="Linux")
-
-        pass
+        ## get 3 obs
+        #fig, ax = plt.subplots(nrows=2, ncols=2)
+        #for i in range(2):
+        #    for j in range(2):
+        #        ax[i,j].imshow((obs[i*2+j]).astype(dtype="uint8"))
+        #fig.savefig("runs/tmp_plots/view_32_{}.jpg".format(idx), dpi=300, bbox_inches="tight")
+        #plt.close(fig)
 
     def compare_occupancy(self):
         """compare the occupancy from the 2D maze matrix and habitat"""
