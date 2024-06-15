@@ -103,6 +103,9 @@ class HabitatNavigationEnv(gym.Env):
         self._walls = self._simulator.pathfinder.get_topdown_view(
             self._meters_per_pixel, self._vertical_slice
         ).astype(np.uint8)
+        # the original map before uint8 is True/False binary map
+        # after conversion, it is 1/0 map
+        
         self._wall_height, self._wall_width = self._walls.shape
 
         self.grid_observation_space = gym.spaces.Box(
