@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 """
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.compare_occupancy
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.test_steps
+python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.test_obs
 python pud/envs/safe_habitatenv/unit_tests/test_habitat_env.py TestHabitatEnv.speed_compare
 """
 
@@ -42,12 +43,55 @@ class TestHabitatEnv(unittest.TestCase):
         self.device = "cpu"
         self.simulator_settings = dict(
             scene= "scene_datasets/habitat-test-scenes/skokloster-castle.glb",
-            width= 64,
-            height= 64,
+            width= 256,
+            height= 256,
             default_agent= 0,
             sensor_height= 1.5,
         )
         self.apsp_path = "pud/envs/safe_habitatenv/apsps/skokloster/apsp.pickle"
+
+    def test_obs(self):
+        env = HabitatNavigationEnv(
+            scene=self.scene,
+            height=0,
+            simulator_settings=self.simulator_settings,
+            device=self.device,
+            apsp_path=self.apsp_path,
+            )
+
+        env._walls
+
+        import IPython
+        IPython.embed(colors="Linux")
+
+        selected_points = [
+            [0.4837957993182139, 0.5812356979405034],
+            [0.4679084039817981, 0.5240274599542334],
+            [0.31365823772444756, 0.931350114416476],
+            ]
+        
+        pnts_arr = np.fliplr(np.array(selected_points))
+
+        grid_size = np.array(env._walls.shape)
+        grid_pos = pnts_arr * grid_size
+
+        idx = 2
+        obs = env.get_sensor_obs_at_grid_xy(grid_pos[idx])
+        
+        fig, ax = plt.subplots(nrows=2, ncols=2)
+        for i in range(2):
+            for j in range(2):
+                ax[i,j].imshow((obs[i*2+j]).astype(dtype="uint8"))
+        fig.savefig("runs/tmp_plots/view_{}.jpg".format(idx), dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+
+
+
+        import IPython
+        IPython.embed(colors="Linux")
+
+        pass
 
     def compare_occupancy(self):
         """compare the occupancy from the 2D maze matrix and habitat"""

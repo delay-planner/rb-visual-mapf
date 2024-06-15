@@ -24,6 +24,7 @@ cost_radius=10.0
 scene=scene_datasets/habitat-test-scenes/skokloster-castle.glb
 apsp_path=pud/envs/safe_habitatenv/apsps/skokloster/apsp.pickle
 num_envs=8
+embedding_size=256
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
@@ -56,5 +57,6 @@ else
         --device ${device} \
         --visual \
         --num_envs ${num_envs} \
+        --embedding_size $embedding_size \
         --pbar
 fi
