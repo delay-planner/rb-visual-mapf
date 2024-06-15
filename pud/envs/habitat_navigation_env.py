@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 import pickle
 import random
+from typing import Literal
 
 import habitat_sim
 from numpy.typing import NDArray
@@ -30,6 +31,7 @@ class HabitatNavigationEnv(gym.Env):
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
+        sensor_type:Literal["rgb", "depth"] ="depth",
         apsp_path: str = "",
         device:str="cpu",
     ):
@@ -45,6 +47,7 @@ class HabitatNavigationEnv(gym.Env):
 
         self._scene = Path(habitat_data_root).joinpath(scene).as_posix()
         simulator_settings["scene"] = Path(habitat_data_root).joinpath(scene).as_posix()
+        self.sensor_type = sensor_type
 
         self.device = device
 
@@ -144,7 +147,10 @@ class HabitatNavigationEnv(gym.Env):
         # Generate a default RBG camera specification and attach it to each robot
         rgb_sensor_spec_forward = habitat_sim.sensor.CameraSensorSpec()
         rgb_sensor_spec_forward.uuid = "color_sensor_forward"
-        rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        if self.sensor_type == "rgb":
+            rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        elif self.sensor_type == "depth":
+            rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
         rgb_sensor_spec_forward.resolution = [self._height, self._width]
         rgb_sensor_spec_forward.position = [
             0.0,
@@ -154,7 +160,10 @@ class HabitatNavigationEnv(gym.Env):
 
         rgb_sensor_spec_right = habitat_sim.sensor.CameraSensorSpec()
         rgb_sensor_spec_right.uuid = "color_sensor_right"
-        rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        if self.sensor_type == "rgb":
+            rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        elif self.sensor_type == "depth":
+            rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.DEPTH
         rgb_sensor_spec_right.resolution = [self._height, self._width]
         rgb_sensor_spec_right.position = [
             0.0,
@@ -165,7 +174,10 @@ class HabitatNavigationEnv(gym.Env):
 
         rgb_sensor_spec_backward = habitat_sim.sensor.CameraSensorSpec()
         rgb_sensor_spec_backward.uuid = "color_sensor_backward"
-        rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        if self.sensor_type == "rgb":
+            rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        elif self.sensor_type == "depth":
+            rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
         rgb_sensor_spec_backward.resolution = [self._height, self._width]
         rgb_sensor_spec_backward.position = [
             0.0,
@@ -176,7 +188,10 @@ class HabitatNavigationEnv(gym.Env):
 
         rgb_sensor_spec_left = habitat_sim.sensor.CameraSensorSpec()
         rgb_sensor_spec_left.uuid = "color_sensor_left"
-        rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        if self.sensor_type == "rgb":
+            rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.COLOR
+        elif self.sensor_type == "depth":
+            rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.DEPTH
         rgb_sensor_spec_left.resolution = [self._height, self._width]
         rgb_sensor_spec_left.position = [
             0.0,
@@ -398,52 +413,17 @@ class HabitatNavigationEnv(gym.Env):
         agent_state.sensor_states = {}
         self._agent.set_state(agent_state)
 
-    def reset_habitat(self) -> NDArray:
-        """return camera observation
-        self._simulator.get_sensor_observations()
-        # to get the number of agents
-        tmp = self._simulator.agents
-        # to get the agent from ID
-        self._simulator.get_agent(0)
-        """
-        self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
-        observations = self._simulator.reset()
-        for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)  # type: ignore
-            self.state[idx] = value
-        return self.state.copy()
-
     def get_sensor_observation(self) -> TypeHabitatSensorObs:
-        cat_obs = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
         observations = self._simulator.get_sensor_observations()
+        cat_obs = None
+        if self.sensor_type == "rgb":
+            cat_obs = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
+        elif self.sensor_type == "depth":
+            cat_obs = np.zeros((4, self._height, self._width))
+
         for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)  # type: ignore
             cat_obs[idx] = value
         return cat_obs
-
-    def step_habitat(self, action: NDArray) -> Tuple[TypeHabitatSensorObs, float, bool, Dict]:
-        if self._action_noise > 0:
-            action += np.random.normal(0, self._action_noise)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        assert self.action_space.contains(action)
-
-        num_substeps = 10
-        dt = 1.0 / num_substeps
-        for _ in np.linspace(0, 1, num_substeps):
-            for axis, axis_action in enumerate(action):
-                new_state = self.get_xy_in_habitat()
-                new_state[axis] += dt * axis_action
-                if not self.is_blocked_habitat(new_state):
-                    self.set_agent_pos_w_habitatxy(new_state)
-
-        done = False
-        obs = self.get_xy_in_habitat()
-        rew = float(-1.0 * np.linalg.norm(obs))
-
-        self.state = self.get_sensor_observation()
-
-        return self.state.copy(), rew, done, {}
-
 
 class GoalConditionedHabitatPointWrapper(gym.Wrapper):
     """Wrapper that appends goal to observation produced by habitat environment."""
