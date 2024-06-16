@@ -62,6 +62,10 @@ def make_default_settings():
     }
     return settings
 
+"""
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
+
+"""
 
 class TestReplicaCADBarebone(unittest.TestCase):
     def test_construct_sim(self):
@@ -71,6 +75,13 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
         cfg = make_cfg(settings)
         sim = habitat_sim.Simulator(cfg)
+
+    def test_replica_cad_in_habitat_env(self):
+        from pud.envs.habitat_navigation_env import HabitatNavigationEnv
+        env = HabitatNavigationEnv(
+            env_type="ReplicaCAD",
+        )
+        print("walls shape: {}".format(env._walls.shape))
 
 if __name__ == "__main__":
     unittest.main()

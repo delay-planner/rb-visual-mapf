@@ -16,6 +16,7 @@ import yaml
 from pud.envs.wrappers import TimeLimit
 from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
 from pathlib import Path
+from termcolor import colored
 
 ## Define data types
 TypeGridXY = NDArray
@@ -23,11 +24,103 @@ TypeHabitatXY = NDArray
 TypeHabitatXYZ = NDArray
 TypeHabitatSensorObs = NDArray
 
+def make_habitat_configuration(
+        settings:dict, 
+        sensor_type:Literal["rgb", "depth"] ="depth", 
+        device:str="cpu",
+        ):
+    simulator_cfg = habitat_sim.SimulatorConfiguration()
+    
+    simulator_cfg.scene_id = settings["scene"]
+
+    if "scene_dataset" in settings:
+        simulator_cfg.scene_dataset_config_file = settings["scene_dataset"]
+
+    # Specify the location of the scene dataset
+    if "scene_dataset_config" in settings:
+        simulator_cfg.scene_dataset_config_file = settings["scene_dataset_config"]
+    if "override_scene_light_defaults" in settings:
+        simulator_cfg.override_scene_light_defaults = settings[
+            "override_scene_light_defaults"
+        ]
+    if "scene_light_setup" in settings:
+        simulator_cfg.scene_light_setup = settings["scene_light_setup"]
+
+
+    if device == "cpu":
+        simulator_cfg.gpu_device_id = -1
+
+    # Generate a default RBG camera specification and attach it to each robot
+    rgb_sensor_spec_forward = habitat_sim.sensor.CameraSensorSpec()
+    rgb_sensor_spec_forward.uuid = "color_sensor_forward"
+    if sensor_type == "rgb":
+        rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+    elif sensor_type == "depth":
+        rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
+    rgb_sensor_spec_forward.resolution = [settings["height"], settings["width"]]
+    rgb_sensor_spec_forward.position = [
+        0.0,
+        settings["sensor_height"],
+        0.0,
+    ]
+
+    rgb_sensor_spec_right = habitat_sim.sensor.CameraSensorSpec()
+    rgb_sensor_spec_right.uuid = "color_sensor_right"
+    if sensor_type == "rgb":
+        rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.COLOR
+    elif sensor_type == "depth":
+        rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.DEPTH
+    rgb_sensor_spec_right.resolution = [settings["height"], settings["width"]]
+    rgb_sensor_spec_right.position = [
+        0.0,
+        settings["sensor_height"],
+        0.0,
+    ]
+    rgb_sensor_spec_right.orientation = [0.0, -np.pi / 2, 0.0]
+
+    rgb_sensor_spec_backward = habitat_sim.sensor.CameraSensorSpec()
+    rgb_sensor_spec_backward.uuid = "color_sensor_backward"
+    if sensor_type == "rgb":
+        rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.COLOR
+    elif sensor_type == "depth":
+        rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
+    rgb_sensor_spec_backward.resolution = [settings["height"], settings["width"]]
+    rgb_sensor_spec_backward.position = [
+        0.0,
+        settings["sensor_height"],
+        0.0,
+    ]
+    rgb_sensor_spec_backward.orientation = [0.0, np.pi, 0.0]
+
+    rgb_sensor_spec_left = habitat_sim.sensor.CameraSensorSpec()
+    rgb_sensor_spec_left.uuid = "color_sensor_left"
+    if sensor_type == "rgb":
+        rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.COLOR
+    elif sensor_type == "depth":
+        rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.DEPTH
+    rgb_sensor_spec_left.resolution = [settings["height"], settings["width"]]
+    rgb_sensor_spec_left.position = [
+        0.0,
+        settings["sensor_height"],
+        0.0,
+    ]
+    rgb_sensor_spec_left.orientation = [0.0, np.pi / 2, 0.0]
+
+    agent_cfg = habitat_sim.agent.AgentConfiguration()
+    agent_cfg.sensor_specifications = [
+        rgb_sensor_spec_forward,
+        rgb_sensor_spec_right,
+        rgb_sensor_spec_backward,
+        rgb_sensor_spec_left,
+    ]
+
+    return habitat_sim.Configuration(simulator_cfg, [agent_cfg])
+
 
 class HabitatNavigationEnv(gym.Env):
     def __init__(
         self,
-        scene: str,
+        env_type: Literal["HabitatSim", "ReplicaCAD"],
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
@@ -39,27 +132,14 @@ class HabitatNavigationEnv(gym.Env):
         initialize the habitat env and extract the 2D grid map
         """
 
-        # prepend data root dir
-        habitat_data_root = ""
-        with open("configs/habitat_data.yaml", "r") as f:
-            habitat_data_f = yaml.safe_load(f)
-            habitat_data_root = habitat_data_f["HATBITAT_DATA_DIR"]
-
-        self._scene = Path(habitat_data_root).joinpath(scene).as_posix()
-        simulator_settings["scene"] = Path(habitat_data_root).joinpath(scene).as_posix()
         self.sensor_type = sensor_type
-
         self.device = device
 
         if not simulator_settings:
-            # If simulator settings were not specified then use the default settings
-            self._simulator_settings = {
-                "scene": self._scene,  # Scene path
-                "width": 256,  # Spatial resolution of the observations
-                "height": 256,
-                "default_agent": 0,  # Index of the default agent
-                "sensor_height": 1.5,  # Height of sensors in meters, relative to the agent
-            }
+            print("[{}]: using default setting for {}".format(colored("INFO", "green"), colored(env_type, "red")))
+            with open("configs/habitat_data.yaml", "r") as f:
+                habitat_data_f = yaml.safe_load(f)
+                self._simulator_settings = habitat_data_f[env_type]["default_settings"]
         else:
             self._simulator_settings = simulator_settings
             assert "scene" in self._simulator_settings
@@ -74,7 +154,11 @@ class HabitatNavigationEnv(gym.Env):
         self._width = self._simulator_settings["width"]
         self._height = self._simulator_settings["height"]
 
-        self._configuration = self.make_habitat_configuration()
+        self._configuration = make_habitat_configuration(
+            self._simulator_settings,
+            sensor_type=sensor_type,
+            device=device,
+        )
         
         self._simulator = habitat_sim.Simulator(self._configuration)
 
@@ -139,79 +223,6 @@ class HabitatNavigationEnv(gym.Env):
     def walls(self):
         """0 is obstacle, 1 is empty"""
         return self._walls
-
-    def make_habitat_configuration(self):
-
-        simulator_cfg = habitat_sim.SimulatorConfiguration()
-        simulator_cfg.scene_id = self._simulator_settings["scene"]
-        if self.device == "cpu":
-            simulator_cfg.gpu_device_id = -1
-
-        # Generate a default RBG camera specification and attach it to each robot
-        rgb_sensor_spec_forward = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_forward.uuid = "color_sensor_forward"
-        if self.sensor_type == "rgb":
-            rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.COLOR
-        elif self.sensor_type == "depth":
-            rgb_sensor_spec_forward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
-        rgb_sensor_spec_forward.resolution = [self._height, self._width]
-        rgb_sensor_spec_forward.position = [
-            0.0,
-            self._simulator_settings["sensor_height"],
-            0.0,
-        ]
-
-        rgb_sensor_spec_right = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_right.uuid = "color_sensor_right"
-        if self.sensor_type == "rgb":
-            rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.COLOR
-        elif self.sensor_type == "depth":
-            rgb_sensor_spec_right.sensor_type = habitat_sim.sensor.SensorType.DEPTH
-        rgb_sensor_spec_right.resolution = [self._height, self._width]
-        rgb_sensor_spec_right.position = [
-            0.0,
-            self._simulator_settings["sensor_height"],
-            0.0,
-        ]
-        rgb_sensor_spec_right.orientation = [0.0, -np.pi / 2, 0.0]
-
-        rgb_sensor_spec_backward = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_backward.uuid = "color_sensor_backward"
-        if self.sensor_type == "rgb":
-            rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.COLOR
-        elif self.sensor_type == "depth":
-            rgb_sensor_spec_backward.sensor_type = habitat_sim.sensor.SensorType.DEPTH
-        rgb_sensor_spec_backward.resolution = [self._height, self._width]
-        rgb_sensor_spec_backward.position = [
-            0.0,
-            self._simulator_settings["sensor_height"],
-            0.0,
-        ]
-        rgb_sensor_spec_backward.orientation = [0.0, np.pi, 0.0]
-
-        rgb_sensor_spec_left = habitat_sim.sensor.CameraSensorSpec()
-        rgb_sensor_spec_left.uuid = "color_sensor_left"
-        if self.sensor_type == "rgb":
-            rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.COLOR
-        elif self.sensor_type == "depth":
-            rgb_sensor_spec_left.sensor_type = habitat_sim.sensor.SensorType.DEPTH
-        rgb_sensor_spec_left.resolution = [self._height, self._width]
-        rgb_sensor_spec_left.position = [
-            0.0,
-            self._simulator_settings["sensor_height"],
-            0.0,
-        ]
-        rgb_sensor_spec_left.orientation = [0.0, np.pi / 2, 0.0]
-
-        agent_cfg = habitat_sim.agent.AgentConfiguration()
-        agent_cfg.sensor_specifications = [
-            rgb_sensor_spec_forward,
-            rgb_sensor_spec_right,
-            rgb_sensor_spec_backward,
-            rgb_sensor_spec_left,
-        ]
-
-        return habitat_sim.Configuration(simulator_cfg, [agent_cfg])
 
     ##----------- Point Env equivalent internal functions ------------------------
     def compute_apsp(self, walls: NDArray):
