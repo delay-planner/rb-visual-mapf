@@ -1,5 +1,12 @@
 import unittest
 import habitat_sim
+
+"""
+mostly copied from 
+habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
+"""
+
+
 def make_cfg(settings):
     sim_cfg = habitat_sim.SimulatorConfiguration()
     sim_cfg.gpu_device_id = 0
