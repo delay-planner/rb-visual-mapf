@@ -32,7 +32,18 @@ python -m habitat_sim.utils.datasets_download --uids habitat_test_scenes --data-
 python -m habitat_sim.utils.datasets_download --uids habitat_example_objects --data-path /path/to/data/
 ```
 
+### Setup Replica CAD (Not Replica Dataset)
+Replica CAD is a simpler and painless version of Replica Dataset. Replica Dataset may have been deprecated: see [Github Issue](https://github.com/facebookresearch/habitat-sim/issues/2335)
 
+```bash
+target_dir=external_data/replica_cad # feel free to change
+GIT_CLONE_PROTECTION_ACTIVE=false python -m habitat_sim.utils.datasets_download --uids replica_cad_dataset replica_cad_baked_lighting --data-path $target_dir
+```
+
+Verify it is working with interactive viewer
+```bash
+habitat-viewer --dataset ${target_dir}/replica_cad_baked_lighting/replicaCAD_baked.scene_dataset_config.json -- sc1_staging_00
+```
 
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
