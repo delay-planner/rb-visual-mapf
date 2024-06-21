@@ -1,5 +1,7 @@
 import unittest
 import habitat_sim
+import numpy as np
+import matplotlib.pyplot as plt
 
 """
 mostly copied from 
@@ -9,6 +11,7 @@ habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
 """
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
 
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints
 """
 
 
@@ -83,9 +86,6 @@ class TestReplicaCADBarebone(unittest.TestCase):
         )
         print("walls shape: {}".format(env._walls.shape))
 
-        import matplotlib.pyplot as plt
-        import numpy as np
-
         walls = env._walls.copy()
         fig, ax = plt.subplots()
         # 1 is navigatbale, 0 is obstacle
@@ -107,6 +107,29 @@ class TestReplicaCADBarebone(unittest.TestCase):
         ax.set_aspect('equal', adjustable='box')
 
         fig.savefig("runs/tmp_plots/replicad_cad_3d.jpg", dpi=300)
+
+    def vis_handed_crafted_waypoints(self):
+        from pud.envs.habitat_navigation_env import HabitatNavigationEnv
+        env = HabitatNavigationEnv(
+            env_type="ReplicaCAD",
+            sensor_type="rgb",
+        )
+
+        height, width = env._walls.shape
+        waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
+        waypoints = np.fliplr(waypoints)
+        # waypoints in 2d grid
+        waypoints = waypoints * np.array([height,width], dtype=float)
+        obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints]
+        
+        assert env.sensor_type == "rgb"
+        for i_obs, obs_cat in enumerate(obs_at_waypoints):
+            fig, ax = plt.subplots(nrows=2, ncols=2)
+            for i in range(4):
+                ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
+
+            fig.savefig("runs/tmp_plots/view_32_{}.jpg".format(i_obs), dpi=300, bbox_inches="tight")
+            plt.close(fig)
 
 if __name__ == "__main__":
     unittest.main()
