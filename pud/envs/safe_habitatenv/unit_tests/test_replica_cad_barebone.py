@@ -6,6 +6,11 @@ mostly copied from
 habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
 """
 
+"""
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
+
+"""
+
 
 def make_cfg(settings):
     sim_cfg = habitat_sim.SimulatorConfiguration()
@@ -62,11 +67,6 @@ def make_default_settings():
     }
     return settings
 
-"""
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
-
-"""
-
 class TestReplicaCADBarebone(unittest.TestCase):
     def test_construct_sim(self):
         scene_dataset = "external_data/replica_cad/replica_cad_baked_lighting/replicaCAD_baked.scene_dataset_config.json"
@@ -82,6 +82,31 @@ class TestReplicaCADBarebone(unittest.TestCase):
             env_type="ReplicaCAD",
         )
         print("walls shape: {}".format(env._walls.shape))
+
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        walls = env._walls.copy()
+        fig, ax = plt.subplots()
+        # 1 is navigatbale, 0 is obstacle
+        # convert to the convention of pointenv
+        walls = 1 - walls
+        walls = walls.T
+        (height, width) = walls.shape
+        # only plot walls
+        for (i, j) in zip(*np.where(walls)):
+            x = np.array([j, j+1]) / float(width)
+            y0 = np.array([i, i]) / float(height)
+            y1 = np.array([i+1, i+1]) / float(height)
+            ax.fill_between(x, y0, y1, color='grey')
+
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect('equal', adjustable='box')
+
+        fig.savefig("runs/tmp_plots/replicad_cad_3d.jpg", dpi=300)
 
 if __name__ == "__main__":
     unittest.main()
