@@ -21,6 +21,14 @@ With vector envs, the habitat environment class is unchanged, but there is a spe
 **Step 1**:
 ```bash
 conda install habitat-sim -c conda-forge -c aihabitat
+
+## Optional: install habitat-lab
+git clone --branch stable https://github.com/facebookresearch/habitat-lab.git
+cd habitat-lab
+pip install -e habitat-lab  # install habitat_lab
+
+# if see xcb error, uninstall PyQt5 and reinstall opencv-python 
+# https://stackoverflow.com/questions/71088095/opencv-could-not-load-the-qt-platform-plugin-xcb-in-even-though-it-was-fou
 ```
 **Step 2**:
 ### Download (testing) 3D scenes

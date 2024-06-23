@@ -2,6 +2,8 @@ import unittest
 import habitat_sim
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
+from pathlib import Path
 
 """
 mostly copied from 
@@ -12,6 +14,10 @@ habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints
+
+opencv-python is problem
+
+perhaps flip the image upside down?
 """
 
 
@@ -117,19 +123,24 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
         height, width = env._walls.shape
         waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
-        waypoints = np.fliplr(waypoints)
+        #waypoints = np.fliplr(waypoints)
         # waypoints in 2d grid
         waypoints = waypoints * np.array([height,width], dtype=float)
         obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints]
         
         assert env.sensor_type == "rgb"
+        pbar = tqdm(total=len(obs_at_waypoints))
         for i_obs, obs_cat in enumerate(obs_at_waypoints):
             fig, ax = plt.subplots(nrows=2, ncols=2)
             for i in range(4):
                 ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
 
-            fig.savefig("runs/tmp_plots/view_32_{}.jpg".format(i_obs), dpi=300, bbox_inches="tight")
+            target_dir = Path("runs/tmp_plots/trace_bounds/")
+            fig_path = target_dir.joinpath("trace_bounds_{:0>2d}.jpg".format(i_obs))
+            fig.savefig(fig_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
+
+            pbar.update()
 
 if __name__ == "__main__":
     unittest.main()
