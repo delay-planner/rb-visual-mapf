@@ -119,6 +119,7 @@ class TestReplicaCADBarebone(unittest.TestCase):
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
             sensor_type="rgb",
+            device="cuda:1",
         )
 
         height, width = env._walls.shape
@@ -136,7 +137,8 @@ class TestReplicaCADBarebone(unittest.TestCase):
                 ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
 
             target_dir = Path("runs/tmp_plots/trace_bounds/")
-            fig_path = target_dir.joinpath("trace_bounds_{:0>2d}.jpg".format(i_obs))
+            target_dir.mkdir(parents=True, exist_ok=True)
+            fig_path = target_dir.joinpath("trace_bounds_{:0>3d}.jpg".format(i_obs))
             fig.savefig(fig_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
 
