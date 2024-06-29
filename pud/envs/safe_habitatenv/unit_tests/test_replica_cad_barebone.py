@@ -199,6 +199,8 @@ class TestReplicaCADBarebone(unittest.TestCase):
             max_episode_steps=20,
             **env_config,
             )
-        
+
+        self.assertIsNotNone(env, "env should not be None")
+
 if __name__ == "__main__":
     unittest.main()
