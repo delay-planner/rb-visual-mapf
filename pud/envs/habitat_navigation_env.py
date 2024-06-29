@@ -601,19 +601,23 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
 
 def habitat_env_load_fn(
-    scene: str,
+    # HabitatNavigationEnv kwargs
+    env_type: Literal["HabitatSim", "ReplicaCAD"],
     height: Union[float, None] = None,
-    terminate_on_timeout: bool = False,
-    max_episode_steps: Union[int, None] = None,
-    gym_env_wrappers: Tuple[GoalConditionedHabitatPointWrapper] = (
-        GoalConditionedHabitatPointWrapper,
-    ),  # type: ignore
-    wrapper_kwargs: List[dict] = [],
-    apsp_path:str="",
     action_noise:float=1.0,
     simulator_settings:dict={},
+    sensor_type:Literal["rgb", "depth"] ="depth",
+    apsp_path:str="",
     device:str="cpu",
-) -> gym.Env:
+    # wrapper kwargs
+    gym_env_wrappers: Tuple[GoalConditionedHabitatPointWrapper] = (
+        GoalConditionedHabitatPointWrapper,
+    ),
+    wrapper_kwargs: List[dict] = [],
+    # TimeLimit kwargs
+    terminate_on_timeout: bool = False,
+    max_episode_steps: Union[int, None] = None,
+    ) -> gym.Env:
     """Loads the selected environment and wraps it with the specified wrappers.
 
     Args:
@@ -632,10 +636,11 @@ def habitat_env_load_fn(
     """
 
     env = HabitatNavigationEnv(
-        scene=scene, 
-        height=height, 
+        env_type=env_type,
+        height=height,
         action_noise=action_noise,
         simulator_settings=simulator_settings,
+        sensor_type=sensor_type,
         apsp_path=apsp_path,
         device=device,
         )

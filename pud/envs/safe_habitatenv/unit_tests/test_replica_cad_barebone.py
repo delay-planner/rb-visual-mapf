@@ -17,6 +17,9 @@ python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestRepl
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_plot_map
 
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
+
+
 
 opencv-python is problem
 
@@ -181,5 +184,21 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
             pbar.update()
 
+    def load_hatbitat_cad(self):
+        import yaml
+        from pud.envs.habitat_navigation_env import habitat_env_load_fn
+
+        config_file = "configs/config_HabitatReplicaCAD.yaml"
+        habitat_config = {}
+        with open(config_file, "r") as f:
+            habitat_config = yaml.safe_load(f)
+        env_config = habitat_config["env"]
+
+        env = habitat_env_load_fn(
+            device="cuda:1",
+            max_episode_steps=20,
+            **env_config,
+            )
+        
 if __name__ == "__main__":
     unittest.main()
