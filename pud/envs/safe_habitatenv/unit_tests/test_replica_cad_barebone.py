@@ -2,6 +2,7 @@ import unittest
 import habitat_sim
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from tqdm.auto import tqdm
 from pathlib import Path
 
@@ -18,6 +19,8 @@ python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestRepl
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_plot_map
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
+
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints_w_topdown_maps
 """
 
 
@@ -169,6 +172,58 @@ class TestReplicaCADBarebone(unittest.TestCase):
             fig, ax = plt.subplots(nrows=2, ncols=2)
             for i in range(4):
                 ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
+
+            target_dir = Path("runs/tmp_plots/trace_bounds/")
+            target_dir.mkdir(parents=True, exist_ok=True)
+            fig_path = target_dir.joinpath("trace_bounds_{:0>3d}.jpg".format(i_obs))
+            fig.savefig(fig_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+            pbar.update()
+
+    def vis_handed_crafted_waypoints_w_topdown_maps(self):
+        from pud.envs.habitat_navigation_env import HabitatNavigationEnv
+        env = HabitatNavigationEnv(
+            env_type="ReplicaCAD",
+            sensor_type="rgb",
+            device="cuda:1",
+        )
+
+        height, width = env._walls.shape
+        waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
+        #waypoints = np.fliplr(waypoints)
+        # waypoints in 2d grid
+        waypoints_map = waypoints * np.array([height,width], dtype=float)
+        obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints_map]
+        
+        assert env.sensor_type == "rgb"
+        pbar = tqdm(total=len(obs_at_waypoints))
+        for i_obs, obs_cat in enumerate(obs_at_waypoints):
+            fig = plt.figure(layout="constrained")
+            gs = GridSpec(nrows=2, ncols=3, figure=fig)
+            for i in range(4):
+                axi = fig.add_subplot(gs[i%2,i//2])
+                axi.imshow((obs_cat[i]).astype(dtype="uint8"))
+            
+            ax_wall = fig.add_subplot(gs[:,-1])
+            walls = env._walls.copy()
+            walls = 1 - walls
+            for (i, j) in zip(*np.where(walls)):
+                x = np.array([i, i+1]) / float(height)
+                y0 = np.array([j, j]) / float(width)
+                y1 = np.array([j+1, j+1]) / float(width)
+                ax_wall.fill_between(x, y0, y1, color='grey')
+
+            ax_wall.set_xlim([0, 1])
+            ax_wall.set_ylim([0, 1])
+            ax_wall.set_xticks([])
+            ax_wall.set_yticks([])
+            ax_wall.set_aspect('equal', adjustable='box')
+
+            
+            ax_wall.plot([waypoints[i_obs][0]], [waypoints[i_obs][1]], 'ro')
+            ax_wall.plot(waypoints[:,0], waypoints[:,1], color="y", linestyle="--", linewidth=2)
+            ax_wall.plot(waypoints[i_obs][0], waypoints[i_obs][1], marker="o", color="red", markersize=6, zorder=4)
 
             target_dir = Path("runs/tmp_plots/trace_bounds/")
             target_dir.mkdir(parents=True, exist_ok=True)
