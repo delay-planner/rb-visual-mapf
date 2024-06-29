@@ -18,12 +18,6 @@ python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestRepl
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_plot_map
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
-
-
-
-opencv-python is problem
-
-perhaps flip the image upside down?
 """
 
 
