@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cfg",
         type=str,
-        default="configs/config_SafeHabitatEnv.yaml",
+        default="configs/config_HabitatReplicaCAD.yaml",
         help="Training configuration",
     )
     parser.add_argument("--cost_name",
@@ -76,7 +76,7 @@ if __name__ == "__main__":
         help="override cost limit")
     parser.add_argument("--scene",
         type=str,
-        default="scene_datasets/habitat-test-scenes/skokloster-castle.glb",
+        default="",
         help="override scene")
     parser.add_argument("--lambda_lr",
         type=float,
@@ -162,19 +162,16 @@ if __name__ == "__main__":
             gym_env_wrappers.append(SafeGoalConditionedHabitatPointQueueWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
-    cfg.env.device = args.device
+    cfg.device = args.device
 
     envs = [
         habitat_env_load_fn(
-        scene=cfg.env.scene,
-        height=cfg.env.height,
+        **cfg.env.toDict(),
         max_episode_steps=cfg.time_limit.max_episode_steps,
         gym_env_wrappers= (
             GoalConditionedHabitatPointWrapper,
         ),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
-        apsp_path=cfg.env.apsp_path,
-        simulator_settings=cfg.env.simulator_settings,
         device=cfg.device,
         terminate_on_timeout=False,
         ) for _ in range(args.num_envs)
@@ -184,15 +181,12 @@ if __name__ == "__main__":
     env = envs[0] # to help initialize other modules
 
     eval_env = habitat_env_load_fn(
-        scene=cfg.env.scene,
-        height=cfg.env.height,
+        **cfg.env.toDict(),
         max_episode_steps=cfg.time_limit.max_episode_steps,
         gym_env_wrappers= (
             GoalConditionedHabitatPointWrapper,
         ),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
-        apsp_path=cfg.env.apsp_path,
-        simulator_settings=cfg.env.simulator_settings,
         device=cfg.device,
         terminate_on_timeout=True,
         )

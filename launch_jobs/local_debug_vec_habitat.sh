@@ -3,7 +3,7 @@
 env=hatbitat
 comment="cost_limit=10"
 SLURM_JOB_ID=local_vec
-experiment_dir="runs"
+experiment_dir="runs_debug"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
 echo "project root directory: ${project_root}"
@@ -11,7 +11,8 @@ echo "experiment directory: ${log_dir}"
 
 #config=configs/config_SafeHabitatEnv.yaml
 #config=configs/config_SafeHabitatEnv_Queue_debug.yaml
-config=configs/config_HabitatEnv.yaml
+#config=configs/config_HabitatEnv.yaml
+config=configs/config_HabitatReplicaCAD.yaml
 #device="cpu"
 device="cuda:0"
 
@@ -21,8 +22,6 @@ cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-scene=scene_datasets/habitat-test-scenes/skokloster-castle.glb
-apsp_path=pud/envs/safe_habitatenv/apsps/skokloster/apsp.pickle
 num_envs=8
 embedding_size=256
 
@@ -35,8 +34,6 @@ if [[ -n ${debugger_port} ]]; then
         --listen localhost:${debugger_port} \
         --wait-for-client \
         pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
-        --scene $scene \
-        --apsp_path $apsp_path \
         --cfg $config \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
@@ -48,8 +45,6 @@ if [[ -n ${debugger_port} ]]; then
 else
     echo "[INFO] running in normal mode"
     python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
-        --scene $scene \
-        --apsp_path $apsp_path \
         --cfg $config \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
