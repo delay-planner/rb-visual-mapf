@@ -28,8 +28,7 @@ def log_time(step:int=0, log:dict=None):
     log["time"].append(time.time())
     log["step"].append(step)
     log["speed"].append(
-        float(log["step"][-1]-log["step"][-2])/
-        (float(log["time"][-1])-float(log["time"][-2]))
+        float(log["step"][-1]-log["step"][-2])/(float(log["time"][-1])-float(log["time"][-2]))
     )
     return log
 
@@ -67,8 +66,8 @@ def train_eval(
             if verbose:
                 print(f"iteration = {i}, opt_info = {opt_info}")
 
-        if i % eval_interval == 0:
-            time_logs = log_time(step=i)
+        if i>1 and i % eval_interval == 0:
+            time_logs = log_time(step=i, log=time_logs)
             if isinstance(ckpt_dir, Path):
                 torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
 
