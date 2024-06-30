@@ -37,5 +37,6 @@ runner:
     initial_collect_steps: 1000 # 1000
     num_iterations: 3000000
     opt_steps: 1
-device: "cuda:0"
+#device: "cuda:0"
+device: "cpu"
 seed: 0

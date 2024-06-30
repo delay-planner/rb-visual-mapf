@@ -1,24 +1,32 @@
-#!/bin/sh
-# Slurm sbatch options 
+#!/bin/bash
+#SBATCH --exclusive --gres=gpu:volta:1
 #SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs_debug/logs/job.log-%j
-#SBATCH -c 8
 
-##+++++++++
-#SBATCH --exclusive
-#SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs/logs/job.log-%j
-# Loading the required module 
 source /etc/profile 
 module load anaconda/2023a-pytorch
 module load cuda/11.8
-#mypyenv_load ccrl
+module load nccl/2.18.1-cuda11.8
+
+
+# Slurm sbatch options, the last one is loaded --gres=gpu:volta:1
+#SBATCH --gres=gpu:volta:1
+
+#+++++SBATCH --exclusive
+#++++ SBATCH -c 8
+#SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs_debug/logs/job.log-%j
+#++++ SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs/logs/job.log-%j
+# Loading the required module 
+
+
+source activate /home/gridsan/mfeng1/.conda/envs/hb
 
 # load my light pyenv
 MYPYENVROOT=/home/gridsan/mfeng1/my_python_user_bases
-MYPYTHONENV=sorb
+MYPYTHONENV=hb
 MYPYTHONUSERBASE="${MYPYENVROOT}/$MYPYTHONENV"
 export PATH=/home/gridsan/mfeng1/my_python_user_bases/$MYPYTHONENV/bin:$PATH
 export PYTHONUSERBASE=$MYPYTHONUSERBASE
-
+# add project to python path
 project_root=/home/gridsan/mfeng1/git_repos/cc-sorb
 export PYTHONPATH=$project_root:$PYTHONPATH
 ## -----------------------------------------------------------------------------
@@ -35,14 +43,13 @@ echo "experiment directory: ${log_dir}"
 #config=configs/config_SafeHabitatEnv_Queue_debug.yaml
 #config=configs/config_HabitatEnv.yaml
 config=configs/config_HabitatReplicaCAD.yaml
-device="cpu"
-#device="cuda:0"
+device="cuda:0" # must use GPU cluster
 
 cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-num_envs=8
+num_envs=20
 embedding_size=256
 
 python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
@@ -54,4 +61,3 @@ python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
     --visual \
     --num_envs ${num_envs} \
     --embedding_size $embedding_size
-    #--pbar

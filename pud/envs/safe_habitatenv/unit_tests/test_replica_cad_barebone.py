@@ -244,7 +244,7 @@ class TestReplicaCADBarebone(unittest.TestCase):
         env_config = habitat_config["env"]
 
         env = habitat_env_load_fn(
-            device="cuda:1",
+            #device=config_file["device"],
             max_episode_steps=20,
             **env_config,
             )
