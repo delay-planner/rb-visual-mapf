@@ -13,8 +13,8 @@ echo "experiment directory: ${log_dir}"
 #config=configs/config_SafeHabitatEnv_Queue_debug.yaml
 #config=configs/config_HabitatEnv.yaml
 config=configs/config_HabitatReplicaCAD.yaml
-#device="cpu"
-device="cuda:0"
+device="cpu"
+#device="cuda:0"
 
 cd "${project_root}"
 
@@ -22,7 +22,7 @@ cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-num_envs=8
+num_envs=2
 embedding_size=256
 
 # note: must have empty space between xx: [ xx ]
