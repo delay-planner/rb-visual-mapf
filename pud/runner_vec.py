@@ -16,6 +16,23 @@ from pud.algos.constrained_collector import ConstrainedCollector
 from pathlib import Path
 import torch
 
+def log_time(step:int=0, log:dict=None):
+    if log is None:
+        log = {
+            "time": [time.time()],
+            "step": [step],
+            "speed": [],
+        }
+        return log
+    
+    log["time"].append(time.time())
+    log["step"].append(step)
+    log["speed"].append(
+        float(log["step"][-1]-log["step"][-2])/
+        (float(log["time"][-1])-float(log["time"][-2]))
+    )
+    return log
+
 def train_eval(
     policy,
     agent,
@@ -34,6 +51,7 @@ def train_eval(
     verbose=True,
     ckpt_dir:Path=Path(""),
 ):
+    time_logs = log_time(step=0)
     collector = VectorCollector(
         policy, replay_buffer, env, initial_collect_steps=initial_collect_steps
     )
@@ -50,6 +68,7 @@ def train_eval(
                 print(f"iteration = {i}, opt_info = {opt_info}")
 
         if i % eval_interval == 0:
+            time_logs = log_time(step=i)
             if isinstance(ckpt_dir, Path):
                 torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
 
@@ -66,6 +85,12 @@ def train_eval(
             )
             tensorboard_writer.add_scalar(
                 "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
+            )
+            tensorboard_writer.add_scalar(
+                "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
+            )
+            tensorboard_writer.add_scalar(
+                "Time/Total Time", time_logs["time"][-1], global_step=i
             )
 
             #if i % eval_interval == 0:
