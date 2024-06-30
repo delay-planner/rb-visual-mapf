@@ -66,8 +66,7 @@ def train_eval(
             if verbose:
                 print(f"iteration = {i}, opt_info = {opt_info}")
 
-        if i>1 and i % eval_interval == 0:
-            time_logs = log_time(step=i, log=time_logs)
+        if i % eval_interval == 0:
             if isinstance(ckpt_dir, Path):
                 torch.save(agent.state_dict(), ckpt_dir.joinpath("ckpt_{:0>7d}".format(i)))
 
@@ -84,12 +83,6 @@ def train_eval(
             )
             tensorboard_writer.add_scalar(
                 "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
-            )
-            tensorboard_writer.add_scalar(
-                "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
-            )
-            tensorboard_writer.add_scalar(
-                "Time/Total Time", time_logs["time"][-1], global_step=i
             )
 
             #if i % eval_interval == 0:
@@ -108,7 +101,7 @@ def train_eval(
                     #    global_step=i,
                     #)
             
-            if i % eval_interval == 0:
+            if i > 1 and i % eval_interval == 0:
                 field_header = "Eval Dist ~ "
                 for d_ref in eval_info:
                     tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
@@ -122,6 +115,14 @@ def train_eval(
                         "pred": np.std(eval_info[d_ref]["pred_dist"]),
                         "val": -np.std(eval_info[d_ref]["returns"]),
                         }, global_step=i)
+
+                time_logs = log_time(step=i, log=time_logs)
+                tensorboard_writer.add_scalar(
+                    "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
+                )
+                tensorboard_writer.add_scalar(
+                    "Time/Total Time", time_logs["time"][-1], global_step=i
+                )
 
 def eval_pointenv_dists(
     agent, eval_env, num_evals=10, eval_distances=[1,2,3,4], verbose=True
