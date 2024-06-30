@@ -21,6 +21,7 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
 )
 from pud.runner_vec import train_eval, eval_pointenv_dists
 from tqdm.auto import tqdm
+import shutil
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -146,6 +147,11 @@ if __name__ == "__main__":
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
     tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
 
+    shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", bk_dir.as_posix())
+    shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", bk_dir.as_posix())
+    shutil.copy("pud/vision_agent.py", bk_dir.as_posix())
+    shutil.copy("pud/runner_vec.py", bk_dir.as_posix())
+    shutil.copy("pud/visual_models.py", bk_dir.as_posix())
 
     set_global_seed(cfg.seed)
 
@@ -202,7 +208,8 @@ if __name__ == "__main__":
         height=cfg.env.simulator_settings.height,
         in_channels=4,
         embedding_size=args.embedding_size,
-        act_fn=torch.nn.SELU,
+        #act_fn=torch.nn.SELU,
+        act_fn=torch.nn.ReLU,
         device=cfg.device,
         uvfddpg_kwargs=uvfddpg_kwargs,
     )
