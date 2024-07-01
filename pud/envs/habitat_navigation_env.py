@@ -172,7 +172,9 @@ class HabitatNavigationEnv(gym.Env):
 
         # The channels are RGBA
         self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32
+            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), 
+            #dtype=np.float32,
+            dtype=np.float64,
         )
 
         # Ensure that the pathfinder utility of the simulator is loaded
@@ -319,6 +321,7 @@ class HabitatNavigationEnv(gym.Env):
             action += np.random.normal(0, self._action_noise)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action)
+
         num_substeps = 10
         start_state = self.state_grid.copy()
         for dt in np.linspace(0, 1, num_substeps):
