@@ -13,8 +13,11 @@ class Encoder (nn.Module):
     """
     Encoder parent class, must have goal-conditioned get_latent_state
     """
-    def __init__(self, **kwargs):
+    def __init__(self,
+                 device:torch.device=torch.device("cpu"),
+                 **kwargs):
         super(Encoder, self).__init__()
+        self.device = device
 
     def get_latent_state(self, 
             image_state:Union[torch.Tensor, dict, np.ndarray],
@@ -58,40 +61,56 @@ class VisualRGBEncoder (Encoder):
             width:int=32,
             height:int=32,
             act_fn=nn.SELU,
-            ngroups:int=1,
+            ngroups:int=2,
+            device:torch.device=torch.device("cpu"),
             ):
-        super(VisualRGBEncoder, self).__init__()
-        self.conv_nets = [
-            nn.Conv2d(
-                in_channels=in_channels,
-                out_channels=16, 
-                kernel_size=8, 
-                stride=4
-            ),  # 64x64 -> 15x15
-            nn.Conv2d(16, 32, kernel_size=4, stride=4),  # 15x15 -> 3x3
-        ]
-        self.act_fns = [
+        super(VisualRGBEncoder, self).__init__(device=device)
+        self.width = width
+        self.height = height
+
+        self.nets = [
+            nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1),
             act_fn(),
-            act_fn(),
+            nn.GroupNorm(num_groups=ngroups, num_channels=16),
+            nn.Conv2d(16, 32, kernel_size=3, stride=4, padding=1),
+            nn.GroupNorm(num_groups=ngroups, num_channels=32),
+            nn.Flatten(),
         ]
 
-        #self.normal_layers = [
-        #    nn.GroupNorm(ngroups, planes),
-        #    nn.GroupNorm(ngroups, planes),
-        #]
+        ## lazy initialization
+        mlp_inp_dim = self.lazy_init()
+        self.emb_mlp = nn.Linear(mlp_inp_dim, embedding_size).to(device=self.device)
+        for l in self.nets:
+            l.to(device=self.device)
 
-        self.mlp_nets = [
-            nn.Linear(embedding_size, embedding_size)
-        ]
+    def lazy_init(self):
+        with torch.no_grad():
+            dummpy_inp = torch.rand(4, self.height, self.width, 4)
+            out = self.encode(dummpy_inp)
+            return np.prod(list(out.shape))
     
-    def encode(self, inp:torch.Tensor):
-        pass
+    def encode(self, x:torch.Tensor):
+        x = x.permute(0, 3, 1, 2) # batch_dim, channel_dim, *image_size
+        x = x / 255.
+        out = x
+        for l in self.nets:
+            out = l(out)
+        return out
 
-    def forward(self, inp:torch.Tensor):
-        import IPython
-        IPython.embed(colors="Linux")
-        
-        pass
+    def forward(self, x:torch.Tensor):
+        out = self.encode(x)
+        num_cat_channels, _ = out.shape
+        assert num_cat_channels%4 == 0
+        batch_size = int(num_cat_channels/4)
+        out = out.reshape(batch_size, -1)
+        return self.emb_mlp(out)
+
+    def reset_parameters(self):
+        #for i in range(len(self.nets)):
+        #    if hasattr(self.nets[i], "weight"):
+        #        torch.nn.init.xavier_uniform_(self.nets[i].weight)
+        variance_initializer_(self.emb_mlp.weight, scale=1./3., mode='fan_in', distribution='uniform')
+        torch.nn.init.zeros_(self.emb_mlp.bias)
 
 
 class VisualEncoder(Encoder):
@@ -106,8 +125,9 @@ class VisualEncoder(Encoder):
             width:int=32,
             height:int=32,
             act_fn=nn.SELU,
+            device:torch.device=torch.device("cpu"),
             ):
-        super(VisualEncoder, self).__init__()
+        super(VisualEncoder, self).__init__(device=device)
 
         self.conv_net = nn.Sequential(
             nn.Conv2d(

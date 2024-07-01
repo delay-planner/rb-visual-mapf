@@ -31,7 +31,8 @@ class VisualActor(nn.Module): # TODO: [256, 256], MLP class
                     embedding_size=embedding_size, 
                     width=width,
                     height=height,
-                    act_fn=act_fn
+                    act_fn=act_fn,
+                    device=device,
                     )
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
@@ -76,7 +77,8 @@ class VisualCritic(nn.Module):
                     embedding_size=embedding_size, 
                     width=width,
                     height=height,
-                    act_fn=act_fn
+                    act_fn=act_fn,
+                    device=device,
                     )
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256 + action_dim, 256)
