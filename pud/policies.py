@@ -3,6 +3,8 @@ import scipy
 import numpy as np
 import networkx as nx
 from pud.algos.cbs import CBSSolver
+import torch
+from pud.utils.distributions import TruncatedNormal
 
 
 class BasePolicy:
@@ -33,6 +35,13 @@ class VectorGaussianPolicy(BasePolicy):
 
     def select_action(self, state):
         action = super().select_action(state)
+        #noise_dist = TruncatedNormal(
+        #            loc=torch.zeros_like(action), 
+        #            scale=self.agent.max_action * self.noise_scale,
+        #            a=-self.agent.max_action - action,
+        #            b=self.agent.max_action-action,
+        #            )
+        #noise = noise_dist
         action += np.random.normal(
             0, self.agent.max_action * self.noise_scale, size=action.shape
         )
