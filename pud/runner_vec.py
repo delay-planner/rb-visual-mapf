@@ -1,20 +1,19 @@
 import time
-import numpy as np
-from dotmap import DotMap
-from tqdm.auto import tqdm
-from typing import Optional
-from pud.vec_collector import VectorCollector
-from pud.algos.constrained_collector import ConstrainedCollector
-from torch.utils.tensorboard.writer import SummaryWriter
-from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper,
-    SafeTimeLimit,
-    set_safe_env_difficulty,
-)
-from pud.envs.simple_navigation_env import set_env_difficulty
-from pud.algos.constrained_collector import ConstrainedCollector
 from pathlib import Path
+from typing import Optional
+
+import numpy as np
 import torch
+from dotmap import DotMap
+from torch.utils.tensorboard.writer import SummaryWriter
+from tqdm.auto import tqdm
+
+from pud.algos.constrained_collector import ConstrainedCollector
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointWrapper, SafeTimeLimit, set_safe_env_difficulty)
+from pud.envs.simple_navigation_env import set_env_difficulty
+from pud.vec_collector import VectorCollector
+
 
 def log_time(step:int=0, log:dict=None):
     if log is None:
