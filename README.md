@@ -17,7 +17,6 @@ make sure to adjust the number of vector envs depending on your GPU memory and s
 With vector envs, the habitat environment class is unchanged, but there is a special collector that does batch inference to speed up action decision.
 
 ## Installing habitat-sim
-### We require python>=3.9 and cmake>=3.10
 **Step 1**:
 ```bash
 conda install habitat-sim -c conda-forge -c aihabitat
@@ -52,6 +51,32 @@ Verify it is working with interactive viewer
 ```bash
 habitat-viewer --dataset ${target_dir}/replica_cad_baked_lighting/replicaCAD_baked.scene_dataset_config.json -- sc1_staging_00
 ```
+
+## Setup on Supercloud
+Habitat only works on GPU node (at least I did not get CPU nodes to work). The setup process, however, takes place on the initial login node without access to GPU. Load the necessary module to install cuda-enabled pytorch without access to GPU/CUDA.
+```bash
+module load anaconda/2023a-pytorch
+module load cuda/11.8
+module load nccl/2.18.1-cuda11.8
+```
+
+Installation on Supercloud requires creating a custom conda environment. Note this will reduce the I/O speed because the user space locates on network drive. 
+```bash
+conda create -n habitat python=3.9 cmake=3.14.0
+source activate habitat
+```
+
+Install cuda-compatible pytorch
+```bash
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+```
+
+Install Habitat (this step takes a long time)
+```bash
+conda install habitat-sim headless -c conda-forge -c aihabitat
+```
+
+Setup of ReplicadCAD follows the same procedure as above.
 
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
