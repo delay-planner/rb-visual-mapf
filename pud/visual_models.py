@@ -58,6 +58,7 @@ class VisualRGBEncoder (Encoder):
             width:int=32,
             height:int=32,
             act_fn=nn.SELU,
+            ngroups:int=1,
             ):
         super(VisualRGBEncoder, self).__init__()
         self.conv_nets = [
@@ -74,11 +75,22 @@ class VisualRGBEncoder (Encoder):
             act_fn(),
         ]
 
+        #self.normal_layers = [
+        #    nn.GroupNorm(ngroups, planes),
+        #    nn.GroupNorm(ngroups, planes),
+        #]
+
         self.mlp_nets = [
             nn.Linear(embedding_size, embedding_size)
         ]
+    
+    def encode(self, inp:torch.Tensor):
+        pass
 
-    def forward(self, inp):
+    def forward(self, inp:torch.Tensor):
+        import IPython
+        IPython.embed(colors="Linux")
+        
         pass
 
 
