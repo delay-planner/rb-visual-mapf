@@ -29,7 +29,7 @@ wrappers:
         prob_constraint: 0.8
         threshold_distance: 1.0
 replay_buffer:
-    max_size: 100000
+    max_size: 10000
 time_limit:
     max_episode_steps: 20
 runner:

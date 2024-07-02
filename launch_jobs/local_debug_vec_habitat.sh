@@ -22,7 +22,7 @@ cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-num_envs=8
+num_envs=4
 embedding_size=256
 
 # note: must have empty space between xx: [ xx ]
