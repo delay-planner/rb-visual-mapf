@@ -1,7 +1,7 @@
 # !/bin/sh
 
 env=hatbitat
-comment="cost_limit=10"
+comment="small_lr_encoder_v1"
 SLURM_JOB_ID=local_vec
 experiment_dir="runs_debug"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
