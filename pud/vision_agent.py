@@ -127,6 +127,8 @@ class VisionUVFDDPG (nn.Module):
             uvfddpg_kwargs:dict,
             ActorCls=VisualGoalConditionedActor, 
             CriticCls=VisualGoalConditionedCritic,
+            actor_lr:float=1e-6,
+            critic_lr:float=1e-5,
             ensemble_size:int=2,
             num_bins:int=20,
             actor_update_interval:int=1,
@@ -163,7 +165,7 @@ class VisionUVFDDPG (nn.Module):
         )
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4, eps=1e-07)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr, eps=1e-07)
 
         self.critic = CriticCls(
             width=width,
@@ -175,7 +177,7 @@ class VisionUVFDDPG (nn.Module):
             in_channels=in_channels,
             device=device,         
         )
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4, eps=1e-07)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, eps=1e-07)
 
         if self.ensemble_size > 1:
             self.critic = EnsembledCritic(self.critic, ensemble_size=ensemble_size)

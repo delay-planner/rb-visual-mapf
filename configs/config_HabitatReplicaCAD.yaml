@@ -6,6 +6,8 @@ agent:
     targets_update_interval: 5
     tau: 0.05
     use_distributional_rl: true
+    actor_lr: 1e-6
+    critic_lr: 1e-5
 ckpt_dir: runs_debug/UVFDDPG
 env:
     env_type: ReplicaCAD

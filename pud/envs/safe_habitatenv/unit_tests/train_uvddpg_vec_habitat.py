@@ -168,8 +168,6 @@ if __name__ == "__main__":
             gym_env_wrappers.append(SafeGoalConditionedHabitatPointQueueWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
-    cfg.device = args.device
-
     envs = [
         habitat_env_load_fn(
         **cfg.env.toDict(),
@@ -208,10 +206,11 @@ if __name__ == "__main__":
         height=cfg.env.simulator_settings.height,
         in_channels=4,
         embedding_size=args.embedding_size,
-        #act_fn=torch.nn.SELU,
-        act_fn=torch.nn.ReLU,
+        act_fn=torch.nn.SELU,
+        #act_fn=torch.nn.ReLU,
         device=cfg.device,
         uvfddpg_kwargs=uvfddpg_kwargs,
+        **cfg.agent.toDict(),
     )
 
     # load pretrained encoder
