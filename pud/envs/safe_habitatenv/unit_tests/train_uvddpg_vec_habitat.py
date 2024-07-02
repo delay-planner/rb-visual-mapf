@@ -53,7 +53,7 @@ if __name__ == "__main__":
         help="number of envs for batch inference")
     parser.add_argument("--embedding_size",
         type=int,
-        default=48,
+        default=-1,
         help="")
     parser.add_argument("--ckpt",
         type=str,
@@ -128,6 +128,8 @@ if __name__ == "__main__":
         cfg.env.apsp_path = args.apsp_path
     if len(args.scene) > 0:
         cfg.env.scene = args.scene
+    if args.embedding_size > 0:
+        cfg.agent.embedding_size = args.embedding_size
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()
@@ -196,20 +198,16 @@ if __name__ == "__main__":
         )
     set_env_seed(eval_env, cfg.seed + args.num_envs)
 
-    uvfddpg_kwargs = cfg.agent.toDict()
-    uvfddpg_kwargs["state_dim"] = 256*2 # latent state dim
-    uvfddpg_kwargs["action_dim"] = env.action_space.shape[0]
-    uvfddpg_kwargs["max_action"] = float(env.action_space.high[0])
+    cfg.agent["action_dim"] = env.action_space.shape[0]
+    cfg.agent["max_action"] = float(env.action_space.high[0])
     
     agent = VisionUVFDDPG(
         width=cfg.env.simulator_settings.width,
         height=cfg.env.simulator_settings.height,
         in_channels=4,
-        embedding_size=args.embedding_size,
         act_fn=torch.nn.SELU,
         #act_fn=torch.nn.ReLU,
         device=cfg.device,
-        uvfddpg_kwargs=uvfddpg_kwargs,
         **cfg.agent.toDict(),
     )
 

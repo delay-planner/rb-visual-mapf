@@ -122,30 +122,34 @@ class VisionUVFDDPG (nn.Module):
             height:int,
             in_channels:int,
             embedding_size:int,
+            action_dim:int,
+            max_action:float,
             act_fn,
             device:str,
-            uvfddpg_kwargs:dict,
             ActorCls=VisualGoalConditionedActor, 
             CriticCls=VisualGoalConditionedCritic,
             actor_lr:float=1e-6,
             critic_lr:float=1e-5,
+            tau:float=0.05,
+            discount:float=1.0,
             ensemble_size:int=2,
             num_bins:int=20,
+            targets_update_interval:int=5,
             actor_update_interval:int=1,
             use_distributional_rl:bool=True,
             # policy args
             ):
         super(VisionUVFDDPG, self).__init__()
         self.state_dim = embedding_size*2
-        self.action_dim = uvfddpg_kwargs["action_dim"]
-        self.max_action = uvfddpg_kwargs["max_action"]
-        self.discount = uvfddpg_kwargs["discount"]
-        self.targets_update_interval = uvfddpg_kwargs["targets_update_interval"]
-        self.tau = uvfddpg_kwargs["tau"]
+        self.action_dim = action_dim
+        self.max_action = max_action
+        self.discount = discount
+        self.tau = tau
         self.ensemble_size = ensemble_size
         self.device = torch.device(device)
         self.use_distributional_rl = use_distributional_rl
         self.num_bins = num_bins
+        self.targets_update_interval = targets_update_interval
         self.actor_update_interval = actor_update_interval
 
         if self.use_distributional_rl:
@@ -156,8 +160,8 @@ class VisionUVFDDPG (nn.Module):
             width=width,
             height=height,
             state_dim=embedding_size*2,
-            action_dim=uvfddpg_kwargs["action_dim"], 
-            max_action=uvfddpg_kwargs["max_action"], 
+            action_dim=action_dim, 
+            max_action=max_action, 
             embedding_size=embedding_size,
             act_fn=act_fn,
             in_channels=in_channels,
@@ -171,7 +175,7 @@ class VisionUVFDDPG (nn.Module):
             width=width,
             height=height,
             state_dim=embedding_size*2,
-            action_dim=uvfddpg_kwargs["action_dim"], 
+            action_dim=action_dim, 
             embedding_size=embedding_size,
             act_fn=act_fn,
             in_channels=in_channels,
