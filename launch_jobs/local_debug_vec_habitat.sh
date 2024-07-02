@@ -13,8 +13,8 @@ echo "experiment directory: ${log_dir}"
 #config=configs/config_SafeHabitatEnv_Queue_debug.yaml
 #config=configs/config_HabitatEnv.yaml
 config=configs/config_HabitatReplicaCAD.yaml
-device="cpu"
-#device="cuda:0"
+#device="cpu"
+device="cuda:0"
 
 cd "${project_root}"
 
@@ -22,7 +22,7 @@ cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-num_envs=2
+num_envs=8
 embedding_size=256
 
 # note: must have empty space between xx: [ xx ]
@@ -46,6 +46,8 @@ else
     echo "[INFO] running in normal mode"
     python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
         --cfg $config \
+        --actor_lr 1e-6 \
+        --critic_lr 1e-5 \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
         --logdir ${log_dir} \

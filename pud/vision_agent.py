@@ -7,8 +7,8 @@ import numpy as np
 from pud.utils import variance_initializer_
 from pud.algos.data_struct import inp_to_torch_device
 from pud.ddpg import UVFDDPG, merge_obs_goal, EnsembledCritic
-#from pud.visual_models import VisualEncoder
-from pud.visual_models import VisualRGBEncoder as VisualEncoder
+from pud.visual_models import VisualEncoder
+#from pud.visual_models import VisualRGBEncoder as VisualEncoder
 from termcolor import colored
 import functools
 
