@@ -91,6 +91,10 @@ if __name__ == "__main__":
         type=float,
         default=-1,
         help="override lagrange lr")
+    parser.add_argument("--replay_buffer_size",
+        type=int,
+        default=-1,
+        help="max replay buffer size")
     parser.add_argument("--apsp_path",
         type=str,
         default="",
@@ -135,6 +139,8 @@ if __name__ == "__main__":
         cfg.runner.num_iterations = args.num_iterations
     if args.collect_steps > 0:
         cfg.runner.collect_steps = args.collect_steps
+    if args.replay_buffer_size > 0:
+        cfg.replay_buffer.max_size = args.replay_buffer_size
     if len(args.apsp_path) > 0:
         cfg.env.apsp_path = args.apsp_path
     if len(args.scene) > 0:

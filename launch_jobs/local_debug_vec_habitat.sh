@@ -48,6 +48,7 @@ else
         --cfg $config \
         --actor_lr 1e-6 \
         --critic_lr 1e-5 \
+        --replay_buffer_size 1e4 \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
         --logdir ${log_dir} \
