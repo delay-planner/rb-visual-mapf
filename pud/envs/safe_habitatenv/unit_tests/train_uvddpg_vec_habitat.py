@@ -79,6 +79,14 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="override scene")
+    parser.add_argument("--actor_lr",
+        type=float,
+        default=-1,
+        help="")
+    parser.add_argument("--critic_lr",
+        type=float,
+        default=-1,
+        help="")
     parser.add_argument("--lambda_lr",
         type=float,
         default=-1,
@@ -104,7 +112,6 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = DotMap(cfg)
 
-
     # Override cfs from terminal
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
@@ -118,6 +125,10 @@ if __name__ == "__main__":
         cfg.agent.cost_N = args.cost_N
     if args.lambda_lr > 0:
         cfg.agent.lambda_lr = args.lambda_lr
+    if args.actor_lr > 0:
+        cfg.agent.actor_lr = args.actor_lr
+    if args.critic_lr > 0:
+        cfg.agent.critic_lr = args.critic_lr
     if args.cost_limit >= 0:
         cfg.agent.cost_limit = args.cost_limit
     if args.num_iterations > 0:
