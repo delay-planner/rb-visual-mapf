@@ -13,7 +13,6 @@ import habitat_sim
 from numpy.typing import NDArray
 from typing import Tuple, Dict, Union, List
 import yaml
-from pud.envs.wrappers import TimeLimit
 from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
 from pathlib import Path
 from termcolor import colored
@@ -172,8 +171,7 @@ class HabitatNavigationEnv(gym.Env):
 
         # The channels are RGBA
         self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), 
-            #dtype=np.float32,
+            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]),
             dtype=np.float64,
         )
 
@@ -197,7 +195,7 @@ class HabitatNavigationEnv(gym.Env):
         self.grid_observation_space = gym.spaces.Box(
             low=np.array([0.0, 0.0]),
             high=np.array([self._wall_height, self._wall_width]),
-            dtype=np.float32)
+            dtype=np.float64,)
 
         # discrete maze all-pair-shortest-path load or calculation
         t0 = time.time()
@@ -257,7 +255,7 @@ class HabitatNavigationEnv(gym.Env):
                         g.add_edge((i, j), (i + di, j + dj))
 
         # dist[i, j, k, l] is path from (i, j) -> (k, l)
-        dist = np.full((height, width, height, width), np.float32("inf"))
+        dist = np.full((height, width, height, width), np.inf)
         for (i1, j1), dist_dict in tqdm(nx.shortest_path_length(g), total=len(g.nodes())):
             for (i2, j2), d in dist_dict.items():
                 dist[i1, j1, i2, j2] = d
@@ -288,8 +286,7 @@ class HabitatNavigationEnv(gym.Env):
         for _ in range(max_attempts):
             state_index = np.random.choice(num_candidate_states)
             state_grid = np.array([candidate_states[0][state_index],
-                            candidate_states[1][state_index]],
-                            dtype=np.float32)
+                            candidate_states[1][state_index]], dtype=np.float64)
             state_grid += np.random.uniform(size=2)
             if not self._is_blocked(state_grid):
                 return state_grid
@@ -318,12 +315,32 @@ class HabitatNavigationEnv(gym.Env):
         a step function in 2d grid similar to simple navigation env
         """
         if self._action_noise > 0:
-            action += np.random.normal(0, self._action_noise)
+            action += np.random.normal(0, self._action_noise, 2)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action)
 
+        # debug and visualize setp
+        #fig, ax = plt.subplots()
+        #ax = plot_wall(self.walls, ax=ax)
+        #h, w = self.walls.shape
+        #ax.plot(start_state[0]/h, start_state[1]/w, "ro")
+        
+        #next_state = np.stack([
+        #    start_state,
+        #    start_state + action,
+        #], axis=0)
+
+        #state = next_state[-1]
+        #self._is_blocked(next_state[-1])
+        #ax.plot(next_state[:,0]/h, next_state[:,1]/w, "g-", label="traj")
+
+
+        #fig.savefig("temp/start_state.jpg", dpi=300)
+        #plt.close(fig)
+
         num_substeps = 10
         start_state = self.state_grid.copy()
+        self._is_blocked(start_state)
         for dt in np.linspace(0, 1, num_substeps):
             new_state = start_state + dt * action
             if not self._is_blocked(new_state):
@@ -547,7 +564,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array(
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
-            dtype=np.float32,
+            dtype=np.float64,
         )
         goal += np.random.uniform(size=2)
         dist_to_goal = self.get_distance(obs, goal)
@@ -588,19 +605,99 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
                 print('WARNING: Unable to find goal within constraints.')
         self._goal = goal
         return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal)}
+                'goal': self._normalize_obs(self._goal),
+                "grid": {
+                    "observation": np.copy(obs), 
+                    "goal": np.copy(self._goal),
+                    },
+                }
     
 
     def step(self, action):
         obs, _, _, _ = self.env.step(action)
+       
         rew = -1.0
         done = self._is_done(obs, self._goal)
         return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal)}, rew, done, {}
+                'goal': self._normalize_obs(self._goal)}, rew, done, {
+                "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
+                    }
     @property
     def max_goal_dist(self) -> float:
         apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
+
+
+def plot_wall(walls:np.ndarray, ax:plt.axes):
+    height, width = walls.shape
+    walls = 1 - walls
+    for (i, j) in zip(*np.where(walls)):
+        x = np.array([i, i+1]) / float(height)
+        y0 = np.array([j, j]) / float(width)
+        y1 = np.array([j+1, j+1]) / float(width)
+        ax.fill_between(x, y0, y1, color='grey')
+        ax.set_aspect("equal", adjustable="box")
+
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect('equal', adjustable='box')
+    return ax
+
+def plot_traj(trajs:np.ndarray, walls:np.ndarray, ax:plt.axes, kwargs:dict={}):
+    height, width = walls.shape
+    ax.plot(trajs[:,0]/height, trajs[:,1]/width, **kwargs)
+    return ax
+
+def plot_start_n_goals(goals, walls:np.ndarray, ax:plt.axes):
+    height, width = walls.shape
+    #ax.scatter(starts[:,0]/float(height), 
+    #           starts[:,1]/float(width), s=2, marker='o', c="green")
+    ax.scatter(goals[:,0]/float(height), 
+               goals[:,1]/float(width), s=4, marker='*', c="red")
+    return ax
+    
+
+class TimeLimit(gym.Wrapper):
+    """
+    End episodes after specified number of steps.
+
+    Resets the environment if either these conditions holds:
+        1. The base environment returns done = True
+        2. The time limit is exceeded.
+
+    If terminate_on_timeout=True, then returns done = True in case 1 and 2
+    If terminate_on_timeout=False, then returns done = True only in case 1
+    """
+
+    def __init__(self, env, duration, terminate_on_timeout=False):
+        super().__init__(env)
+        self.duration = duration
+        self.num_steps = None
+        self.terminate_on_timeout = terminate_on_timeout
+
+    def reset(self):
+        self.step_count = 0
+        observation = self.env.reset()
+        observation["first_step"] = True
+        return observation
+
+    def step(self, action, num_agents=None):
+        observation, reward, done, info = self.env.step(action)  # type: ignore
+
+        self.step_count += 1
+        timed_out = self.step_count >= self.duration
+        if timed_out or done:
+            info["timed_out"] = timed_out
+            info["terminal_observation"] = observation
+            info["last_step"] = True
+            done = done if not self.terminate_on_timeout else True
+
+            if num_agents is None:
+                observation = self.reset()
+
+        return observation, reward, done, info
 
 
 def habitat_env_load_fn(

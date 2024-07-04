@@ -3,7 +3,6 @@ import torch
 import argparse
 from pathlib import Path
 from dotmap import DotMap
-from datetime import datetime
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.policies import VectorGaussianPolicy
@@ -22,6 +21,24 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
 from pud.runner_vec import train_eval, eval_pointenv_dists
 from tqdm.auto import tqdm
 import shutil
+from typing import List
+
+def setup_logger(root_dir:str, subdir_names:List[str], tag_time:bool=False):
+    log_dir = Path(root_dir)
+    if tag_time:
+        from datetime import datetime
+        now = datetime.now()
+        date_time = now.strftime("%Y-%m-%d-%H-%M-%S")
+        log_dir = log_dir.joinpath(date_time)
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger = {"log_dir": log_dir}
+    for name in subdir_names:
+        subdir = log_dir.joinpath(name)
+        subdir.mkdir(parents=True, exist_ok=True)
+        logger[name] = subdir
+
+    return logger
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -71,6 +88,10 @@ if __name__ == "__main__":
         type=int,
         default=-1,
         help="override num of iterations")
+    parser.add_argument("--eval_interval",
+        type=int,
+        default=-1,
+        help="evaluation interval")
     parser.add_argument("--cost_limit",
         type=float,
         default=-1,
@@ -139,6 +160,8 @@ if __name__ == "__main__":
         cfg.runner.num_iterations = args.num_iterations
     if args.collect_steps > 0:
         cfg.runner.collect_steps = args.collect_steps
+    if args.eval_interval > 0:
+        cfg.runner.eval_interval = args.eval_interval
     if args.replay_buffer_size > 0:
         cfg.replay_buffer.max_size = args.replay_buffer_size
     if len(args.apsp_path) > 0:
@@ -152,25 +175,20 @@ if __name__ == "__main__":
     cfg.pprint()
 
     # Custom Logging
-    log_dir = Path(cfg.ckpt_dir)
-    now = datetime.now()
-    date_time = now.strftime("%Y-%m-%d-%H-%M-%S")
-    log_dir = log_dir.joinpath(date_time)
-    ckpt_dir = log_dir.joinpath("ckpt")
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    tfevent_dir = log_dir.joinpath("tfevent")
-    tfevent_dir.mkdir(parents=True, exist_ok=True)
-    bk_dir = log_dir.joinpath("bk")
-    bk_dir.mkdir(parents=True, exist_ok=True)
-    with open(bk_dir.joinpath("config.yaml"), "w") as f:
+    logger = setup_logger(
+        root_dir=cfg.ckpt_dir, 
+        subdir_names=["ckpt", "tfevent", "bk", "imgs"],
+        tag_time=True,
+        )
+    with open(logger["bk"].joinpath("config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
+    logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
 
-    shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", bk_dir.as_posix())
-    shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", bk_dir.as_posix())
-    shutil.copy("pud/vision_agent.py", bk_dir.as_posix())
-    shutil.copy("pud/runner_vec.py", bk_dir.as_posix())
-    shutil.copy("pud/visual_models.py", bk_dir.as_posix())
+    shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", logger["bk"].as_posix())
+    shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
+    shutil.copy("pud/runner_vec.py", logger["bk"].as_posix())
+    shutil.copy("pud/visual_models.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
 
@@ -260,7 +278,7 @@ if __name__ == "__main__":
         max_size=cfg.replay_buffer.max_size,
         )
 
-    policy = VectorGaussianPolicy(agent)
+    policy = VectorGaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
         policy,
@@ -269,9 +287,8 @@ if __name__ == "__main__":
         env=envs,
         eval_env=eval_env,
         eval_func=eval_pointenv_dists,
-        tensorboard_writer=tb,
         #pbar=args.pbar,
-        ckpt_dir=ckpt_dir,
+        logger=logger,
         **cfg.runner,
     )
-    torch.save(agent.state_dict(), ckpt_dir.joinpath("agent.pth"))
+    torch.save(agent.state_dict(), logger["ckpt"].joinpath("agent.pth"))
