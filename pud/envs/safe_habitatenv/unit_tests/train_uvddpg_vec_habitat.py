@@ -1,5 +1,7 @@
-import yaml
 import torch
+#torch.autograd.set_detect_anomaly(True)
+
+import yaml
 import argparse
 from pathlib import Path
 from dotmap import DotMap
@@ -246,14 +248,13 @@ if __name__ == "__main__":
         in_channels=4,
         act_fn=torch.nn.SELU,
         #act_fn=torch.nn.ReLU,
+        encoder="VisualRGBEncoder",
         device=cfg.device,
         **cfg.agent.toDict(),
     )
 
     if len(args.resume) > 0:
-        import IPython
-        IPython.embed(colors="Linux")
-        state_dict = torch.load(args.resume)
+        state_dict = torch.load(args.resume, map_location=cfg.device)
         agent.load_state_dict(state_dict)
 
     # load pretrained encoder
@@ -263,9 +264,6 @@ if __name__ == "__main__":
     #for ii in range(len(agent.critic.critics)):
     #    agent.critic.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
     #    agent.critic_target.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
-
-
-    agent.to(torch.device(cfg.device))
 
     #obs = env.reset()
     #done_count = 0
