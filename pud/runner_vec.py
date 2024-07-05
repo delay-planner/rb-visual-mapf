@@ -136,6 +136,8 @@ def eval_pointenv_dists(
         )  # NOTE: samples goal distances in [min_dist, max_dist] closed interval
         #returns = VectorCollector.eval_agent(agent, eval_env, num_evals)
         outs = VectorCollector.eval_agent_n_trajs(agent, eval_env, num_evals)
+
+        height, width = eval_env.walls.shape
         
         if "imgs" in logger:
             fig, ax = plt.subplots()
@@ -146,15 +148,24 @@ def eval_pointenv_dists(
             goals = np.stack(goals, axis=0)
 
             get_traj = lambda inp_traj: [inp_traj[ii]["grid"]["observation"] for ii in range(len(inp_traj))]
-            ax = plot_start_n_goals(goals=goals, walls=eval_env.walls.copy(), ax=ax)
+            #ax = plot_start_n_goals(goals=goals, walls=eval_env.walls.copy(), ax=ax)
             for ii, tt in enumerate(outs["trajs"]):
                 cur_traj = np.stack(get_traj(tt), axis=0)
                 ax = plot_traj(trajs=cur_traj, walls=eval_env.walls.copy(), ax=ax, kwargs=dict(
                                 color=distinct_colors[ii],
                                 label="traj{:0>2d}".format(ii),
+                                marker="o",
+                                markersize=4,
                                 ),
                             )
+                ax.scatter(
+                    goals[ii:ii+1,0]/float(height),
+                    goals[ii:ii+1,1]/float(width), 
+                    marker="*", s=12, color=distinct_colors[ii],
+                    )
             fig.savefig(logger["imgs"].joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+            #fig.savefig(Path("temp").joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+
             plt.close(fig=fig)
 
         # For debugging, it's helpful to check the predicted distances for
