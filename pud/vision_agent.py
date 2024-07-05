@@ -1,14 +1,13 @@
 import torch
 from torch import nn
-from typing import Union
+from typing import Union, Literal
 from torch.nn import functional as F
 import copy
 import numpy as np
 from pud.utils import variance_initializer_
 from pud.algos.data_struct import inp_to_torch_device
 from pud.ddpg import UVFDDPG, merge_obs_goal, EnsembledCritic
-from pud.visual_models import VisualEncoder
-#from pud.visual_models import VisualRGBEncoder as VisualEncoder
+from pud.visual_models import VisualRGBEncoder, VisualEncoder
 from termcolor import colored
 import functools
 
@@ -21,19 +20,29 @@ class VisualActor(nn.Module): # TODO: [256, 256], MLP class
             max_action, 
             embedding_size:int=256, 
             act_fn=nn.SELU,
-            in_channels:int=4, 
+            in_channels:int=4,
+            encoder:Literal["VisualEncoder", "VisualRGBEncoder"]="VisualEncoder",
             device=torch.device("cpu"),
             ):
         super().__init__()
-
-        self.encoder = VisualEncoder(
-                    in_channels=in_channels, 
-                    embedding_size=embedding_size, 
-                    width=width,
-                    height=height,
-                    act_fn=act_fn,
-                    device=device,
-                    )
+        if encoder == "VisualEncoder":
+            self.encoder = VisualEncoder(
+                        in_channels=in_channels, 
+                        embedding_size=embedding_size, 
+                        width=width,
+                        height=height,
+                        act_fn=act_fn,
+                        device=device,
+                        )
+        elif encoder == "VisualRGBEncoder":
+            self.encoder = VisualRGBEncoder(
+                        in_channels=in_channels, 
+                        embedding_size=embedding_size, 
+                        width=width,
+                        height=height,
+                        act_fn=act_fn,
+                        device=device,
+                        )
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
         self.l3 = nn.Linear(256, action_dim)
@@ -68,18 +77,29 @@ class VisualCritic(nn.Module):
             act_fn=nn.SELU,
             output_dim=1,
             in_channels:int=4, 
+            encoder:Literal["VisualEncoder", "VisualRGBEncoder"]="VisualEncoder",
             device=torch.device("cpu"),
             ):
         super().__init__()
 
-        self.encoder = VisualEncoder(
-                    in_channels=in_channels, 
-                    embedding_size=embedding_size, 
-                    width=width,
-                    height=height,
-                    act_fn=act_fn,
-                    device=device,
-                    )
+        if encoder == "VisualEncoder":
+            self.encoder = VisualEncoder(
+                        in_channels=in_channels, 
+                        embedding_size=embedding_size, 
+                        width=width,
+                        height=height,
+                        act_fn=act_fn,
+                        device=device,
+                        )
+        elif encoder == "VisualRGBEncoder":
+            self.encoder = VisualRGBEncoder(
+                        in_channels=in_channels, 
+                        embedding_size=embedding_size, 
+                        width=width,
+                        height=height,
+                        act_fn=act_fn,
+                        device=device,
+                        )
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256 + action_dim, 256)
         self.l3 = nn.Linear(256, output_dim)
@@ -134,6 +154,7 @@ class VisionUVFDDPG (nn.Module):
             discount:float=1.0,
             ensemble_size:int=2,
             num_bins:int=20,
+            encoder:Literal["VisualEncoder", "VisualRGBEncoder"]="VisualEncoder",
             targets_update_interval:int=5,
             actor_update_interval:int=1,
             use_distributional_rl:bool=True,
@@ -165,6 +186,7 @@ class VisionUVFDDPG (nn.Module):
             embedding_size=embedding_size,
             act_fn=act_fn,
             in_channels=in_channels,
+            encoder=encoder,
             device=device,
         )
         self.actor_target = copy.deepcopy(self.actor)
@@ -179,6 +201,7 @@ class VisionUVFDDPG (nn.Module):
             embedding_size=embedding_size,
             act_fn=act_fn,
             in_channels=in_channels,
+            encoder=encoder,
             device=device,         
         )
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, eps=1e-07)
@@ -355,8 +378,16 @@ class VisionUVFDDPG (nn.Module):
 
     def load_state_dict(self, other:dict):
         self.actor.load_state_dict(other["actor"])
+        self.actor.to(device=self.device)
+
         self.actor_target.load_state_dict(other["actor_target"])
+        self.actor_target.to(device=self.device)
+
         self.critic.load_state_dict(other["critic"])
+        self.critic.to(device=self.device)
+
         self.critic_target.load_state_dict(other["critic_target"])
+        self.critic_target.to(device=self.device)
+
         self.actor_optimizer.load_state_dict(other["actor_optimizer"])
         self.critic_optimizer.load_state_dict(other["critic_optimizer"])
