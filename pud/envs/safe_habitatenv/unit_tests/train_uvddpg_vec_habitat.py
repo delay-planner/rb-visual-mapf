@@ -122,6 +122,10 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="supply pre-computed apsp path")
+    parser.add_argument("--encoder",
+        type=str,
+        default="VisualRGBEncoder",
+        help="VisualRGBEncoder | VisualEncoder")
     parser.add_argument("--illustration_pb_file",
         type=str,
         help="problems that serve as illustration and evaluation set")
@@ -248,7 +252,7 @@ if __name__ == "__main__":
         in_channels=4,
         act_fn=torch.nn.SELU,
         #act_fn=torch.nn.ReLU,
-        encoder="VisualRGBEncoder",
+        encoder=args.encoder,
         device=cfg.device,
         **cfg.agent.toDict(),
     )
