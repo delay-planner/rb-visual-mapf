@@ -24,10 +24,10 @@ env:
         sensor_height: 1.5
 wrappers:
     GoalConditionedHabitatPointWrapper:
-        min_dist: 0 
+        min_dist: 1 # need to move before reaching goal
         max_dist: 4
         prob_constraint: 0.8
-        threshold_distance: 1.0
+        threshold_distance: 0.2
 replay_buffer:
     max_size: 100000
 time_limit:
