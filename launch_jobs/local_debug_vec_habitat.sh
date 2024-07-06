@@ -1,7 +1,7 @@
 # !/bin/sh
 
 env=hatbitat
-comment="small_lr_encoder_v1"
+comment="fix_vec_step"
 SLURM_JOB_ID=local_vec
 experiment_dir="runs_debug"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
@@ -24,6 +24,9 @@ cost_name="linear"
 cost_radius=10.0
 num_envs=8
 embedding_size=256
+encoder=VisualEncoder # VisualRGBEncoder | VisualEncoder
+eval_interval=5000  # 5000 | 10
+#resume=runs_debug/hatbitat/job_26450336_small_lr_encoder_v1/2024-07-04-17-16-21/ckpt/ckpt_0972000
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
@@ -35,12 +38,19 @@ if [[ -n ${debugger_port} ]]; then
         --wait-for-client \
         pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
         --cfg $config \
+        --actor_lr 1e-6 \
+        --critic_lr 1e-5 \
+        --replay_buffer_size 10000 \
+        --eval_interval $eval_interval \
+        --encoder $encoder \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
         --logdir ${log_dir} \
         --device ${device} \
         --visual \
+        --resume $resume \
         --num_envs ${num_envs} \
+        --embedding_size $embedding_size \
         --pbar
 else
     echo "[INFO] running in normal mode"
@@ -49,6 +59,8 @@ else
         --actor_lr 1e-6 \
         --critic_lr 1e-5 \
         --replay_buffer_size 10000 \
+        --eval_interval $eval_interval \
+        --encoder $encoder \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
         --logdir ${log_dir} \
@@ -58,3 +70,5 @@ else
         --embedding_size $embedding_size \
         --pbar
 fi
+
+        #--resume $resume \
