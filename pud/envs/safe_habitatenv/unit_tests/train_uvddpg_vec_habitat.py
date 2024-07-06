@@ -257,8 +257,10 @@ if __name__ == "__main__":
         **cfg.agent.toDict(),
     )
 
+    agent.to(device=cfg.device)
+
     if len(args.resume) > 0:
-        state_dict = torch.load(args.resume, map_location=cfg.device)
+        state_dict = torch.load(args.resume)
         agent.load_state_dict(state_dict)
 
     # load pretrained encoder
