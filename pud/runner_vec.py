@@ -148,7 +148,6 @@ def eval_pointenv_dists(
             goals = np.stack(goals, axis=0)
 
             get_traj = lambda inp_traj: [inp_traj[ii]["grid"]["observation"] for ii in range(len(inp_traj))]
-            #ax = plot_start_n_goals(goals=goals, walls=eval_env.walls.copy(), ax=ax)
             for ii, tt in enumerate(outs["trajs"]):
                 cur_traj = np.stack(get_traj(tt), axis=0)
                 ax = plot_traj(trajs=cur_traj, walls=eval_env.walls.copy(), ax=ax, kwargs=dict(

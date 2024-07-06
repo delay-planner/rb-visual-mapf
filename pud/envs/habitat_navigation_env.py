@@ -615,13 +615,12 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
     def step(self, action):
         obs, _, _, _ = self.env.step(action)
-       
         rew = -1.0
         done = self._is_done(obs, self._goal)
-        return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal)}, rew, done, {
+        return {"observation": self._normalize_obs(obs),
+                "goal": self._normalize_obs(self._goal),
                 "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
-                    }
+                }, rew, done, {}
     @property
     def max_goal_dist(self) -> float:
         apsp = self.env._apsp

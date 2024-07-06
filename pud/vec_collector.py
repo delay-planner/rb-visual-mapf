@@ -21,27 +21,30 @@ class VectorCollector:
 
     def step(self, num_steps):
         num_steps = num_steps // self.num_envs
+        actions = None
         for _ in range(num_steps):
             if self.steps < self.initial_collect_steps // self.num_envs:
-                action = [env.action_space.sample() for env in self.env]
+                actions = [env.action_space.sample() for env in self.env]
             else:
                 b_states = {
-                    "observation": np.concatenate([st["observation"] for st in self.states], axis=0),
-                    "goal": np.concatenate([st["goal"] for st in self.states], axis=0),
+                    "observation": np.stack([st["observation"] for st in self.states], axis=0),
+                    "goal": np.stack([st["goal"] for st in self.states], axis=0),
                 }
-                action = self.policy.select_action(b_states)
+                actions = self.policy.select_action(b_states)
 
-            for ii, act in enumerate(action):
+            next_states = [None] * self.num_envs
+            for ii, act in enumerate(actions):
                 env_ii = self.env[ii]
                 next_state, reward, done, info = env_ii.step(np.copy(act))
+                next_states[ii] = next_state
                 if info.get('last_timestep', False):
                     self.buffer.add(self.states[ii], act, info['terminal_observation'], reward, done)
-                    self.state = next_state
                 else:
-                    self.buffer.add(self.states[ii], act, next_state, reward, done)
-                    self.state = next_state
+                    self.buffer.add(self.states[ii], act, next_state, reward, done)                    
 
                 self.steps += 1
+            
+            self.states = next_states
 
     @classmethod
     def sample_initial_states(cls, eval_env, num_states):
@@ -95,7 +98,7 @@ class VectorCollector:
             state, reward, done, info = eval_env.step(np.copy(action))
             if not by_episode: c += 1
             
-            traj.append(deepcopy(info))
+            traj.append(deepcopy(state))
             if verbose:
                 print("obs:{}, action:{} goal:{}".format(info["grid"]["observation"], action, info["grid"]["goal"]))
             
