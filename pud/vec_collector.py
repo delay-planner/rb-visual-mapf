@@ -94,11 +94,17 @@ class VectorCollector:
         traj.append(state)
         while c < n:
             action = policy.select_action(state)
+            if verbose:
+                print("episode {}, action: {}".format(c, action))
 
             state, reward, done, info = eval_env.step(np.copy(action))
             if not by_episode: c += 1
             
-            traj.append(deepcopy(state))
+            if not done:
+                traj.append(deepcopy(state))
+            else:
+                traj.append(info["terminal_observation"])
+            
             if verbose:
                 print("obs:{}, action:{} goal:{}".format(info["grid"]["observation"], action, info["grid"]["goal"]))
             
@@ -110,6 +116,8 @@ class VectorCollector:
                 trajs.append(traj)
                 success.append(not info["timed_out"])
                 traj = []
+                if verbose:
+                    print("#" * 15)
         return {"rewards": rewards, "trajs": trajs, "success": success}
 
     @classmethod
