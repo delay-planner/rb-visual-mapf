@@ -90,12 +90,13 @@ def train_eval(
                 print("-" * 10)
 
         if "tb" in logger:
-            logger["tb"].add_scalar(
-                "Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i
-            )
-            logger["tb"].add_scalar(
-                "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
-            )
+            if i>1 and i % opt_log_interval == 0:
+                logger["tb"].add_scalar(
+                    "Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i
+                )
+                logger["tb"].add_scalar(
+                    "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
+                )
             
             if i > 1 and i % eval_interval == 0:
                 field_header = "Eval Dist ~ "
