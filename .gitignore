@@ -7,9 +7,7 @@ pud/algos/lr_scheduler/output
 temp/
 external_data/
 .vscode/
-<<<<<<< HEAD
 outputs/
-=======
 pud/envs/safe_habitatenv/apsps/
 
 # Byte-compiled / optimized / DLL files
