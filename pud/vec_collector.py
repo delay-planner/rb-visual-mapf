@@ -31,6 +31,8 @@ class VectorCollector:
                     "goal": np.stack([st["goal"] for st in self.states], axis=0),
                 }
                 actions = self.policy.select_action(b_states)
+                if len(actions.shape) == 1:
+                    actions = np.reshape(actions, [1, -1])
 
             next_states = [None] * self.num_envs
             for ii, act in enumerate(actions):
