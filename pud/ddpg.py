@@ -256,10 +256,14 @@ class UVFDDPG(DDPG):
 
     def select_action(self, state):
         with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation']),
+                goal=torch.FloatTensor(state["goal"]),                      
+            )
             if len(state["observation"].shape) == 1: # batchify
                 state = dict(
-                    observation=torch.FloatTensor(state['observation'].reshape(1, -1)),
-                    goal=torch.FloatTensor(state['goal'].reshape(1, -1)),
+                    observation=state['observation'].unsqueeze(0),
+                    goal=state["goal"].unsqueeze(0),
                 )
             return self.actor(state).cpu().detach().numpy().flatten()
 
