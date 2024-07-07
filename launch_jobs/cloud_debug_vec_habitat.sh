@@ -31,7 +31,7 @@ project_root=/home/gridsan/mfeng1/git_repos/cc-sorb
 export PYTHONPATH=$project_root:$PYTHONPATH
 ## -----------------------------------------------------------------------------
 env=hatbitat
-comment="threshold=0.2"
+comment="venv=2"
 #SLURM_JOB_ID=local_vec
 experiment_dir="runs_debug"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
@@ -56,13 +56,13 @@ cd "${project_root}"
 
 cost_name="linear"
 cost_radius=10.0
-num_envs=40
+num_envs=2
 embedding_size=256
 
 python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
     --cfg $config \
-    --actor_lr 1e-6 \
-    --critic_lr 1e-5 \
+    --actor_lr 1e-5 \
+    --critic_lr 1e-4 \
     --replay_buffer_size 100000 \
     --eval_interval $eval_interval \
     --encoder $encoder \

@@ -102,10 +102,11 @@ class VectorCollector:
             state, reward, done, info = eval_env.step(np.copy(action))
             if not by_episode: c += 1
             
-            if info.get('last_timestep', False):
-                traj.append(info["terminal_observation"])
-            else:
+
+            if not done:
                 traj.append(deepcopy(state))
+            else:
+                traj.append(info["terminal_observation"])
             
             if verbose:
                 print("obs:{}, action:{} goal:{}".format(info["grid"]["observation"], action, info["grid"]["goal"]))
