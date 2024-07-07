@@ -17,11 +17,11 @@ agent:
 ckpt_dir: ./workdirs/train_HabitatSkokloster/
 env:
     height: 0.0
-    scene: "external_data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
+    scene: "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
     #apsp_path: "/home/mers-pluto/Desktop/Work/cc-sorb-rev/apsp.pkl"
     cost_limit: 1.0
     simulator_settings:
-        scene: "external_data/scene_datasets/habitat-test-scenes/skokloster-castle.glb"
+        scene: "scene_datasets/habitat-test-scenes/skokloster-castle.glb"
         width: 64
         height: 64
         default_agent: 0
@@ -46,9 +46,9 @@ runner:
     verbose: false
     collect_steps: 2
     batch_size_opt: 64
-    eval_interval: 1000
-    warmup_epochs: 1000
-    num_eval_episodes: 10
+    eval_interval: 2
+    warmup_epochs: 1
+    num_eval_episodes: 1
     num_iterations: 300000
     eval_distances: [2, 5, 10]
     initial_collect_steps: 1000

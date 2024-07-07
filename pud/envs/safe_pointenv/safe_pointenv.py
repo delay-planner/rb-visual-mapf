@@ -9,12 +9,11 @@ from tqdm.auto import tqdm
 from pud.envs.simple_navigation_env import (GoalConditionedPointWrapper,
                                             PointEnv)
 
-def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:plt.axes):
+def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:Optional[float], ax:plt.axes):
     """
     step-wise cost limit visualization
     """
     walls = walls.T
-    cost_map = cost_map.T
     (height, width) = walls.shape
     # only plot walls
     for (i, j) in zip(*np.where(walls)):
@@ -34,9 +33,11 @@ def plot_safe_walls(walls:np.ndarray, cost_map:np.ndarray, cost_limit:float, ax:
         #ax.fill_between(x, y0, y1, color='red', alpha=0.5)
 
     # scattered points are more accurate as they are state-wise estimations
-    unsafe_points = np.where(cost_map > cost_limit)
-    unsafe_points = np.column_stack(unsafe_points)
-    ax.scatter(unsafe_points[:,1]/float(width), unsafe_points[:,0]/float(height), s=2, marker='o', c="red")
+    if cost_map is not None:
+        cost_map = cost_map.T
+        unsafe_points = np.where(cost_map > cost_limit)
+        unsafe_points = np.column_stack(unsafe_points)
+        ax.scatter(unsafe_points[:,1]/float(width), unsafe_points[:,0]/float(height), s=2, marker='o', c="red")
 
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])

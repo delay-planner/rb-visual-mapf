@@ -1,4 +1,5 @@
-from pud.dependencies import *
+import numpy as np
+import torch
 
 class ReplayBuffer:
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):

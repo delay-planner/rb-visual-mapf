@@ -16,17 +16,16 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
 )
 
 """
-python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py
+python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabitatEnv.test_reset
 """
 
 
 class TestSafeHabitatEnv(unittest.TestCase):
     def setUp(self):
         self.env_kwargs = {
-            "scene": "/home/mers-pluto/Desktop/Work/habitat_workspace/habitat-lab/data/scene_datasets/"
-            "habitat-test-scenes/skokloster-castle.glb",
+            "scene": "scene_datasets/habitat-test-scenes/skokloster-castle.glb",
             "height": 0.0,
-            "apsp_path": "/home/mers-pluto/Desktop/Work/cc-sorb-rev/pud/envs/safe_habitatenv/apsp.pkl",
+            "apsp_path": "pud/envs/safe_habitatenv/unit_tests/outputs/apsps.pickle",
         }
         self.cost_fn_kwargs = {
             "name": "cosine",
@@ -39,7 +38,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
         self.habitat_env = SafeHabitatNavigationEnv(
             **self.env_kwargs,  # type: ignore
             **self.precompilation_kwargs,
-            cost_fn_args=self.cost_fn_kwargs
+            cost_f_args=self.cost_fn_kwargs
         )
 
     def test_safe_habitat_env_load_fn(self):
@@ -167,14 +166,14 @@ class TestSafeHabitatEnv(unittest.TestCase):
         trajectory = []
 
         state, info = self.habitat_env.reset()  # type: ignore
-        agent_position = self.habitat_env._get_agent_position()
-        agent_grid_position = self.habitat_env._discretize_state(agent_position)
+        agent_position = self.habitat_env.get_xy_in_habitat()
+        agent_grid_position = self.habitat_env.get_grid_xy_from_habitat_xy(agent_position)
         trajectory.append(np.array([agent_grid_position[0], agent_grid_position[1]]))
         for _ in range(30):
             action = self.habitat_env.action_space.sample()
             next_state, reward, done, info = self.habitat_env.step(action)
-            agent_position = self.habitat_env._get_agent_position()
-            agent_grid_position = self.habitat_env._discretize_state(agent_position)
+            agent_position = self.habitat_env.get_xy_in_habitat()
+            agent_grid_position = self.habitat_env.get_grid_xy_from_habitat_xy(agent_position)
             trajectory.append(
                 np.array([agent_grid_position[0], agent_grid_position[1]])
             )
@@ -199,10 +198,12 @@ class TestSafeHabitatEnv(unittest.TestCase):
         )
 
     def test_reset(self):
+        import IPython
+        IPython.embed(colors="Linux")
         for _ in range(100):
             state, info = self.habitat_env.reset()  # type: ignore
-            agent_position = self.habitat_env._get_agent_position()
-            cx, cy = self.habitat_env._discretize_state(agent_position)
+            agent_position = self.habitat_env.get_xy_in_habitat()
+            cx, cy = self.habitat_env.get_grid_xy_from_habitat_xy(agent_position)
             sample_cost = self.habitat_env._get_state_cost(np.array([cx, cy]))
             self.assertTrue(
                 sample_cost < self.habitat_env.cost_limit,
@@ -225,12 +226,12 @@ class TestSafeHabitatEnv(unittest.TestCase):
 
         for _ in range(100):
             state, info = self.habitat_env.reset()  # type: ignore
-            agent_position = self.habitat_env._get_agent_position()
+            agent_position = self.habitat_env.get_xy_in_habitat()
             agent_grid_position_x, agent_grid_position_y = (
-                self.habitat_env._discretize_state(agent_position)
+                self.habitat_env.get_grid_xy_from_habitat_xy(agent_position)
             )
             converted_agent_position_x, converted_agent_position_y = (
-                self.habitat_env._undiscretize_state(
+                self.habitat_env.get_xy_in_habitat_from_xy_in_grid(
                     (agent_grid_position_x, agent_grid_position_y)
                 )
             )
@@ -238,7 +239,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
                 [converted_agent_position_x, converted_agent_position_y]
             )
             reconverted_agent_grid_position_x, reconverted_agent_grid_position_y = (
-                self.habitat_env._discretize_state(converted_agent_position)
+                self.habitat_env.get_grid_xy_from_habitat_xy(converted_agent_position)
             )
             self.assertTrue(np.allclose(agent_position, converted_agent_position))
             self.assertTrue(

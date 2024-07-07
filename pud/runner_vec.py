@@ -1,19 +1,48 @@
 import time
+from pathlib import Path
+import matplotlib.pyplot as plt
+
 import numpy as np
+import torch
 from dotmap import DotMap
 from tqdm.auto import tqdm
-from typing import Optional
-from pud.collector import Collector
-from pud.algos.constrained_collector import ConstrainedCollector
-from torch.utils.tensorboard.writer import SummaryWriter
-from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper,
-    SafeTimeLimit,
-    set_safe_env_difficulty,
-)
-from pud.envs.simple_navigation_env import set_env_difficulty
-from pud.algos.constrained_collector import ConstrainedCollector
 
+from pud.algos.constrained_collector import ConstrainedCollector
+from pud.envs.safe_pointenv.safe_wrappers import (
+    SafeGoalConditionedPointWrapper, SafeTimeLimit, set_safe_env_difficulty)
+from pud.envs.simple_navigation_env import set_env_difficulty
+from pud.vec_collector import VectorCollector
+from pud.envs.habitat_navigation_env import plot_wall, plot_traj, plot_start_n_goals
+
+
+# generated according to https://medialab.github.io/iwanthue/
+distinct_colors=np.array([[190,121,68],
+                            [176,86,193],
+                            [104,184,84],
+                            [105,125,204],
+                            [190,168,66],
+                            [191,113,172],
+                            [98,128,63],
+                            [201,80,113],
+                            [77,184,175],
+                            [211,82,56]],dtype=float)/255
+
+
+def log_time(step:int=0, log:dict=None):
+    if log is None:
+        log = {
+            "time": [time.time()],
+            "step": [step],
+            "speed": [],
+        }
+        return log
+    
+    log["time"].append(time.time())
+    log["step"].append(step)
+    log["speed"].append(
+        float(log["step"][-1]-log["step"][-2])/(float(log["time"][-1])-float(log["time"][-2]))
+    )
+    return log
 
 def train_eval(
     policy,
@@ -29,14 +58,16 @@ def train_eval(
     eval_func=lambda agent, eval_env: None,
     opt_log_interval=100,
     eval_interval=10000,
-    tensorboard_writer: Optional[SummaryWriter] = None,
     verbose=True,
+    logger:dict={}
 ):
-    collector = Collector(
+    time_logs = log_time(step=0)
+    collector = VectorCollector(
         policy, replay_buffer, env, initial_collect_steps=initial_collect_steps
     )
     collector.step(collector.initial_collect_steps)
     for i in tqdm(range(1, num_iterations + 1), total=num_iterations):
+        logger["i"] = i
         collector.step(collect_steps)
         agent.train()
         opt_info = agent.optimize(
@@ -48,61 +79,98 @@ def train_eval(
                 print(f"iteration = {i}, opt_info = {opt_info}")
 
         if i % eval_interval == 0:
+            if "ckpt" in logger and isinstance(logger["ckpt"], Path):
+                torch.save(agent.state_dict(), logger["ckpt"].joinpath("ckpt_{:0>7d}".format(i)))
+
             agent.eval()
             if verbose:
                 print(f"evaluating iteration = {i}")
-            eval_info = eval_func(agent, eval_env)
+            eval_info = eval_func(agent, eval_env, logger=logger,)
             if verbose:
                 print("-" * 10)
 
-        if tensorboard_writer:
-            tensorboard_writer.add_scalar(
-                "Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i
-            )
-            tensorboard_writer.add_scalar(
-                "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
-            )
-
-            #if i % eval_interval == 0:
-                #for d_ref in eval_info:
-                    # dotmap has interal attributes like "_ipython_display_"
-                    #if isinstance(d_ref, str) and d_ref.startswith("_"):
-                    #    continue
-                    #tensorboard_writer.add_scalar(
-                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
-                    #    np.mean(eval_info[d_ref]["pred_dist"]),
-                    #    global_step=i,
-                    #)
-                    #tensorboard_writer.add_scalar(
-                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
-                    #    -np.mean(eval_info[d_ref]["returns"]),
-                    #    global_step=i,
-                    #)
+        if "tb" in logger:
+            if i>1 and i % opt_log_interval == 0:
+                logger["tb"].add_scalar(
+                    "Opt/actor_loss", np.mean(opt_info["actor_loss"]), global_step=i
+                )
+                logger["tb"].add_scalar(
+                    "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
+                )
             
-            if i % eval_interval == 0:
+            if i > 1 and i % eval_interval == 0:
                 field_header = "Eval Dist ~ "
                 for d_ref in eval_info:
-                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
                     tag_scalar_dict={
                         "pred": np.mean(eval_info[d_ref]["pred_dist"]),
                         "val": -np.mean(eval_info[d_ref]["returns"]),
                         }, global_step=i)
 
-                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/std".format(d_ref),
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/std".format(d_ref),
                     tag_scalar_dict={
                         "pred": np.std(eval_info[d_ref]["pred_dist"]),
                         "val": -np.std(eval_info[d_ref]["returns"]),
                         }, global_step=i)
 
+                    N_success = np.array(eval_info[d_ref]["success"], dtype=float)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(d_ref), 
+                                success_rate, global_step=i)
+
+                time_logs = log_time(step=i, log=time_logs)
+                logger["tb"].add_scalar(
+                    "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
+                )
+                logger["tb"].add_scalar(
+                    "Time/Total Time", time_logs["time"][-1], global_step=i
+                )
+
 def eval_pointenv_dists(
-    agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], verbose=True
+    agent, eval_env, num_evals=10, eval_distances=[1,2,3,4], verbose=True, logger:dict={},
 ):
     eval_info = DotMap()
+    if "eval_distances" in logger:
+        eval_distances = logger["eval_distances"]
+    
     for dist in eval_distances:
         eval_env.set_sample_goal_args(
             prob_constraint=1, min_dist=dist, max_dist=dist
         )  # NOTE: samples goal distances in [min_dist, max_dist] closed interval
-        returns = Collector.eval_agent(agent, eval_env, num_evals)
+        #returns = VectorCollector.eval_agent(agent, eval_env, num_evals)
+        outs = VectorCollector.eval_agent_n_trajs(agent, eval_env, num_evals)
+
+        height, width = eval_env.walls.shape
+        
+        if "imgs" in logger:
+            fig, ax = plt.subplots()
+            ax = plot_wall(eval_env.walls.copy(), ax)
+            goals = []
+            for ii in range(len(outs["trajs"])):
+                goals.append(outs["trajs"][ii][0]["grid"]["goal"])
+            goals = np.stack(goals, axis=0)
+
+            get_traj = lambda inp_traj: [inp_traj[ii]["grid"]["observation"] for ii in range(len(inp_traj))]
+            for ii, tt in enumerate(outs["trajs"]):
+                cur_traj = np.stack(get_traj(tt), axis=0)
+                ax = plot_traj(trajs=cur_traj, walls=eval_env.walls.copy(), ax=ax, kwargs=dict(
+                                color=distinct_colors[ii],
+                                label="traj{:0>2d}".format(ii),
+                                marker="o",
+                                markersize=4,
+                                ),
+                            )
+                ax.scatter(
+                    goals[ii:ii+1,0]/float(height),
+                    goals[ii:ii+1,1]/float(width), 
+                    marker="*", s=12, color=distinct_colors[ii],
+                    )
+            fig.savefig(logger["imgs"].joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+            #fig.savefig(Path("temp").joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+
+            plt.close(fig=fig)
+
         # For debugging, it's helpful to check the predicted distances for
         # goals of known distance.
         states = dict(observation=[], goal=[])
@@ -114,15 +182,16 @@ def eval_pointenv_dists(
 
         if verbose:
             print(f"\tset goal dist = {dist}")
-            print(f"\t\treturns = {returns}")
+            print("\t\treturns = {}".format(outs["rewards"]))
             print(f"\t\tpredicted_dists = {pred_dist}")
-            print(f"\t\taverage return = {np.mean(returns)}")
+            print("\t\taverage return = {}".format(np.mean(outs["rewards"])))
             print(
                 f"\t\taverage predicted_dist = {np.mean(pred_dist):.1f} ({np.std(pred_dist):.2f})"
             )
 
         eval_info[dist]["pred_dist"] = pred_dist
-        eval_info[dist]["returns"] = returns
+        eval_info[dist]["returns"] = outs["rewards"]
+        eval_info[dist]["success"] = outs["success"]
     return eval_info
 
 

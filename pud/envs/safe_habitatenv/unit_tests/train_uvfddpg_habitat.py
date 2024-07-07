@@ -8,16 +8,20 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
-from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.ddpg import GoalConditionedCritic, AutoEncoder
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
+from pud.visual_models import VisualUVFDDPG
+from pud.vision_agent import VisionUVFDDPG
+from pud.ddpg import GoalConditionedCritic
+from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn
+#from pud.algos.constrained_buffer import ConstrainedReplayBuffer
+from pud.algos.visual_buffer import VisualReplayBuffer
+from pud.collector import Collector
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-from pud.algos.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
-
+from pud.runner import train_eval, eval_pointenv_dists
+from tqdm.auto import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -141,7 +145,10 @@ if __name__ == "__main__":
     gym_env_wrappers = []
     gym_env_wrapper_kwargs = []
     for wrapper_name in cfg.wrappers:
-        if wrapper_name == "SafeGoalConditionedHabitatPointWrapper":
+        if wrapper_name == "GoalConditionedHabitatPointWrapper":
+            gym_env_wrappers.append(GoalConditionedHabitatPointWrapper)
+            gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedHabitatPointWrapper":
             gym_env_wrappers.append(SafeGoalConditionedHabitatPointWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
         elif wrapper_name == "SafeGoalConditionedHabitatPointQueueWrapper":
@@ -150,70 +157,78 @@ if __name__ == "__main__":
 
     cfg.env.device = args.device
 
-    env = safe_habitat_env_load_fn(
-        cfg.env.toDict(),
-        cfg.cost_function.toDict(),
+    env = habitat_env_load_fn(
+        scene=cfg.env.scene,
+        height=cfg.env.height,
         max_episode_steps=cfg.time_limit.max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,  # type: ignore
+        gym_env_wrappers= (
+            GoalConditionedHabitatPointWrapper,
+        ),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
+        apsp_path=cfg.env.apsp_path,
+        simulator_settings=cfg.env.simulator_settings,
+        device=cfg.device,
         terminate_on_timeout=False,
-    )
-
+        )
     set_env_seed(env, cfg.seed + 1)
 
-    eval_env = safe_habitat_env_load_fn(
-        cfg.env.toDict(),
-        cfg.cost_function.toDict(),
+    eval_env = habitat_env_load_fn(
+        scene=cfg.env.scene,
+        height=cfg.env.height,
         max_episode_steps=cfg.time_limit.max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,  # type: ignore
+        gym_env_wrappers= (
+            GoalConditionedHabitatPointWrapper,
+        ),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
-        terminate_on_timeout=False,
-    )
+        apsp_path=cfg.env.apsp_path,
+        simulator_settings=cfg.env.simulator_settings,
+        device=cfg.device,
+        terminate_on_timeout=True,
+        )
     set_env_seed(eval_env, cfg.seed + 2)
 
-    # TODO: Need to be able to consume this observation data
-    latent_dimensions = 512
-    obs_dim = env.observation_space["observation"].shape  # type: ignore
-    goal_dim = env.observation_space["goal"].shape  # type: ignore
-    state_dim = (
-        latent_dimensions * obs_dim[0] * 2
-    )  # For each image along cardinal directions and the same for the goal
-
-    action_dim = env.action_space.shape[0]  # type: ignore
-    max_action = float(env.action_space.high[0])  # type: ignore
-
-    print(
-        f"Observation dim: {obs_dim},\n"
-        f"Goal dim: {goal_dim},\n"
-        f"State dim: {state_dim},\n"
-        f"Action dim: {action_dim},\n"
-        f"Max action: {max_action}"
+    uvfddpg_kwargs = cfg.agent.toDict()
+    uvfddpg_kwargs["state_dim"] = 256*2 # latent state dim
+    uvfddpg_kwargs["action_dim"] = env.action_space.shape[0]
+    uvfddpg_kwargs["max_action"] = float(env.action_space.high[0])
+    
+    agent = VisionUVFDDPG(
+        in_channels=4,
+        embedding_size=256,
+        act_fn=torch.nn.SELU,
+        device=cfg.device,
+        uvfddpg_kwargs=uvfddpg_kwargs,
     )
+    #agent.load_pretrained_encoder(ckpt_path="runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
+    agent.to(torch.device(cfg.device))
 
-    image_params = {
-        "input_channels": obs_dim[-1],
-    }
+    #obs = env.reset()
+    #done_count = 0
+    #num_steps = 200
+    #for _ in tqdm(range(num_steps), total=num_steps):
+    #    #at = env.action_space.sample()
+    #    at = agent.select_action(obs)
+    #    agent.get_q_values(obs)
+    #    new_obs, rew, done, info = env.step(at)
+    #    if done:
+    #        done_count += 1
 
-    agent = DRLDDPGLag(
-        state_dim,
-        action_dim,
-        max_action,
-        CriticCls=GoalConditionedCritic,
-        device=torch.device(cfg.device),
-        **cfg.agent,
-        AutoEncoderCls=AutoEncoder,
-        obs_dim=obs_dim,
-        latent_dimension=latent_dimensions,
-    )
-    agent.to(torch.device(args.device))
+    #    obs = new_obs
 
-    print("Agent ", agent)
-
-    replay_buffer = ConstrainedReplayBuffer(
-        obs_dim, goal_dim, action_dim, **cfg.replay_buffer
-    )
+    # test collector
+    replay_buffer = VisualReplayBuffer(
+        obs_dim=(4, 64, 64, 4),
+        goal_dim=(4, 64, 64, 4),
+        action_dim=env.action_space.shape[0],
+        max_size=1000,
+        )
 
     policy = GaussianPolicy(agent)
+    
+    collector = Collector(
+        policy, replay_buffer, env, initial_collect_steps=1000,
+        )
+    collector.step(collector.initial_collect_steps)
 
     train_eval(
         policy,
@@ -221,10 +236,13 @@ if __name__ == "__main__":
         replay_buffer,
         env,
         eval_env,
-        eval_func=eval_pointenv_cost_constrained_dists,
+        eval_func=eval_pointenv_dists,
         tensorboard_writer=tb,
-        pbar=args.pbar,
-        ckpt_dir=ckpt_dir,
+        #pbar=args.pbar,
+        #ckpt_dir=ckpt_dir,
         **cfg.runner,
     )
     torch.save(agent.state_dict(), ckpt_dir.joinpath("agent.pth"))
+
+
+

@@ -19,30 +19,45 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         simulator_settings: dict = {},
         apsp_path: Union[str, None] = None,
         # Cost specific arguments
-        cost_fn_args: dict = {},
+        cost_f_args: dict = {},
         cost_limit: float = 0.5,
-        verbose: bool = False,
+        device: str = "cpu",
     ):
 
-        super().__init__(scene, height, action_noise, simulator_settings, apsp_path)
+        super().__init__(
+            scene=scene, 
+            height=height, 
+            action_noise=action_noise, 
+            simulator_settings=simulator_settings, 
+            apsp_path=apsp_path,
+            device=device,
+            )
 
         self.scene = scene
         self.cost_function = None
         self.cost_limit = cost_limit
         self.action_noise = action_noise
-        self.cost_fn_cfg = cost_fn_args
+        self.cost_f_cfg = cost_f_args
 
         obstacles_x, obstacles_y = np.where(self._walls == 0)
         self.obstacles = np.stack([obstacles_x, obstacles_y], axis=-1).astype(float)
 
         t0 = time.time()
-        if self.cost_fn_cfg.get("name") == "cosine":
-            import functools
-            from pud.envs.safe_pointenv.cost_functions import cost_from_cosine_distance
 
-            self.cost_function = functools.partial(
-                cost_from_cosine_distance, r=self.cost_fn_cfg["radius"]
-            )
+        cost_fn_name = self.cost_f_cfg.get('name')
+        self.cost_function = None
+        if cost_fn_name: 
+            import functools   
+            from pud.envs.safe_pointenv.cost_functions import \
+                    cost_from_cosine_distance, cost_from_linear_distance     
+            if cost_fn_name == "cosine":
+                self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
+            elif cost_fn_name == "linear":
+                self.cost_function = functools.partial(cost_from_linear_distance, r=self.cost_f_cfg['radius'])
+            else:
+                raise Exception("Unsupported cost function")
+
+            # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
             self._cost_map = self._build_cost_map()
 
         self._safe_empty_states = self._gather_safe_empty_states(self.cost_limit)
@@ -139,7 +154,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         idx = np.random.randint(0, num_candidate_states)
         new_state = self._safe_empty_states[idx].astype(np.float32)
 
-        undiscretized_new_state_x, undiscretized_new_state_y = self._undiscretize_state(
+        undiscretized_new_state_x, undiscretized_new_state_y = self.get_habitat_xy_from_grid_xy(
             (int(new_state[0]), int(new_state[1]))
         )
         undiscretized_new_state = np.array(
@@ -172,10 +187,10 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         observations = self._simulator.reset()
 
         # Spawn the agent at the corresponding real-world coordinates in the habitat environment
-        safe_agent_position_x, safe_agent_position_y = self._undiscretize_state(
+        safe_agent_position_x, safe_agent_position_y = self.get_habitat_xy_from_grid_xy(
             (int(safe_agent_position[0]), int(safe_agent_position[1]))
         )
-        self._update_agent_position(
+        self.set_agent_pos_w_habitatxy(
             np.array([safe_agent_position_x, safe_agent_position_y])
         )
 
@@ -194,26 +209,26 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert self.action_space.contains(action)
 
         # NOTE: Use the maximum cost along the action segment
-        agent_position = self._get_agent_position()
-        (i, j) = self._discretize_state(agent_position)
+        agent_position = self.get_xy_in_habitat()
+        (i, j) = self.get_grid_xy_from_habitat_xy(agent_position)
         cost = self._get_state_cost(np.array([i, j]))
 
         num_substeps = 10
         dt = 1.0 / num_substeps
         for _ in np.linspace(0, 1, num_substeps):
             for axis, axis_action in enumerate(action):
-                new_state = self._get_agent_position()
+                new_state = self.get_xy_in_habitat()
                 new_state[axis] += dt * axis_action
                 if not self._is_blocked(new_state):
-                    self._update_agent_position(new_state)
+                    self.set_agent_pos_w_habitatxy(new_state)
 
-                    (i, j) = self._discretize_state(new_state)
+                    (i, j) = self.get_grid_xy_from_habitat_xy(new_state)
                     state_cost = self._get_state_cost(np.array([i, j]))
                     if cost < state_cost:
                         cost = state_cost
 
         done = False
-        agent_position = self._get_agent_position()
+        agent_position = self.get_xy_in_habitat()
         rew = float(-1.0 * np.linalg.norm(agent_position))
 
         new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
@@ -308,7 +323,7 @@ if __name__ == "__main__":
     env = SafeHabitatNavigationEnv(
         scene=scene,
         height=0,
-        cost_fn_args={"name": "cosine", "radius": 2.0},
+        cost_f_args={"name": "cosine", "radius": 2.0},
         cost_limit=1.0,
     )
     plt.figure(figsize=(12, 8))

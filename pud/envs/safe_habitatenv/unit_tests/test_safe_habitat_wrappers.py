@@ -35,7 +35,7 @@ class TestSafeHabitatWrapper(unittest.TestCase):
         self.habitat_env = SafeHabitatNavigationEnv(
             **self.env_kwargs,  # type: ignore
             **self.precompilation_kwargs,
-            cost_fn_args=self.cost_fn_kwargs
+            cost_f_args=self.cost_fn_kwargs
         )
         self.wrapped_habitat_env = SafeGoalConditionedHabitatPointWrapper(
             self.habitat_env
@@ -95,9 +95,9 @@ class TestSafeHabitatWrapper(unittest.TestCase):
 
         for _ in range(100):
             state, info = self.wrapped_habitat_env.reset()
-            agent_position = self.wrapped_habitat_env.env._get_agent_position()
+            agent_position = self.wrapped_habitat_env.env.get_xy_in_habitat()
             agent_grid_position_x, agent_grid_position_y = (
-                self.wrapped_habitat_env.env._discretize_state(agent_position)
+                self.wrapped_habitat_env.env.get_grid_xy_from_habitat_xy(agent_position)
             )
             agent_grid_position = np.array(
                 [agent_grid_position_x, agent_grid_position_y]
@@ -108,7 +108,7 @@ class TestSafeHabitatWrapper(unittest.TestCase):
             )
             self.assertTrue(
                 self.wrapped_habitat_env._min_dist
-                <= self.wrapped_habitat_env.env._get_distance(
+                <= self.wrapped_habitat_env.env.get_distance(
                     agent_position, state["goal"]
                 )
                 <= self.wrapped_habitat_env._max_dist

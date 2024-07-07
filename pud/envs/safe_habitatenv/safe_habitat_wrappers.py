@@ -41,22 +41,10 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         self._threshold_distance = threshold_distance
         super(SafeGoalConditionedHabitatPointWrapper, self).__init__(env)
 
-        simulator_bounds = env._simulator.pathfinder.get_bounds()
-        simulator_bounds_lb = np.array(
-            [simulator_bounds[0][2], simulator_bounds[0][0]], dtype=float
-        )
-        simulator_bounds_ub = np.array(
-            [simulator_bounds[1][2], simulator_bounds[1][0]], dtype=float
-        )
-
         self.observation_space = gym.spaces.Dict(
             {
                 "observation": env.observation_space,
-                "goal": gym.spaces.Box(
-                    low=simulator_bounds_lb,
-                    high=simulator_bounds_ub,
-                    dtype=np.float32,
-                ),
+                "goal": env.observation_space,
             }
         )
 
@@ -118,7 +106,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           agent_position: The current position of the agent (without goal).
           goal: A goal observation that satifies the constraints.
         """
-        (i, j) = self.env._discretize_state(agent_position)
+        (i, j) = self.env.get_grid_xy_from_habitat_xy(agent_position)
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
@@ -134,11 +122,11 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         )
         # goal += np.random.uniform(size=2)
 
-        undiscretized_goal_x, undiscretized_goal_y = self.env._undiscretize_state(
+        undiscretized_goal_x, undiscretized_goal_y = self.env.get_habitat_xy_from_grid_xy(
             (goal[0], goal[1])
         )
         undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        dist_to_goal = self.env._get_distance(agent_position, undiscretized_goal)
+        dist_to_goal = self.env.get_distance_from_habitat_xy(agent_position, undiscretized_goal)
 
         assert min_dist <= dist_to_goal <= max_dist
         assert not self.env._is_blocked(undiscretized_goal)
@@ -157,8 +145,8 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           goal: a goal observation.
         """
 
-        agent_position = self.env._get_agent_position()
-        agent_sim_position = self.env._convert_grid_to_sim(agent_position)
+        agent_position = self.env.get_xy_in_habitat()
+        agent_sim_position = self.env.convert_xy_to_xyz_in_habitat(agent_position)
         current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
 
         tries = 1
@@ -187,15 +175,30 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         info = {"cost": 0.0}
         while goal is None:
             obs, info = self.env.reset()  # type: ignore
-            agent_position = self.env._get_agent_position()
+            agent_position = self.env.get_xy_in_habitat()
             (agent_position, goal) = self._sample_goal(agent_position)
             count += 1
             if count > 1000:
                 print("WARNING: Unable to find goal within constraints.")
-        self._goal = goal
+
+        # Set the agent's position to the sampled goal's position and extract the observations.
+        # Remember to reset the agent's position to the original position after extracting the goal observations.
+        self._goal_observation = np.zeros(
+            (4, self.env._height, self.env._width, 4), dtype=np.uint8
+        )
+        agent_current_position = self.env.get_xy_in_habitat()
+        self.env.set_agent_pos_w_habitatxy(goal)
+        goal_observations = self.env._simulator.get_sensor_observations()
+        for idx, (key, value) in enumerate(goal_observations.items()):
+            assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
+            self._goal_observation[idx] = value
+        self._goal_position = goal
+
+        self.env.set_agent_pos_w_habitatxy(agent_current_position)
+
         return {
             "observation": obs,
-            "goal": self._goal,
+            "goal": self._goal_observation,
         }, info
 
     def reset(self) -> Tuple[Dict, Dict]:
@@ -205,12 +208,12 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, info = self.env.step(action)
         rew = -1.0
 
-        agent_position = self.env._get_agent_position()
-        done = self._is_done(agent_position, self._goal)
+        agent_position = self.env.get_xy_in_habitat()
+        done = self._is_done(agent_position, self._goal_position)
         return (
             {
                 "observation": obs,
-                "goal": self._goal,
+                "goal": self._goal_observation,
             },
             rew,
             done,
@@ -223,41 +226,70 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         return np.max(apsp[np.isfinite(apsp)])
 
 
-class SafeGoalConditionedHabitatPointQueueWrapper(
-    SafeGoalConditionedHabitatPointWrapper
-):
-
+class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPointWrapper):
     def __init__(
         self,
-        env: SafeHabitatNavigationEnv,
+        env: SafeGoalConditionedHabitatPointWrapper,
         prob_constraint: float = 0.8,
-        min_dist: float = 0,
-        max_dist: float = 4,
-        min_cost: float = 0,
-        max_cost: float = 1000,
-        threshold_distance: float = 1.0,
+        min_dist=0,
+        max_dist=4,
+        min_cost=0,
+        max_cost=1000,
+        threshold_distance=1.0,
     ):
+        """Reset using problems (start-goal pairs) from an external queue. If the queue is empty, use the default reset method
         """
-        Reset using problems (start - goal) pairs from an external queue.
-        If the queue is empty, use the default reset method
-        """
-
         super(SafeGoalConditionedHabitatPointQueueWrapper, self).__init__(
-            env=env,
-            prob_constraint=prob_constraint,
-            min_dist=min_dist,
-            max_dist=max_dist,
-            min_cost=min_cost,
-            max_cost=max_cost,
-            threshold_distance=threshold_distance,
-        )
-        self._pb_Q = []
+                env=env,
+                prob_constraint=prob_constraint,
+                min_dist=min_dist,
+                max_dist=max_dist,
+                min_cost=min_cost,
+                max_cost=max_cost,
+                threshold_distance=threshold_distance,
+                )
+        self.pb_Q = []
+        # by default, don't pop from Q because there are many 
+        # redundant reset from parent classes
+        self.use_q = False  
+        self.verbose = True
 
     def get_Q_size(self):
-        return len(self._pb_Q)
+        return len(self.pb_Q)
 
-    def append_pbs(self, pb_list: List[Tuple]):
-        self._pb_Q.extend(pb_list)
+    def set_use_q(self, status: bool):
+        self.use_q = status
+
+    def append_pbs(self, pb_list:List[tuple]):
+        self.pb_Q.extend(pb_list)
+    
+    def set_pbs(self, pb_list:List[tuple]):
+        """replace the problem Q with a new one, 
+        intended for update pbs for training"""
+        assert isinstance(pb_list, list)
+        self.pb_Q = pb_list
+
+    def set_verbose(self, new_verbose:bool):
+        self.verbose = new_verbose
+    
+    def reset(self):
+        if self.use_q and np.random.rand()<self._prob_constraint:
+            if len(self.pb_Q)>0:
+                new_pb = self.pb_Q.pop(0)
+                return self.reset_alt(**new_pb)
+            if self.verbose:
+                print("[WARN]: queue from goal conditioned env is empty")
+        return self._reset_original()
+
+    def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
+        """reset using alternative source, start and goal are assumed to be de-normalized"""
+        self._goal = goal
+        obs, new_info = self.env.reset_manual(start_state=start)
+        new_info.update(info)
+        return {
+            "observation": self._normalize_obs(obs),
+            "goal": self._normalize_obs(self._goal),
+        }, new_info
 
 
 def set_safe_habitat_env_difficulty(
@@ -308,7 +340,7 @@ def safe_habitat_env_load_fn(
       An environment instance.
     """
 
-    env = SafeHabitatNavigationEnv(**env_kwargs, cost_fn_args=cost_fn_kwargs)
+    env = SafeHabitatNavigationEnv(**env_kwargs, cost_f_args=cost_fn_kwargs)
 
     for idx, wrapper in enumerate(gym_env_wrappers):
         if idx < len(wrapper_kwargs):

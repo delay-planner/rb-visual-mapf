@@ -10,7 +10,8 @@ from pud.algos.distributional_ops import CategoricalActivation
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import UVFDDPG
 from pud.algos.lagrange.lagrange import Lagrange
-from pud.algos.data_struct import inp_to_device
+from pud.algos.data_struct import inp_to_torch_device
+from pud.visual_models import VisualEncoder
 
 nn = torch.nn
 F = nn.functional
@@ -105,7 +106,7 @@ class DRLDDPGLag(UVFDDPG):
                 observation=torch.FloatTensor(state['observation'].reshape(1, -1)),
                 goal=torch.FloatTensor(state['goal'].reshape(1, -1)),
             )
-            state = inp_to_device(state, self.device)
+            state = inp_to_torch_device(state, self.device)
             return self.actor(state).cpu().detach().numpy().flatten()
 
     def get_dist_to_goal(self, state, **kwargs):
@@ -114,7 +115,7 @@ class DRLDDPGLag(UVFDDPG):
                 observation=torch.FloatTensor(state['observation']),
                 goal=torch.FloatTensor(state['goal']),
             )
-            state = inp_to_device(state, self.device)
+            state = inp_to_torch_device(state, self.device)
             q_values = self.get_q_values(state, **kwargs)
             return -1.0 * q_values.cpu().detach().numpy().squeeze(-1)
 
@@ -138,12 +139,12 @@ class DRLDDPGLag(UVFDDPG):
 
             # Each of these are batches 
             state, next_state, action, reward, cost, done = replay_buffer.sample_w_cost(batch_size)
-            state = inp_to_device(state, self.device)
-            next_state = inp_to_device(next_state, self.device)
-            action = inp_to_device(action, self.device)
-            reward = inp_to_device(reward, self.device)
-            cost = inp_to_device(cost, self.device)
-            done = inp_to_device(done, self.device)
+            state = inp_to_torch_device(state, self.device)
+            next_state = inp_to_torch_device(next_state, self.device)
+            action = inp_to_torch_device(action, self.device)
+            reward = inp_to_torch_device(reward, self.device)
+            cost = inp_to_torch_device(cost, self.device)
+            done = inp_to_torch_device(done, self.device)
         
             current_q = self.critic(state, action)
             target_q = self.critic_target(next_state, self.actor_target(next_state))
@@ -273,7 +274,7 @@ class DRLDDPGLag(UVFDDPG):
                 observation=torch.FloatTensor(state['observation']),
                 goal=torch.FloatTensor(state['goal']),
             )
-            state = inp_to_device(state, self.device)
+            state = inp_to_torch_device(state, self.device)
             q_values = self.get_cost_q_values(state, **kwargs)
             return q_values.cpu().detach().numpy().squeeze(-1)
 

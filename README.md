@@ -7,11 +7,27 @@
 
 **Step 3**: pick the start and goal positions from the figure, click "View Data" button, copy the coords to a new file under [illustration_set](pud/envs/safe_pointenv/illustration_set) illustration following the specification [here](pud/envs/safe_pointenv/illustration_set/README.md).
 
+
+## Train with visual inputs (on merge  branch)
+```bash
+bash launch_jobs/local_debug_vec_habitat.sh
+```
+make sure to adjust the number of vector envs depending on your GPU memory and speed.
+
+With vector envs, the habitat environment class is unchanged, but there is a special collector that does batch inference to speed up action decision.
+
 ## Installing habitat-sim
-### We require python>=3.9 and cmake>=3.10
 **Step 1**:
 ```bash
 conda install habitat-sim -c conda-forge -c aihabitat
+
+## Optional: install habitat-lab
+git clone --branch stable https://github.com/facebookresearch/habitat-lab.git
+cd habitat-lab
+pip install -e habitat-lab  # install habitat_lab
+
+# if see xcb error, uninstall PyQt5 and reinstall opencv-python 
+# https://stackoverflow.com/questions/71088095/opencv-could-not-load-the-qt-platform-plugin-xcb-in-even-though-it-was-fou
 ```
 **Step 2**:
 ### Download (testing) 3D scenes
@@ -23,7 +39,44 @@ python -m habitat_sim.utils.datasets_download --uids habitat_test_scenes --data-
 python -m habitat_sim.utils.datasets_download --uids habitat_example_objects --data-path /path/to/data/
 ```
 
+### Setup Replica CAD (Not Replica Dataset)
+Replica CAD is a simpler and painless version of Replica Dataset. Replica Dataset may have been deprecated: see [Github Issue](https://github.com/facebookresearch/habitat-sim/issues/2335)
 
+```bash
+target_dir=external_data/replica_cad # feel free to change
+GIT_CLONE_PROTECTION_ACTIVE=false python -m habitat_sim.utils.datasets_download --uids replica_cad_dataset replica_cad_baked_lighting --data-path $target_dir
+```
+
+Verify it is working with interactive viewer
+```bash
+habitat-viewer --dataset ${target_dir}/replica_cad_baked_lighting/replicaCAD_baked.scene_dataset_config.json -- sc1_staging_00
+```
+
+## Setup on Supercloud
+Habitat only works on GPU node (at least I did not get CPU nodes to work). The setup process, however, takes place on the initial login node without access to GPU. Load the necessary module to install cuda-enabled pytorch without access to GPU/CUDA.
+```bash
+module load anaconda/2023a-pytorch
+module load cuda/11.8
+module load nccl/2.18.1-cuda11.8
+```
+
+Installation on Supercloud requires creating a custom conda environment. Note this will reduce the I/O speed because the user space locates on network drive. 
+```bash
+conda create -n habitat python=3.9 cmake=3.14.0
+source activate habitat
+```
+
+Install cuda-compatible pytorch
+```bash
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+```
+
+Install Habitat (this step takes a long time)
+```bash
+conda install habitat-sim headless -c conda-forge -c aihabitat
+```
+
+Setup of ReplicadCAD follows the same procedure as above.
 
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
