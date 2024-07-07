@@ -81,6 +81,8 @@ agent = UVFDDPG(
 )
 print(agent)
 
+#agent.to(device="cuda:1")
+
 from pud.buffer import ReplayBuffer
 replay_buffer = ReplayBuffer(obs_dim, goal_dim, action_dim, **cfg.replay_buffer)
 
@@ -93,8 +95,8 @@ if True:
     train_eval(policy,
                agent,
                replay_buffer,
-               env,
-               eval_env,
+               env=envs,
+               eval_env=eval_env,
                eval_func=eval_pointenv_dists,
                logger=logger,
                **cfg.runner,

@@ -100,7 +100,7 @@ class DDPG(nn.Module):
     def select_action(self, state):
         with torch.no_grad():
             state = torch.FloatTensor(state.reshape(1, -1))
-            return self.actor(state).cpu().detach().numpy().flatten()
+            return self.actor(state).cpu().detach().numpy().squeeze()
 
     def get_q_values(self, state):
         actions = self.actor(state)
@@ -265,7 +265,7 @@ class UVFDDPG(DDPG):
                     observation=state['observation'].unsqueeze(0),
                     goal=state["goal"].unsqueeze(0),
                 )
-            return self.actor(state).cpu().detach().numpy().flatten()
+            return self.actor(state).cpu().detach().numpy().squeeze()
 
     def get_q_values(self, state, aggregate='mean'):
         q_values = super().get_q_values(state)
