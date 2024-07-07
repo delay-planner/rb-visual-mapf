@@ -131,6 +131,9 @@ def eval_pointenv_dists(
     agent, eval_env, num_evals=10, eval_distances=[1,2,3,4], verbose=True, logger:dict={},
 ):
     eval_info = DotMap()
+    if "eval_distances" in logger:
+        eval_distances = logger["eval_distances"]
+    
     for dist in eval_distances:
         eval_env.set_sample_goal_args(
             prob_constraint=1, min_dist=dist, max_dist=dist
