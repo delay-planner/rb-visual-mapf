@@ -256,10 +256,11 @@ class UVFDDPG(DDPG):
 
     def select_action(self, state):
         with torch.no_grad():
-            state = dict(
-                observation=torch.FloatTensor(state['observation'].reshape(1, -1)),
-                goal=torch.FloatTensor(state['goal'].reshape(1, -1)),
-            )
+            if len(state["observation"].shape) == 1: # batchify
+                state = dict(
+                    observation=torch.FloatTensor(state['observation'].reshape(1, -1)),
+                    goal=torch.FloatTensor(state['goal'].reshape(1, -1)),
+                )
             return self.actor(state).cpu().detach().numpy().flatten()
 
     def get_q_values(self, state, aggregate='mean'):
