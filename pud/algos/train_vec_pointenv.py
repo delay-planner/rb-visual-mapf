@@ -37,6 +37,7 @@ with open(sys.argv[-1], 'r') as f:
 # for dot completion
 cfg = DotMap(cfg)
 cfg.num_envs = num_envs
+cfg.runner.num_iterations = 10000
 cfg.pprint()
 set_global_seed(cfg.seed)
 
@@ -52,6 +53,10 @@ logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
 
 from pud.envs.simple_navigation_env import env_load_fn
 
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
+
 envs = [
     env_load_fn(
     cfg.env.env_name, cfg.env.max_episode_steps,
@@ -60,8 +65,9 @@ envs = [
     thin=cfg.env.thin
     ) for _ in range(num_envs)
 ]
-for i in range(num_envs):
-    set_env_seed(envs[i], cfg.seed + i)
+
+#for i in range(num_envs):
+#    set_env_seed(envs[i], cfg.seed + i)
     #set_env_seed(envs[i], cfg.seed)
 env = envs[0] # to help initialize other modules
 
@@ -69,7 +75,7 @@ eval_env = env_load_fn(cfg.env.env_name, cfg.env.max_episode_steps,
                        resize_factor=cfg.env.resize_factor,
                        terminate_on_timeout=True,
                        thin=cfg.env.thin)
-set_env_seed(eval_env, cfg.seed + num_envs + 1)
+#set_env_seed(eval_env, cfg.seed + num_envs + 1)
 #set_env_seed(eval_env, cfg.seed + 1)
 
 obs_dim = env.observation_space['observation'].shape[0]
