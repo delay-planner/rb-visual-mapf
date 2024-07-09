@@ -78,6 +78,10 @@ conda install habitat-sim headless -c conda-forge -c aihabitat
 
 Setup of ReplicadCAD follows the same procedure as above.
 
+## Experimental Design
+see [slides](experiment_slides.pptx)
+
+
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
 ## Example usage
