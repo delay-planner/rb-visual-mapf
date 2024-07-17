@@ -1,5 +1,23 @@
 # (Multi-Agent) Hierarchal Constrained Reinforcement Learning
 
+## Coordinate Convention for 2D Maze
+
+The maze is defined in numpy array. For example:
+```python
+L = np.array([[0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 1, 0, 0, 0, 0],
+              [0, 0, 1, 0, 0, 0, 0],
+              [0, 0, 1, 0, 0, 0, 0],
+              [0, 0, 1, 1, 1, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0]])
+```
+
+However, the visualization of this maze via matplotlib will display an L in a different orientation (e.g., CCW 90 deg). In our case, we don't bother it. If we really want to have the L shape in the vertical standup orientation, we change the maze definition in numpy array and rotate it CW 90 deg. The reason is to make the coords of visualization and points picked from visualization consistent with the internal maze coords. Although they look different due to different representation pipeline, they are internally the same thing. This make it easy to manually craft benchmark problems by selecting start and goal coords from the maze image.
+
+For detailed example and visualization, read [experiment slides](experiment_slides.pptx).
+
+
 ## Design custom evaluation problems for illustration
 **Step 1**: generate a figure of the 2D maze
 
