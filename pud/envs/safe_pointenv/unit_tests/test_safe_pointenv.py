@@ -15,13 +15,17 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 
 """
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_env_load_fn
+
+python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
 """
 
 class TestSafePointEnv(unittest.TestCase):
     def setUp(self):
         self.env_kwargs = {
-            "walls": "CentralObstacle",
+            #"walls": "CentralObstacle",
             #"walls": "FourRooms",
+            "walls": "L",
+            #"walls": "LT",
             "resize_factor": 5,
             "thin": False,
         }
@@ -71,7 +75,7 @@ class TestSafePointEnv(unittest.TestCase):
         for cost_ub in [0, 1, 2]:
             fig, ax = plt.subplots()
             ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
-            fig.savefig("pud/envs/safe_pointenv/unit_tests/outputs/{}_resize={:0>2d}_cost={:.2f}.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub), dpi=300)
+            fig.savefig(output_dir.joinpath("{}_resize={:0>2d}_cost={:.2f}.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub)), dpi=300)
             plt.close(fig)
 
     def test_plot_safe_walls_w_grids(self):
@@ -81,7 +85,7 @@ class TestSafePointEnv(unittest.TestCase):
             fig, ax = plt.subplots()
             ax = plot_maze_grid_points(walls=self.p_env._walls, ax=ax)
             ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
-            fig.savefig("pud/envs/safe_pointenv/unit_tests/outputs/{}_resize={:0>2d}_cost={:.2f}_w_grids.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub), dpi=300)
+            fig.savefig(output_dir.joinpath("{}_resize={:0>2d}_cost={:.2f}_w_grids.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub)), dpi=300)
             plt.close(fig)
         
     def test_reset(self):
