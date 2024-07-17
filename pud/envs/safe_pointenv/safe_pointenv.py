@@ -13,31 +13,19 @@ def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:
     """
     step-wise cost limit visualization
     """
-    walls = walls.T
     (height, width) = walls.shape
     # only plot walls
     for (i, j) in zip(*np.where(walls)):
-        x = np.array([j, j+1]) / float(width)
-        y0 = np.array([i, i]) / float(height)
-        y1 = np.array([i+1, i+1]) / float(height)
+        x = np.array([i, i+1]) / float(height)
+        y0 = np.array([j, j]) / float(width)
+        y1 = np.array([j+1, j+1]) / float(width)
         ax.fill_between(x, y0, y1, color='grey')
-    
-    # plot non-wall unsafe boxes
-    #for (i, j) in zip(*np.where(cost_map > cost_limit)):
-    #    if walls[i,j] == 1: # skip walls
-    #        continue
-        # grid points are more accurate than grid boxes
-        #x = np.array([j, j+1]) / float(width)
-        #y0 = np.array([i, i]) / float(height)
-        #y1 = np.array([i+1, i+1]) / float(height)
-        #ax.fill_between(x, y0, y1, color='red', alpha=0.5)
 
     # scattered points are more accurate as they are state-wise estimations
     if cost_map is not None:
-        cost_map = cost_map.T
         unsafe_points = np.where(cost_map > cost_limit)
         unsafe_points = np.column_stack(unsafe_points)
-        ax.scatter(unsafe_points[:,1]/float(width), unsafe_points[:,0]/float(height), s=2, marker='o', c="red")
+        ax.scatter(unsafe_points[:,0]/float(width), unsafe_points[:,1]/float(height), s=2, marker='o', c="red")
 
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
@@ -45,7 +33,6 @@ def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:
     ax.set_yticks([])
     ax.set_aspect('equal', adjustable='box')
     return ax
-
 
 def plot_start_and_goals(walls:np.ndarray, 
         ax:plt.axes, 
@@ -137,11 +124,10 @@ def plot_trajs(
     return ax
 
 def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
-    walls = walls.T
     (height, width) = walls.shape
     empty_points = np.where(walls == 0)
     empty_points = np.column_stack(empty_points)
-    ax.scatter(empty_points[:,1]/float(width), empty_points[:,0]/float(height), s=0.5, marker='o', c="green")
+    ax.scatter(empty_points[:,0]/float(height), empty_points[:,1]/float(width), s=0.5, marker='o', c="green")
     return ax
 
 class SafePointEnv (PointEnv):
