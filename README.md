@@ -29,7 +29,8 @@ Again, we ignore any orientation discrepancy between the numpy array and visuali
 
 Example code: [vis_handed_crafted_waypoints_w_topdown_maps in test_replica_cad_barebone.py](/run/media/me/SharedData/work/hrl/codes/cc-sorb-rev/pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py)
 
-Proof of Matching Coordinate: [trace map bounds by manual point selection](README_RES/trace_bounds.mp4)
+Video proof of matching coordinate: [trace map bounds by manual point selection](README_RES/trace_bounds.mp4)
+<video src="README_RES/trace_bounds.mp4" width="300" />
 
 ## Design custom evaluation problems for illustration
 **Step 1**: generate a figure of the 2D maze
