@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 from pud.envs.simple_navigation_env import (GoalConditionedPointWrapper,
                                             PointEnv)
 
-def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:Optional[float], ax:plt.axes):
+def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:Optional[float], ax:plt.axes) -> plt.axes:
     """
     step-wise cost limit visualization
     """
@@ -43,21 +43,21 @@ def plot_start_and_goals(walls:np.ndarray,
         goal_color="r",
         zorder=5,
         normalize=True,
-        ):
-    walls = walls.T
+        ) -> plt.axes:
+    #walls = walls.T
     (height, width) = walls.shape
     # the externally supplied starts need to be flipped
 
     starts = np.array(starts)
     if normalize:
         starts = starts / np.array([[height, width]])
-    starts = np.flip(starts, axis=1)
+    #starts = np.flip(starts, axis=1)
     ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=zorder, marker="s", label="start", s=s)
 
     goals = np.array(goals)
     if normalize:
         goals = goals / np.array([[height, width]])
-    goals = np.flip(goals, axis=1)
+    #goals = np.flip(goals, axis=1)
     ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=zorder, marker="x", label="goal", s=s)
 
     return ax
@@ -74,10 +74,9 @@ def plot_trajs(
         goal_color:str="#dbbb18",
         traj_color:Optional[str]=None,
         use_pbar=False,
-        ):
+        ) -> plt.axes:
     pbar = tqdm(total=len(list_trajs), disable=(not use_pbar))
-
-    walls = walls.T
+    
     (height, width) = walls.shape
     
     """plot a list of trajs, each is a list of tuples (int states)"""
@@ -108,7 +107,6 @@ def plot_trajs(
     else:
         # the externally supplied starts need to be flipped
         starts = np.array(starts) / np.array([[height, width]])
-        starts = np.flip(starts, axis=1)
 
     ax.scatter(starts[:,0], starts[:,1], color=start_color, zorder=5, marker="s", label="start", s=s)
 
@@ -116,14 +114,13 @@ def plot_trajs(
         goals = np.array(traj_goals)
     else:
         goals = np.array(goals) / np.array([[height, width]])
-        goals = np.flip(goals, axis=1)
 
     ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=5, marker="x", label="goal", s=s)
 
     pbar.close()
     return ax
 
-def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes):
+def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes) -> plt.axes:
     (height, width) = walls.shape
     empty_points = np.where(walls == 0)
     empty_points = np.column_stack(empty_points)
