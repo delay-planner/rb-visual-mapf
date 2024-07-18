@@ -39,7 +39,7 @@ Example code: [vis_handed_crafted_waypoints_w_topdown_maps in test_replica_cad_b
 Video proof of matching coordinate: [trace_bounds.mp4 -- trace map bounds by manual point selection](README_RES/trace_bounds.mp4)
 <!--<video src="README_RES/trace_bounds.mp4" width="300" />-->
 
-## Train with visual inputs (on merge  branch)
+## Train with visual inputs
 ```bash
 bash launch_jobs/local_debug_vec_habitat.sh
 ```
