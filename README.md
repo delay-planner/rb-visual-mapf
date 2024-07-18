@@ -19,8 +19,15 @@ However, the visualization of this maze via matplotlib will display an L in a di
 
 In our case, we don't bother it. If we really want to have the L shape in the vertical standup orientation, we change the maze definition in numpy array and rotate it CW 90 deg. The reason is to make the coords of visualization and points picked from visualization consistent with the internal maze coords. Although they look different due to different representation pipeline, they are internally the same thing. This make it easy to manually craft benchmark problems by selecting start and goal coords from the maze image (e.g., the dots and lines on the image above).
 
-For detailed example and visualization, read [experiment slides](experiment_slides.pptx).
+For detailed example and visualization, read [experiment slides](experiment_slides.pptx). 
 
+Example code: [test_plot_orientation.py](pud/envs/safe_pointenv/unit_tests/test_plot_orientation.py).
+
+## Coordinate Convention for Visual Navigation (HabitatCAD)
+
+Again, we ignore any orientation discrepancy between the numpy array and visualization. The points taken from the visualization can be used as internal states without additional transformation.
+
+Example code: [vis_handed_crafted_waypoints_w_topdown_maps in test_replica_cad_barebone.py](/run/media/me/SharedData/work/hrl/codes/cc-sorb-rev/pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py)
 
 ## Design custom evaluation problems for illustration
 **Step 1**: generate a figure of the 2D maze
