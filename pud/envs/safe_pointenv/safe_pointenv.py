@@ -91,8 +91,8 @@ def plot_trajs(
         for i in range(0, len(traj) - 1):
             pnt = traj[i]
             pnt_next = traj[i+1]
-            x, y = pnt[1]/float(width), pnt[0]/float(height)
-            xn, yn = pnt_next[1]/float(width), pnt_next[0]/float(height)
+            x, y = pnt[0]/float(height), pnt[1]/float(width)
+            xn, yn = pnt_next[0]/float(height), pnt_next[1]/float(width)
             ax.plot([x, xn], [y, yn], marker="o", color=c, markersize=4, alpha=0.5)
 
             if i == 0:
