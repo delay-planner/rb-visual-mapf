@@ -48,6 +48,28 @@ def cost_from_cosine_distance(d:Union[float, np.ndarray], r:float) -> Union[floa
     return Jc
 
 
+def const_cost_from_distance(d:Union[float, np.ndarray], r:float) -> Union[float, np.ndarray]:
+    """
+    simple constant cost when the distance is within the distance threshold r
+    $$
+        J_{c}(d)\gets\begin{cases}
+                1 & d\le r\\
+                0 & d>r
+                \end{cases}
+    $$
+    """
+    d_arr = d
+    if isinstance(d, float):
+        d_arr = np.array([d])
+
+    Jc = np.ones_like(d_arr)
+    Jc[d > r] = 0.0
+
+    if len(Jc) == 1:
+        Jc = float(Jc)
+    return Jc
+
+
 if __name__ == "__main__":
     r = 5
     #d = np.linspace(0, 2*r, 100)

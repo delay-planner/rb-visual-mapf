@@ -6,8 +6,7 @@ import networkx as nx
 import numpy as np
 from tqdm.auto import tqdm
 
-from pud.envs.simple_navigation_env import (GoalConditionedPointWrapper,
-                                            PointEnv)
+from pud.envs.simple_navigation_env import PointEnv
 
 def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:Optional[float], ax:plt.axes) -> plt.axes:
     """
@@ -61,7 +60,6 @@ def plot_start_and_goals(walls:np.ndarray,
     ax.scatter(goals[:,0], goals[:,1], color=goal_color, zorder=zorder, marker="x", label="goal", s=s)
 
     return ax
-
 
 def plot_trajs(
         list_trajs, 
@@ -129,7 +127,7 @@ def plot_maze_grid_points(walls:np.ndarray, ax: plt.axes) -> plt.axes:
 
 class SafePointEnv (PointEnv):
     """
-    - ensure start states are always safe. 
+    - ensure start states are always safe.
     - in each step, a cost is returned along with other info
     - rapidly estimate upper and lower feasible trajectory cost
 
@@ -171,11 +169,13 @@ class SafePointEnv (PointEnv):
         if cost_fn_name: 
             import functools   
             from pud.envs.safe_pointenv.cost_functions import \
-                    cost_from_cosine_distance, cost_from_linear_distance     
+                    cost_from_cosine_distance, cost_from_linear_distance, const_cost_from_distance
             if cost_fn_name == "cosine":
                 self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
             elif cost_fn_name == "linear":
                 self.cost_function = functools.partial(cost_from_linear_distance, r=self.cost_f_cfg['radius'])
+            elif cost_fn_name == "constant":
+                self.cost_function = functools.partial(const_cost_from_distance, r=self.cost_f_cfg['radius'])
             else:
                 raise Exception("Unsupported cost function")
 
