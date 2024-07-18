@@ -41,11 +41,10 @@ Video proof of matching coordinate: [trace_bounds.mp4 -- trace map bounds by man
 
 ## Train with visual inputs
 ```bash
-bash launch_jobs/local_debug_vec_habitat.sh
+sbatch launch_jobs/cloud_debug_vec_habitat.sh # on MIT supercloud GPU node
+bash launch_jobs/local_debug_vec_habitat.sh # locally, may not work due to memory limit
 ```
-make sure to adjust the number of vector envs depending on your GPU memory and speed.
-
-With vector envs, the habitat environment class is unchanged, but there is a special collector that does batch inference to speed up action decision.
+**Important**: The base SORB algorithm is sensitive to random seeds. This is undocumented in the original SORB paper. Consequently, training with vectorized env will not converge. Make sure to set the num_envs to 1 in vec training. In addition, the replay buffer size seems to matter as well. Currently, only training on MIT Supercloud with a experience replay buffer size of 100K has been proven to work.  
 
 ## Installing habitat-sim
 **Step 1**:
