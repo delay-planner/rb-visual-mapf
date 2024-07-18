@@ -160,7 +160,7 @@ class TestReplicaCADBarebone(unittest.TestCase):
         )
 
         height, width = env._walls.shape
-        waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
+        waypoints = np.loadtxt("pud/envs/safe_habitatenv/unit_tests/waypoints.txt", delimiter=",")
         #waypoints = np.fliplr(waypoints)
         # waypoints in 2d grid
         waypoints = waypoints * np.array([height,width], dtype=float)
@@ -173,7 +173,7 @@ class TestReplicaCADBarebone(unittest.TestCase):
             for i in range(4):
                 ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
 
-            target_dir = Path("runs/tmp_plots/trace_bounds/")
+            target_dir = Path("temp/trace_bounds/")
             target_dir.mkdir(parents=True, exist_ok=True)
             fig_path = target_dir.joinpath("trace_bounds_{:0>3d}.jpg".format(i_obs))
             fig.savefig(fig_path, dpi=300, bbox_inches="tight")
