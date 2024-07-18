@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls
+from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
 import numpy as np
 from pathlib import Path
 
@@ -31,7 +31,16 @@ fname = out_dir.joinpath(fname)
 fig, ax = plt.subplots()
 
 ax = plot_safe_walls(walls=walls, cost_map=None, cost_limit=None, ax=ax)
-ax.plot(L_reading[:,0], L_reading[:,1], "b-o")
+
+traj = L_reading * np.array(list(walls.shape), dtype=float)
+
+ax = plot_trajs(list_trajs=[traj], 
+           walls=walls, 
+           ax=ax, 
+           starts=[traj[0]],
+           goals=[traj[-1]],)
+
+#ax.plot(L_reading[:,0], L_reading[:,1], "b-o")
 ax.set_xlim([0, 1])
 ax.set_ylim([0, 1])
 ax.set_xticks([])
