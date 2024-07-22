@@ -300,7 +300,7 @@ class SafePointEnv (PointEnv):
 
         for cx, cy in zip(*empty_states):
             # only sample states whose costs are lower than an upper bound
-            if self._cost_map[cx, cy] < cost_limit:
+            if self._cost_map[cx, cy] <= cost_limit:
             #if self.get_state_cost([cx, cy]) < cost_limit: # more reliable when cost map is buggy
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
@@ -315,7 +315,6 @@ class SafePointEnv (PointEnv):
         #if not hasattr(self, "safe_empty_states"):
         #    print("[WARN] safe_empty_states are not pre-generated, compiling safe empty states")
         #    self.safe_empty_states = self.gather_safe_empty_states(cost_limit)
-
         num_candidate_states = len(self.safe_empty_states)
 
         idx = np.random.randint(0, num_candidate_states)
@@ -324,7 +323,7 @@ class SafePointEnv (PointEnv):
 
         # don't remove the checks below
         assert not self._is_blocked(new_state)
-        assert self.get_state_cost(new_state) < self.cost_limit
+        assert self.get_state_cost(new_state) <= self.cost_limit
         return new_state
     
     def dist_2_blocks(self, xy:np.ndarray):

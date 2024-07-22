@@ -17,6 +17,11 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_safe_env_load_fn
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
+
+python -m debugpy \
+    --listen localhost:5678 \
+    --wait-for-client \
+    pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
 """
 
 class TestSafePointEnv(unittest.TestCase):
@@ -24,17 +29,20 @@ class TestSafePointEnv(unittest.TestCase):
         self.env_kwargs = {
             #"walls": "CentralObstacle",
             #"walls": "FourRooms",
-            "walls": "L",
+            #"walls": "L",
+            #"walls": "Line",
+            "walls": "LQuarter",
             #"walls": "LT",
             "resize_factor": 5,
             "thin": False,
         }
         self.cost_f_kwargs = {
-            "name": "cosine",
-            "radius": 2.,
+            #"name": "cosine",
+            "name": "constant",
+            "radius": 6.,
         }
         self.precompilation_kwargs = {
-            "cost_limit": 1,
+            "cost_limit": 0,
         }
 
         self.p_env = SafePointEnv(
