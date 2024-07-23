@@ -10,7 +10,7 @@ from pud.envs.simple_navigation_env import PointEnv
 
 def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:Optional[float], ax:plt.axes) -> plt.axes:
     """
-    step-wise cost limit visualization
+    visualize the map in range from 0 to N+1 (+1 from the array dimension)
     """
     (height, width) = walls.shape
     # only plot walls
@@ -24,7 +24,7 @@ def plot_safe_walls(walls:np.ndarray, cost_map:Optional[np.ndarray], cost_limit:
     if cost_map is not None:
         unsafe_points = np.where(cost_map > cost_limit)
         unsafe_points = np.column_stack(unsafe_points)
-        ax.scatter(unsafe_points[:,0]/float(width), unsafe_points[:,1]/float(height), s=2, marker='o', c="red")
+        ax.scatter(unsafe_points[:,0]/float(height), unsafe_points[:,1]/float(width), s=2, marker='o', c="red")
 
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
