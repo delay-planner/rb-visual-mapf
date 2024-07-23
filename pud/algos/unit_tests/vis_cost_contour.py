@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 import numpy as np
-from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
+from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv, plot_safe_walls
 
 
 if __name__ == "__main__":
@@ -44,13 +44,22 @@ if __name__ == "__main__":
         })
 
     cost_map  = env.get_cost_map()
-    width, height = cost_map.shape
+    map = env.get_map()
 
-    x = np.arange(width)
-    y = np.arange(height)
+    x = np.arange(cost_map.shape[0]) / float(map.shape[0])
+    y = np.arange(cost_map.shape[1]) / float(map.shape[1])
+
     X, Y = np.meshgrid(x, y)
     fig, ax = plt.subplots()
-    CS = ax.contourf(X, Y, cost_map, cmap=mpl.colormaps["cool"])
+    # somehow contourf plots a different orientation than pyplot.plot, have to switch axes
+    CS = ax.contourf(Y, X, cost_map, cmap=mpl.colormaps["cool"], alpha=0.5)
+
+    ax = plot_safe_walls(walls=env.get_map(), 
+                        cost_map=env.get_cost_map(),
+                        cost_limit=0,
+                        ax=ax)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
     ax.set_title("cost contour with radius = {:.2f}".format(args.radius))
     fig.colorbar(CS)
     fig.savefig("temp/cost_f_contour_{}_{}_r={}.jpg".format(args.maze_name, args.cost_name, args.radius), dpi=300)
