@@ -394,6 +394,7 @@ class PointEnv(gym.Env):
         return (i, j)
 
     def _is_blocked(self, state):
+        assert state.dtype == self.observation_space.dtype, "state data type NOT matches observation_space"
         if not self.observation_space.contains(state):
             return True
         (i, j) = self._discretize_state(state)

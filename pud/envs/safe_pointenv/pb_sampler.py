@@ -199,13 +199,13 @@ def sample_cost_pbs_by_agent(
 def load_pb_set(file_path:str, 
         env:SafeGoalConditionedPointWrapper,
         agent:DRLDDPGLag,):
-    pnts_vis = np.loadtxt(fname=file_path,
+    pnts = np.loadtxt(fname=file_path,
             dtype=float,
             delimiter=",")
     # the plotted figure are flipped, 
     # so coords need to be flipped back
-    assert len(pnts_vis) % 2 == 0, "the number of points need to be even"
-    pnts = np.flip(pnts_vis, axis=1)
+    assert len(pnts) % 2 == 0, "the number of points need to be even"
+    #pnts = np.flip(pnts_vis, axis=1)
     start_list = []
     goal_list = []
 

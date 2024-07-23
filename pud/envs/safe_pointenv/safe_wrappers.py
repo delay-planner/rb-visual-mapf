@@ -70,7 +70,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
 
     def _normalize_obs(self, obs):
         return np.array(
-            [obs[0] / float(self.env._height), obs[1] / float(self.env._width)]
+            [obs[0] / float(self.env._height), obs[1] / float(self.env._width)],
+            dtype=self.observation_space["observation"].dtype,
         )
 
     def normalize_obs(self, obs):
@@ -83,7 +84,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             [
                 obs[0] * float(self.env._height), 
                 obs[1] * float(self.env._width),
-            ]
+            ],
+        dtype=self.observation_space["observation"].dtype
         )
 
     def de_normalize_goal_conditioned_obs(self, obs:dict):

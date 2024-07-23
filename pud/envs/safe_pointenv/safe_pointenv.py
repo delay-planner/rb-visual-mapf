@@ -401,6 +401,7 @@ class SafePointEnv (PointEnv):
                     if cost < new_cost:
                         cost = new_cost
 
+        assert not self._is_blocked(self.state), "new state is in collision, might be a bug"
         done = False
         rew = -1.0 * np.linalg.norm(self.state)
         return self.state.copy(), rew, done, {"cost": cost}
