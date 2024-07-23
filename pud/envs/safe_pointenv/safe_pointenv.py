@@ -206,10 +206,10 @@ class SafePointEnv (PointEnv):
 
     def build_cost_map(self):
         (height, width) = self._walls.shape
-        cost_map = np.ones([height, width], dtype=float) * np.inf
+        cost_map = np.ones([height+1, width+1], dtype=float) * np.inf
         
-        for i in range(height):
-            for j in range(width):
+        for i in range(cost_map.shape[0]):
+            for j in range(cost_map.shape[1]):
                 min_d, _  = self.dist_2_blocks([i,j])
                 cost_map[i,j]= self.cost_function(min_d)
         
