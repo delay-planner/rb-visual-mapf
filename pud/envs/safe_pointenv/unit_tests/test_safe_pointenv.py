@@ -18,6 +18,10 @@ python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.
 
 python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_plot_safe_walls_w_grids
 
+python pud/envs/safe_pointenv/unit_tests/test_safe_pointenv.py TestSafePointEnv.test_points_picked_in_obstacle
+
+
+
 python -m debugpy \
     --listen localhost:5678 \
     --wait-for-client \
@@ -95,6 +99,18 @@ class TestSafePointEnv(unittest.TestCase):
             ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
             fig.savefig(output_dir.joinpath("{}_resize={:0>2d}_cost={:.2f}_w_grids.jpg".format(self.p_env.wall_name, self.p_env.resize_factor, cost_ub)), dpi=300)
             plt.close(fig)
+
+    def test_points_picked_in_obstacle(self):
+        """all points are picked on top of obstacle, they should all be blocked"""
+        self.env_kwargs["walls"] = "LQuarter"
+        self.p_env = SafePointEnv(
+                    **self.env_kwargs, 
+                    **self.precompilation_kwargs,
+                    cost_f_args=self.cost_f_kwargs)
+        pnts = np.loadtxt("pud/envs/safe_pointenv/unit_tests/LQuarter_resize_5_blocks.txt", delimiter=",")
+        pnts_orig = pnts * np.array([self.p_env._height, self.p_env._width])
+        for p in pnts_orig:
+            assert self.p_env._is_blocked(p)
         
     def test_reset(self):
         for _ in range(100):
