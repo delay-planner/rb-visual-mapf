@@ -391,3 +391,41 @@ class VisionUVFDDPG (nn.Module):
 
         self.actor_optimizer.load_state_dict(other["actor_optimizer"])
         self.critic_optimizer.load_state_dict(other["critic_optimizer"])
+    
+    def get_pairwise_dist(self, obs_vec, goal_vec=None, aggregate='mean', max_search_steps=7, masked=False):
+        """Estimates the pairwise distances.
+
+          obs_vec: Array containing observations
+          goal_vec: (optional) Array containing a second set of observations. If
+                    not specified, computes the pairwise distances between obs_tensor and
+                    itself.
+          aggregate: (str) How to combine the predictions from the ensemble. Options
+                     are to take the minimum predicted q value (i.e., the maximum distance),
+                     the mean, or to simply return all the predictions.
+          max_search_steps: (int)
+          masked: (bool) Whether to ignore edges that are too long, as defined by
+                  max_search_steps.
+        """
+        if goal_vec is None:
+            goal_vec = obs_vec
+
+        dist_matrix = []
+        for obs_index in range(len(obs_vec)):
+            obs = obs_vec[obs_index]
+            # obs_repeat_tensor = np.ones_like(goal_vec) * np.expand_dims(obs, 0)
+            obs_repeat_tensor = np.repeat([obs], len(goal_vec), axis=0)
+            state = {'observation': obs_repeat_tensor, 'goal': goal_vec}
+            dist = self.get_dist_to_goal(state, aggregate=aggregate)
+            dist_matrix.append(dist)
+
+        pairwise_dist = np.stack(dist_matrix)
+        if aggregate is None:
+            pairwise_dist = np.transpose(pairwise_dist, [1, 0, 2])
+        # else:
+        #     pairwise_dist = np.expand_dims(pairwise_dist, 0)
+
+        if masked:
+            mask = (pairwise_dist > max_search_steps)
+            return np.where(mask, np.full(pairwise_dist.shape, np.inf), pairwise_dist)
+        else:
+            return pairwise_dist

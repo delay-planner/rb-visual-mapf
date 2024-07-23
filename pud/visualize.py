@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 
 from pud.algos.constrained_collector import ConstrainedCollector
 from pud.collector import Collector
+from pud.envs.habitat_navigation_env import plot_wall
 from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointWrapper, SafeTimeLimit, set_safe_env_difficulty)
@@ -71,10 +72,17 @@ def visualize_trajectory(
         plt.show()
 
 
-def visualize_buffer(rb_vec, eval_env, outpath: str = ""):
-    plt.figure(figsize=(6, 6))
-    plt.scatter(*rb_vec.T)
-    plot_walls(eval_env.walls)
+def visualize_buffer(rb_vec, eval_env, outpath: str = "", habitat=False):
+    if habitat:
+        fig, ax = plt.subplots()
+        height, width = eval_env.walls.shape
+        ax = plot_wall(eval_env.walls, ax)
+        scaled_rb_vec = rb_vec / np.array([height, width])
+        ax.scatter(*scaled_rb_vec.T)
+    else:
+        plt.figure(figsize=(6, 6))
+        plt.scatter(*rb_vec.T)
+        plot_walls(eval_env.walls)
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
     else:
@@ -145,16 +153,29 @@ def visualize_problems(
             goals=goals,
             )
 
-def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
-    plt.figure(figsize=(6, 6))
-    plot_walls(eval_env.walls)
+def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False):
+    if habitat:
+        fig, ax = plt.subplots()
+        height, width = eval_env.walls.shape
+        ax = plot_wall(eval_env.walls, ax)
+        scaled_rb_vec = rb_vec / np.array([height, width])
+        ax.scatter(*scaled_rb_vec.T)
+    else:
+        plt.figure(figsize=(6, 6))
+        plot_walls(eval_env.walls)
+        plt.scatter(*rb_vec.T)
     pdist_combined = np.max(pdist, axis=0)
-    plt.scatter(*rb_vec.T)
     for i, s_i in enumerate(rb_vec):
+        if habitat:
+            s_i = s_i / np.array([height, width])
         for count, j in enumerate(np.argsort(pdist_combined[i])):
             if count < edges_to_display and pdist_combined[i, j] < cutoff:
                 s_j = rb_vec[j]
-                plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
+                if habitat:
+                    s_j = s_j / np.array([height, width])
+                    ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='k', alpha=0.5)
+                else:
+                    plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
     else:
@@ -229,12 +250,19 @@ def visualize_combined_graph(
         plt.show()
     plt.close(fig)
 
-def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
+def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False):
+    
     ensemble_size = pdist.shape[0]
     plt.figure(figsize=(5 * ensemble_size, 4))
+    height, width = eval_env.walls.shape
+    if habitat:
+        rb_vec = rb_vec / np.array([height, width])
     for col_index in range(ensemble_size):
-        plt.subplot(1, ensemble_size, col_index + 1)
-        plot_walls(eval_env.walls)
+        ax = plt.subplot(1, ensemble_size, col_index + 1)
+        if habitat:
+            ax = plot_wall(eval_env.walls, ax)
+        else:
+            plot_walls(eval_env.walls)
         plt.title("critic %d" % (col_index + 1))
 
         plt.scatter(*rb_vec.T)
