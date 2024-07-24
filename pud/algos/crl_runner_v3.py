@@ -24,6 +24,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 from pud.policies import GaussianPolicy
 from pud.visualize import visualize_eval_records
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 
 def train_eval(
@@ -128,6 +129,7 @@ def train_eval(
                 sample_size=sample_size,
                 cost_min_dist=cost_min_dist,
                 cost_max_dist=cost_max_dist,
+                illustration_pb_file=illustration_pb_file,
                 vis_dir=vis_dir.joinpath("itr_{:0>6d}".format(i)),
                 )
             if verbose:
@@ -292,6 +294,7 @@ def eval_pointenv_cost_constrained_dists(
         cost_intervals=[0., 0.2, 0.5, 1.0],
         cost_min_dist:float = 0.0,
         cost_max_dist:float = 10.0,
+        illustration_pb_file:str="",
         vis_dir:Optional[Path]=None,
         ):
     collect_trajs = False
@@ -399,6 +402,32 @@ def eval_pointenv_cost_constrained_dists(
             }
         else:
             print("[WARN] empty set for cost eval problem")
+        cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
+                            env=eval_env,
+                            agent=agent,)
+        if len(cost_eval_pbs) > 0:
+            eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
+            cost_eval_i = eval_agent_from_Q(policy=agent, 
+                            eval_env=eval_env,
+                            collect_trajs=collect_trajs,)
+            if collect_trajs:
+                vis_dir.mkdir(parents=True, exist_ok=True)
+                start_list = [p["start"].tolist() for p in cost_eval_pbs]
+                goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
+                fig, ax = plt.subplots()
+                ax = visualize_eval_records(
+                        eval_records=cost_eval_i,
+                        eval_env=eval_env,
+                        ax=ax,
+                        starts=start_list,
+                        goals=goal_list,
+                        color="g",
+                        )
+                ax.set_title("illustration problems")
+                ax.legend()
+                figname = "ref.jpg"
+                fig.savefig(vis_dir.joinpath(figname), dpi=300)
+                plt.close(fig=fig)
 
     eval_stats = {}
     eval_stats["dists"] = dist_eval_stats
