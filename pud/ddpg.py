@@ -70,12 +70,19 @@ class Critic(nn.Module):
 
 
 class DDPG(nn.Module):
-    def __init__(self, state_dim, action_dim, max_action, 
-                 discount=0.99,
-                 actor_update_interval=1,
-                 targets_update_interval=1,
-                 tau=0.005,
-                 ActorCls=Actor, CriticCls=Critic):
+    def __init__(self, 
+                state_dim, 
+                action_dim, 
+                max_action, 
+                discount=0.99,
+                actor_update_interval=1,
+                targets_update_interval=1,
+                tau=0.005,
+                ActorCls=Actor, 
+                CriticCls=Critic,
+                actor_lr:float=3e-4,
+                critic_lr:float=3e-4, 
+                 ):
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -88,12 +95,12 @@ class DDPG(nn.Module):
         self.actor = ActorCls(state_dim, action_dim, max_action)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4, eps=1e-07)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr, eps=1e-07)
 
         self.critic = CriticCls(state_dim, action_dim)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_target.load_state_dict(self.critic.state_dict())
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4, eps=1e-07)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, eps=1e-07)
 
         self.optimize_iterations = 0
 
