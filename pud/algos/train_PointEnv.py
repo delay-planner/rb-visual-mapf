@@ -37,6 +37,14 @@ if __name__ == "__main__":
         type=float,
         default=-1,
         help="action noise from env")
+    parser.add_argument("--actor_lr",
+        type=float,
+        default=-1,
+        help="actor lr")
+    parser.add_argument("--critic_lr",
+        type=float,
+        default=-1,
+        help="critic lr")
     parser.add_argument("--cost_name",
         type=str,
         default="",
@@ -101,8 +109,10 @@ if __name__ == "__main__":
         cfg.env.resize_factor = args.resize_factor
     if args.action_noise > 0:
         cfg.env.action_noise = args.action_noise
-    if len(args.logdir) > 0:
-        cfg.ckpt_dir = args.logdir
+    if args.actor_lr > 0:
+        cfg.agent.actor_lr = args.actor_lr
+    if args.critic_lr > 0:
+        cfg.agent.critic_lr = args.critic_lr
     if len(args.cost_name) > 0:
         cfg.cost_function.name = args.cost_name
     if args.cost_radius > 0:
@@ -119,6 +129,8 @@ if __name__ == "__main__":
         cfg.runner.num_iterations = args.num_iterations
     if args.collect_steps > 0:
         cfg.runner.collect_steps = args.collect_steps
+    if len(args.logdir) > 0:
+        cfg.ckpt_dir = args.logdir
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.pprint()

@@ -36,6 +36,8 @@ class DRLDDPGLag(UVFDDPG):
             targets_update_interval=1,
             tau=0.005,
             CriticCls=GoalConditionedCritic,
+            actor_lr:float=3e-4,
+            critic_lr:float=3e-4,
 
             # UVFDDPG args
             num_bins=20,
@@ -72,6 +74,8 @@ class DRLDDPGLag(UVFDDPG):
             num_bins=num_bins,
             use_distributional_rl=use_distributional_rl,
             ensemble_size=ensemble_size,
+            actor_lr=actor_lr,
+            critic_lr=critic_lr,
         )
 
         self.lagrange = Lagrange(
