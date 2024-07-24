@@ -29,6 +29,14 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="terminal override of training env")
+    parser.add_argument("--resize_factor",
+        type=int,
+        default=-1,
+        help="override default resize factor")
+    parser.add_argument("--action_noise",
+        type=float,
+        default=-1,
+        help="action noise from env")
     parser.add_argument("--cost_name",
         type=str,
         default="",
@@ -89,6 +97,10 @@ if __name__ == "__main__":
     # Override cfs from terminal
     if len(args.env) > 0:
         cfg.env.walls = args.env
+    if args.resize_factor > 0:
+        cfg.env.resize_factor = args.resize_factor
+    if args.action_noise > 0:
+        cfg.env.action_noise = args.action_noise
     if len(args.logdir) > 0:
         cfg.ckpt_dir = args.logdir
     if len(args.cost_name) > 0:
