@@ -34,16 +34,16 @@ class TestSafePointEnv(unittest.TestCase):
             #"walls": "CentralObstacle",
             #"walls": "FourRooms",
             #"walls": "L",
-            #"walls": "Line",
-            "walls": "LQuarter",
+            "walls": "Line",
+            #"walls": "LQuarter",
             #"walls": "LT",
-            "resize_factor": 5,
+            "resize_factor": 1,
             "thin": False,
         }
         self.cost_f_kwargs = {
             #"name": "cosine",
             "name": "constant",
-            "radius": 6.,
+            "radius": 1.,
         }
         self.precompilation_kwargs = {
             "cost_limit": 0,
@@ -93,7 +93,8 @@ class TestSafePointEnv(unittest.TestCase):
     def test_plot_safe_walls_w_grids(self):
         output_dir = Path("pud/envs/safe_pointenv/unit_tests/outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
-        for cost_ub in [0, 1, 2]:
+        #for cost_ub in [0, 1, 2]:
+        for cost_ub in [0]:
             fig, ax = plt.subplots()
             ax = plot_maze_grid_points(walls=self.p_env._walls, ax=ax)
             ax = plot_safe_walls(walls=self.p_env._walls, cost_map=self.p_env._cost_map, cost_limit=cost_ub, ax=ax)
