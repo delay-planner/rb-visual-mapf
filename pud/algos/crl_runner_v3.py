@@ -301,7 +301,7 @@ def eval_pointenv_cost_constrained_dists(
     if vis_dir is not None:
         collect_trajs = True
     
-    eval_env.set_prob_constraint(1.0)
+    #eval_env.set_prob_constraint(1.0) # todo: is this necessary for training?
     
     dist_eval_stats = dict()
 
@@ -423,6 +423,9 @@ def eval_pointenv_cost_constrained_dists(
                         goals=goal_list,
                         color="g",
                         )
+                for jj in range(len(start_list)):
+                    xy_n = eval_env.normalize_obs(start_list[jj])
+                    ax.text(x=xy_n[0]+0.1, y=xy_n[1], s="cost={:.2f}, predicted cost={:.2f}".format(cost_eval_i[jj]["cum_costs"], cost_eval_pbs[jj]["info"]["prediction"]))
                 ax.set_title("illustration problems")
                 ax.legend()
                 figname = "ref.jpg"
