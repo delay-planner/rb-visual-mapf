@@ -42,6 +42,8 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     """At the end of the last pb in the Q, the step will trigger another
     reset, and it should be safely handled by the reset_orig, suppress the warning
     message by turning off verbose"""
+    bk_prob_constriant = eval_env.get_prob_constraint()
+    eval_env.set_prob_constraint(1.0) # only use from the pb Q
     eval_env.set_verbose(False)
     eval_env.set_use_q(True)
 
@@ -103,6 +105,7 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
                 eval_env.set_use_q(False)
     
     eval_env.set_verbose(True)
+    eval_env.set_prob_constraint(bk_prob_constriant)
     return records
 
 class ConstrainedCollector(Collector):
