@@ -111,6 +111,21 @@ Setup of ReplicadCAD follows the same procedure as above.
 ## Experimental Design
 see [slides](experiment_slides.pptx)
 
+## Visualize trained policy (2D maze)
+Select or create an illustration problem set from [pud/envs/safe_pointenv/illustration_set](pud/envs/safe_pointenv/illustration_set) following the file specification rule. 
+
+Also choose 
+
+- the trained policy ckpt file
+- the configuration file (.yaml) used for training that ckpt
+
+```bash
+bash launch_jobs/local_illustration_eval.sh
+```
+**Example output**: 
+<p align="center">
+<img src="README_RES/illustration_problem_2d_maze_unconstrained.jpg" alt="Illustration problem in 2D maze" width="500">
+</p>
 
 # Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
 
