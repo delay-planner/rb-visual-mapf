@@ -1,26 +1,12 @@
 # !/bin/sh
 
-ckpt_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/ckpt/ckpt_0260000"
-cfg_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/bk/bk_config.yaml"
-figdir="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/visuals"
+cfg_path="runs_debug/results/Line/job_462169.max_cost_40_lr1e-4/2024-07-24-22-04-34/bk/bk_config.yaml"
+ckpt_path="runs_debug/results/Line/job_462169.max_cost_40_lr1e-4/2024-07-24-22-04-34/ckpt/ckpt_0300000"
+figdir="temp"
+illustration_pb_file=pud/envs/safe_pointenv/illustration_set/Line_resize_4_linear_r8.txt
 
-
-ckpt_path="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/ckpt/ckpt_0300000"
-cfg_path="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/bk/bk_config.yaml"
-figdir="runs/results/CentralObstacle/job_local_rev_pb_sampler_max_2_debug/2024-04-29-16-42-03/"
-
-cfg_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/bk/bk_config.yaml"
-ckpt_path="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/ckpt/ckpt_0140000"
-figdir="runs/results/job_local_self_train_eval_with_lag/2024-04-20-18-31-00/lag/2024-04-30-20-04-26/"
-
-
-problem_file="pud/envs/safe_pointenv/illustration_set/CentralObstacle.txt"
-
-figname="pb_CentralObstacle.jpg"
-
-python pud/algos/unit_tests/eval_illus_ps.py \
+python pud/algos/vis_policy_trajs.py \
     --cfg $cfg_path \
     --ckpt $ckpt_path \
     --figsavedir $figdir \
-    --problem_file $problem_file \
-    --figname $figname
+    --illustration_pb_file $illustration_pb_file

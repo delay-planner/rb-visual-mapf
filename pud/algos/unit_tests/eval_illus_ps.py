@@ -1,28 +1,28 @@
+"""
+load and visualize trained policy on manually crafted illustration problems
+"""
+
 import argparse
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
 from dotmap import DotMap
+from copy import deepcopy
 
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
-                                     train_eval)
+
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
-from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent,
-                                               sample_pbs_by_agent,
-                                               load_pb_set)
-from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
+from pud.envs.safe_pointenv.pb_sampler import load_pb_set
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
-from pud.utils import set_env_seed, set_global_seed
 from pud.visualize import visualize_eval_records
+from pud.utils import set_env_seed, set_global_seed
+import matplotlib.pyplot as plt
 
 
 def setup_args_parser(parser:argparse.ArgumentParser):
@@ -36,11 +36,14 @@ def setup_args_parser(parser:argparse.ArgumentParser):
     parser.add_argument('--ckpt',
         type=str,
         help='the path to ckpt file')
+    parser.add_argument("--illustration_pb_file",
+        type=str,
+        default="",
+        help="path to illustration reference problem")
     parser.add_argument('--device',
         type=str,
         default="cpu",
         help='cpu or cuda')
-    parser.add_argument('--pbar', action='store_true', help='show progress bar')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose printing/logging')
     return parser
 
@@ -74,6 +77,7 @@ def setup_env(args:argparse.Namespace):
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
         elif wrapper_name == "SafeGoalConditionedPointQueueWrapper":
             gym_env_wrappers.append(SafeGoalConditionedPointQueueWrapper)
+            #cfg.wrappers[wrapper_name].threshold_distance = 0.5
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
     eval_env = safe_env_load_fn(
@@ -84,7 +88,6 @@ def setup_env(args:argparse.Namespace):
         wrapper_kwargs=gym_env_wrapper_kwargs,
         terminate_on_timeout=True,
         )
-    eval_env.set_prob_constraint(1.0)
 
     set_env_seed(eval_env, cfg.seed + 2)
 
@@ -127,15 +130,8 @@ def setup_env(args:argparse.Namespace):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = setup_args_parser(parser)
-    parser.add_argument("--problem_file",
-        type=str,
-        help="path to the problem txt file, should be under pud/envs/safe_pointenv/illustration_set")
-    parser.add_argument("--figname",
-        type=str,
-        default="pb_samples.jpg",
-        help="figure name")
     args = parser.parse_args()
-
+    
     setup_ret = setup_env(args)
     agent = setup_ret["agent"]
     eval_env = setup_ret["eval_env"]
@@ -148,33 +144,45 @@ if __name__ == "__main__":
     replay_buffer = setup_ret["replay_buffer"]
     figdir = setup_ret["figsavedir"]
 
-    # rollout trained policy and visualize trajectory
-    eval_env.set_prob_constraint(1.0)
-
-    pbs = load_pb_set(file_path=args.problem_file, 
-                    env=eval_env, 
-                    agent=agent)
-    
-    eval_env.set_pbs(pb_list=pbs)
-    start_list = [p["start"].tolist() for p in pbs]
-    goal_list = [p["goal"].tolist() for p in pbs]
-
-    eval_records = eval_agent_from_Q(
-        policy=agent, 
-        eval_env=eval_env, 
-        collect_trajs=True,
+    eval_env.set_sample_goal_args(
+        prob_constraint=0.0, 
+        min_dist=0, 
+        max_dist=np.inf,
+        min_cost=0.,
+        max_cost=1.0,
         )
 
-    fig, ax = plt.subplots()
-    ax = visualize_eval_records(
-            eval_records=eval_records,
-            eval_env=eval_env,
-            ax=ax,
-            starts=start_list,
-            goals=goal_list,
-            use_pbar=True,
-            )
-    ax.legend(loc="best")
-    fig.tight_layout()
-    fig.savefig(figdir.joinpath(args.figname), dpi=300)
-    plt.close(fig)
+    eval_env: SafeGoalConditionedPointQueueWrapper
+    if len(args.illustration_pb_file) > 0:
+        cost_eval_pbs = load_pb_set(file_path=args.illustration_pb_file,
+                                env=eval_env,
+                                agent=agent,)
+        agent.load_state_dict(torch.load(args.ckpt))
+        agent.eval()
+        collect_trajs = True
+        #eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
+        eval_env.set_pbs(pb_list=deepcopy(cost_eval_pbs))
+        cost_eval_i = eval_agent_from_Q(policy=agent, 
+                        eval_env=eval_env,
+                        collect_trajs=collect_trajs,)
+        if collect_trajs:
+            start_list = [p["start"].tolist() for p in cost_eval_pbs]
+            goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
+            fig, ax = plt.subplots()
+            ax = visualize_eval_records(
+                    eval_records=cost_eval_i,
+                    eval_env=eval_env,
+                    ax=ax,
+                    starts=start_list,
+                    goals=goal_list,
+                    color="g",
+                    )
+            for ii in range(len(start_list)):
+                xy_n = eval_env.normalize_obs(start_list[ii])
+                ax.text(x=xy_n[0]+0.1, y=xy_n[1], s="cost={:.2f}, predicted cost={:.2f}".format(cost_eval_i[ii]["cum_costs"], cost_eval_pbs[ii]["info"]["prediction"]))
+            ax.set_title("illustration problems")
+            ax.legend()
+            figname = "ref.jpg"
+            #fig.savefig("temp/ref.jpg", dpi=300)
+            fig.savefig(figdir.joinpath(figname), dpi=300)
+            plt.close(fig=fig)

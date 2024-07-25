@@ -162,41 +162,6 @@ if __name__ == "__main__":
         max_cost=1.0,
         )
 
-    eval_env: SafeGoalConditionedPointQueueWrapper
-    if len(args.illustration_pb_file) > 0:
-        cost_eval_pbs = load_pb_set(file_path=args.illustration_pb_file,
-                                env=eval_env,
-                                agent=agent,)
-        agent.load_state_dict(torch.load(args.ckpt))
-        agent.eval()
-        collect_trajs = True
-        #eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
-        eval_env.set_pbs(pb_list=deepcopy(cost_eval_pbs))
-        cost_eval_i = eval_agent_from_Q(policy=agent, 
-                        eval_env=eval_env,
-                        collect_trajs=collect_trajs,)
-        if collect_trajs:
-            start_list = [p["start"].tolist() for p in cost_eval_pbs]
-            goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
-            fig, ax = plt.subplots()
-            ax = visualize_eval_records(
-                    eval_records=cost_eval_i,
-                    eval_env=eval_env,
-                    ax=ax,
-                    starts=start_list,
-                    goals=goal_list,
-                    color="g",
-                    )
-            for ii in range(len(start_list)):
-                xy_n = eval_env.normalize_obs(start_list[ii])
-                ax.text(x=xy_n[0]+0.1, y=xy_n[1], s="cost={:.2f}".format(cost_eval_i[ii]["cum_costs"]))
-            ax.set_title("illustration problems")
-            ax.legend()
-            figname = "ref.jpg"
-            #fig.savefig("temp/ref.jpg", dpi=300)
-            fig.savefig(figdir.joinpath(figname), dpi=300)
-            plt.close(fig=fig)
-    
     # rb_vec is normalized between 0 and 1
     rb_vec = Collector.sample_initial_states(eval_env, replay_buffer.max_size)
 
