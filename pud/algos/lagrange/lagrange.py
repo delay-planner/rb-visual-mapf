@@ -92,6 +92,9 @@ class Lagrange:
             lr=lambda_lr,
         )
 
+    def set_cost_limit(self, cost_limit:float):
+        self.cost_limit = cost_limit
+
     def compute_lambda_loss(self, mean_ep_cost: float) -> torch.Tensor:
         """Penalty loss for Lagrange multiplier.
 
@@ -105,6 +108,7 @@ class Lagrange:
         Returns:
             Penalty loss for Lagrange multiplier.
         """
+        # todo: why is this negative?
         return -self.lagrangian_multiplier * (mean_ep_cost - self.cost_limit)
 
     def update_lagrange_multiplier(self, Jc: float) -> None:
@@ -122,10 +126,17 @@ class Lagrange:
         Args:
             Jc (float): mean episode cost.
         """
-        self.lambda_optimizer.zero_grad()
-        lambda_loss = self.compute_lambda_loss(Jc)
-        lambda_loss.backward()
-        self.lambda_optimizer.step()
+        #if Jc > self.cost_limit:
+        #    import IPython
+        #    IPython.embed(colors="Linux")
+
+        # NOTE: deprecate the optimizer approach because it stops working once lambda = 0
+        # directly using the analytical solution, get rid of adam opt
+        #self.lambda_optimizer.zero_grad()
+        #lambda_loss = self.compute_lambda_loss(Jc)
+        #lambda_loss.backward()
+        #self.lambda_optimizer.step()
+        self.lagrangian_multiplier = self.lagrangian_multiplier + self.lambda_lr * (Jc - self.cost_limit)
         self.lagrangian_multiplier.data.clamp_(
             0.0,
             self.lagrangian_upper_bound,
