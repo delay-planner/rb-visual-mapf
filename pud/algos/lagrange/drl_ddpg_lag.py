@@ -80,7 +80,7 @@ class DRLDDPGLag(UVFDDPG):
 
         self.lagrange = Lagrange(
             cost_limit=cost_limit,
-            lagrangian_multiplier_init=0.0,
+            lagrangian_multiplier_init=1e-3,
             lambda_lr=lambda_lr,
             lambda_optimizer=lambda_optimizer,
         )

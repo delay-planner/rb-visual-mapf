@@ -41,6 +41,14 @@ if __name__ == "__main__":
         type=int,
         default=-1,
         help="override num of iterations")
+    parser.add_argument("--eval_interval",
+        type=int,
+        default=-1,
+        help="")
+    parser.add_argument("--initial_collect_steps",
+        type=int,
+        default=-1,
+        help="")
     parser.add_argument("--cost_limit",
         type=float,
         default=-1,
@@ -74,7 +82,10 @@ if __name__ == "__main__":
         cfg.runner.num_iterations = args.num_iterations
     if args.collect_steps > 0:
         cfg.runner.collect_steps = args.collect_steps
-
+    if args.eval_interval > 0:
+        cfg.runner.eval_interval = args.eval_interval
+    if args.initial_collect_steps > 0:
+        cfg.runner.initial_collect_steps = args.initial_collect_steps
     # Override cfs from terminal
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
