@@ -292,10 +292,10 @@ if __name__ == "__main__":
 
     rb_vec_grid, rb_vec_visual = sample_initial_states(eval_env, replay_buffer.max_size)  # type: ignore
 
-    from pud.visualize import visualize_buffer
+    from pud.visualize_habitat import visualize_buffer
 
     visualize_buffer(
-        rb_vec_grid, eval_env, outpath=figsavedir.joinpath("vis_buffer.jpg").as_posix(), habitat=True  # type: ignore
+        rb_vec_grid, eval_env, outpath=figsavedir.joinpath("vis_buffer.jpg").as_posix()  # type: ignore
     )
 
     pdist = agent.get_pairwise_dist(rb_vec_visual, aggregate=None)  # type: ignore
@@ -304,22 +304,77 @@ if __name__ == "__main__":
 
     visualize_pairwise_dists(pdist, outpath=figsavedir.joinpath("vis_pdist.jpg").as_posix())  # type: ignore
 
-    from pud.visualize import visualize_graph
+    from pud.visualize_habitat import visualize_graph
 
     visualize_graph(
         rb_vec_grid,
         eval_env,
         pdist,
-        habitat=True,
         outpath=figsavedir.joinpath("vis_graph.jpg").as_posix(),  # type: ignore
     )
 
-    from pud.visualize import visualize_graph_ensemble
+    from pud.visualize_habitat import visualize_graph_ensemble
 
     visualize_graph_ensemble(
         rb_vec_grid,
         eval_env,
         pdist,
-        habitat=True,
         outpath=figsavedir.joinpath("vis_graph_ensemble.jpg").as_posix(),  # type: ignore
+    )
+
+    from pud.policies import VisualSearchPolicy, VisualMultiAgentSearchPolicy
+    eval_env.duration = 300  # type: ignore
+
+    search_policy = VisualSearchPolicy(
+        agent,
+        (rb_vec_grid, rb_vec_visual),
+        pdist=pdist,
+        open_loop=True,
+        max_search_steps=3,
+    )
+
+    from pud.visualize_habitat import visualize_search_path
+
+    visualize_search_path(
+        search_policy,
+        eval_env,
+        difficulty=0.9,
+        outpath=figsavedir.joinpath("vis_search.jpg").as_posix(),  # type: ignore
+    )
+
+    from pud.visualize_habitat import visualize_compare_search
+
+    visualize_compare_search(
+        agent,
+        search_policy,
+        eval_env,
+        difficulty=0.9,
+        outpath=figsavedir.joinpath("vis_compare.jpg").as_posix(),  # type: ignore
+    )
+
+    num_agents = 4
+    ma_search_policy = VisualMultiAgentSearchPolicy(
+        agent,
+        (rb_vec_grid, rb_vec_visual),
+        num_agents,
+        pdist=pdist,
+        open_loop=True,
+        max_search_steps=3,
+    )
+
+    visualize_search_path(
+        ma_search_policy,
+        eval_env,
+        difficulty=0.9,
+        num_agents=4,
+        outpath=figsavedir.joinpath("vis_multi_agent_search.jpg").as_posix(),  # type: ignore
+    )
+
+    visualize_compare_search(
+        agent,
+        ma_search_policy,
+        eval_env,
+        difficulty=0.9,
+        num_agents=4,
+        outpath=figsavedir.joinpath("vis_compare_multi_agent.jpg").as_posix(),  # type: ignore
     )

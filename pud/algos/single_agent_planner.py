@@ -4,19 +4,22 @@ from networkx import Graph
 from typing import Dict, List, Union
 
 
-def compute_sum_of_costs(paths: List[List[int]], graph: Graph) -> float:
+def compute_sum_of_costs(
+    paths: List[List[int]], graph: Graph, weighted: bool = False
+) -> float:
     """
     Compute the sum of costs of the paths
     """
     sum_of_costs = 0
     for path in paths:
         for i in range(len(path) - 1):
-            # sum_of_costs += graph[path[i]][path[i + 1]]["weight"]
-            sum_of_costs += 1
+            sum_of_costs += graph[path[i]][path[i + 1]]["weight"] if weighted else 1
     return sum_of_costs
 
 
-def compute_heuristics(graph: Graph, goal: int) -> Dict[int, float]:
+def compute_heuristics(
+    graph: Graph, goal: int, weighted: bool = False
+) -> Dict[int, float]:
     """
     Compute the heuristic for each node in the graph
     """
@@ -31,8 +34,12 @@ def compute_heuristics(graph: Graph, goal: int) -> Dict[int, float]:
     while len(open_list) != 0:
         cost, location, current_node = heapq.heappop(open_list)
         for neighbor in undirected_graph.neighbors(location):
-            # successor_cost = cost + undirected_graph[location][neighbor]["weight"]
-            successor_cost = cost + 1
+
+            successor_cost = (
+                cost + undirected_graph[location][neighbor]["weight"]
+                if weighted
+                else cost + 1
+            )
             successor_location = neighbor
             successor = {"location": successor_location, "cost": successor_cost}
 
@@ -117,14 +124,30 @@ def is_constrained(
     return False
 
 
-def extract_path(goal_node: Dict) -> List[int]:
+def extract_path(goal_node: Node) -> List[int]:
     path = []
     current_node = goal_node
     while current_node is not None:
-        path.append(current_node["location"])
-        current_node = current_node["parent"]
+        path.append(current_node.location)
+        current_node = current_node.parent
     path.reverse()
     return path
+
+
+class Node:
+    def __init__(self, location, g_value, h_value, parent, timestep):
+        self.parent = parent
+        self.g_value = g_value
+        self.h_value = h_value
+        self.location = location
+        self.timestep = timestep
+
+    def __lt__(self, other):
+        if self.g_value + self.h_value == other.g_value + other.h_value:
+            if self.h_value == other.h_value:
+                return self.timestep < other.timestep
+            return self.h_value < other.h_value
+        return self.g_value + self.h_value < other.g_value + other.h_value
 
 
 def a_star(
@@ -134,6 +157,7 @@ def a_star(
     goal: int,
     heuristics: Dict[int, float],
     constraints,
+    weighted: bool = False,
 ) -> Union[List[int], None]:
 
     open_list = []
@@ -142,19 +166,13 @@ def a_star(
     h_value = heuristics[start]
     constraint_table = build_constraint_table(constraints, agent_id)
 
-    root = {
-        "location": start,
-        "g_value": 0,
-        "h_value": h_value,
-        "parent": None,
-        "timestep": 0,
-    }
+    root = Node(start, 0, h_value, None, 0)
     heapq.heappush(
         open_list,
-        (root["g_value"] + root["h_value"], root["h_value"], root["location"], root),
+        (root.g_value + root.h_value, root.h_value, root.location, root),
     )
 
-    closed_list[(root["location"], root["timestep"])] = root
+    closed_list[(root.location, root.timestep)] = root
 
     # Add self-loops
     for node in graph.nodes:
@@ -163,69 +181,66 @@ def a_star(
     while len(open_list) != 0:
 
         current_node = heapq.heappop(open_list)[3]
-        if current_node["location"] == goal and not is_constrained(
-            goal, goal, current_node["timestep"], constraint_table, goal=True
+        if current_node.location == goal and not is_constrained(
+            goal, goal, current_node.timestep, constraint_table, goal=True
         ):
             return extract_path(current_node)
 
-        for neighbor in graph.neighbors(current_node["location"]):
+        for neighbor in graph.neighbors(current_node.location):
             successor_location = neighbor
 
-            if successor_location == current_node["location"]:
-                successor = {
-                    "location": successor_location,
-                    "g_value": current_node["g_value"] + 10,
-                    "h_value": current_node["h_value"],
-                    "parent": current_node,
-                    "timestep": current_node["timestep"] + 1,
-                }
+            if successor_location == current_node.location:
+                successor = Node(
+                    successor_location,
+                    current_node.g_value + 1,
+                    current_node.h_value,
+                    current_node,
+                    current_node.timestep + 1,
+                )
             else:
-                successor = {
-                    "location": successor_location,
-                    "g_value": current_node["g_value"]
-                    # + graph[current_node["location"]][neighbor]["weight"],
-                    + 1,
-                    "h_value": heuristics[neighbor],
-                    "parent": current_node,
-                    "timestep": current_node["timestep"] + 1,
-                }
+                successor_gadd = (
+                    graph[current_node.location][neighbor]["weight"] if weighted else 1
+                )
+                successor = Node(
+                    successor_location,
+                    current_node.g_value + successor_gadd,
+                    heuristics[neighbor],
+                    current_node,
+                    current_node.timestep + 1,
+                )
 
             if is_constrained(
-                current_node["location"],
-                successor["location"],
-                successor["timestep"],
+                current_node.location,
+                successor.location,
+                successor.timestep,
                 constraint_table,
             ):
                 continue
 
-            if (successor["location"], successor["timestep"]) in closed_list:
-                existing_node = closed_list[
-                    (successor["location"], successor["timestep"])
-                ]
+            if (successor.location, successor.timestep) in closed_list:
+                existing_node = closed_list[(successor.location, successor.timestep)]
                 if (
-                    successor["g_value"] + successor["h_value"]
-                    < existing_node["g_value"] + existing_node["h_value"]
+                    successor.g_value + successor.h_value
+                    < existing_node.g_value + existing_node.h_value
                 ):
-                    closed_list[(successor["location"], successor["timestep"])] = (
-                        successor
-                    )
+                    closed_list[(successor.location, successor.timestep)] = successor
                     heapq.heappush(
                         open_list,
                         (
-                            successor["g_value"] + successor["h_value"],
-                            successor["h_value"],
-                            successor["location"],
+                            successor.g_value + successor.h_value,
+                            successor.h_value,
+                            successor.location,
                             successor,
                         ),
                     )
             else:
-                closed_list[(successor["location"], successor["timestep"])] = successor
+                closed_list[(successor.location, successor.timestep)] = successor
                 heapq.heappush(
                     open_list,
                     (
-                        successor["g_value"] + successor["h_value"],
-                        successor["h_value"],
-                        successor["location"],
+                        successor.g_value + successor.h_value,
+                        successor.h_value,
+                        successor.location,
                         successor,
                     ),
                 )
