@@ -80,11 +80,11 @@ class SearchPolicy(BasePolicy):
         rb_vec,
         pdist=None,
         aggregate="min",
-        max_search_steps=7,
         open_loop=False,
+        max_search_steps=7,
+        no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
-        no_waypoint_hopping=False,
     ):
         """
         Args:
@@ -101,17 +101,16 @@ class SearchPolicy(BasePolicy):
         self.pdist = pdist
 
         self.aggregate = aggregate
-        self.max_search_steps = max_search_steps
         self.open_loop = open_loop
+        self.max_search_steps = max_search_steps
         self.weighted_path_planning = weighted_path_planning
 
-        self.no_waypoint_hopping = no_waypoint_hopping
         self.cleanup = False
         self.attempt_cutoff = 3 * max_search_steps
-
+        self.no_waypoint_hopping = no_waypoint_hopping
         self.waypoint_consistency_cutoff = waypoint_consistency_cutoff
 
-        self.build_rb_graph()
+        self.build_rb_graph(self.rb_vec)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -130,10 +129,10 @@ class SearchPolicy(BasePolicy):
 
     def reset_stats(self):
         self.stats = dict(
-            path_planning_attempts=0,
+            localization_fails=0,
             path_planning_fails=0,
             graph_search_time=0.0,
-            localization_fails=0,
+            path_planning_attempts=0,
         )
 
     def get_stats(self):
@@ -144,12 +143,13 @@ class SearchPolicy(BasePolicy):
     ):  # if True, will prune edges when fail to reach waypoint after `attempt_cutoff`
         self.cleanup = cleanup
 
-    def build_rb_graph(self):
+    def build_rb_graph(self, rb_vec):
         g = nx.DiGraph()
         assert self.pdist is not None
         pdist_combined = np.max(self.pdist, axis=0)
-        for i, s_i in enumerate(self.rb_vec):
-            for j, s_j in enumerate(self.rb_vec):
+
+        for i, s_i in enumerate(rb_vec):
+            for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
                     g.add_edge(i, j, weight=length)
@@ -194,52 +194,22 @@ class SearchPolicy(BasePolicy):
         waypoint_index = np.argmin(np.min(search_dist, axis=2), axis=1)[0]
         waypoint = self.rb_vec[waypoint_index]
 
-        return waypoint, min_search_dist
+        return waypoint, waypoint_index, min_search_dist
 
-    def get_closest_waypoints(self, state):
-
-        augmented_waypoints = []
-        augmented_min_search_dists = []
-        for idx in range(len(state["composite_goals"])):
-
-            state_copy = state.copy()
-            state_copy["observation"] = state["agent_observations"][idx]
-            state_copy["goal"] = state["composite_goals"][idx]
-            obs_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state_copy)
-            # (B x A), (A x B)
-
-            # The search_dist tensor should be (B x A x A)
-            search_dist = sum(
-                [
-                    np.expand_dims(obs_to_rb_dist, 2),
-                    np.expand_dims(self.rb_distances, 0),
-                    np.expand_dims(np.transpose(rb_to_goal_dist), 1),
-                ]
-            )
-
-            min_search_dist = np.min(search_dist)
-            waypoint_index = np.argmin(np.min(search_dist, axis=2), axis=1)[0]
-            waypoint = self.rb_vec[waypoint_index]
-            if waypoint in augmented_waypoints:
-                augmented_waypoints.append(state["agent_waypoints"][idx])
-                augmented_min_search_dists.append(0)
-            else:
-                augmented_waypoints.append(waypoint)
-                augmented_min_search_dists.append(min_search_dist)
-                state["agent_waypoints"][idx] = waypoint
-        return augmented_waypoints, augmented_min_search_dists
-
-    def construct_planning_graph(self, state):
+    def construct_planning_graph(
+        self, state, planning_graph=None, start_id="start", goal_id="goal"
+    ):
         start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
-        planning_graph = self.g.copy()
+        if planning_graph is None:
+            planning_graph = self.g.copy()
 
         for i, (dist_from_start, dist_to_goal) in enumerate(
             zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
         ):
             if dist_from_start < self.max_search_steps:
-                planning_graph.add_edge("start", i, weight=dist_from_start)
+                planning_graph.add_edge(start_id, i, weight=dist_from_start)
             if dist_to_goal < self.max_search_steps:
-                planning_graph.add_edge(i, "goal", weight=dist_to_goal)
+                planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
             rb_to_goal_dist < self.max_search_steps
@@ -247,49 +217,6 @@ class SearchPolicy(BasePolicy):
             self.stats["localization_fails"] += 1
 
         return planning_graph
-
-    def construct_augmented_planning_graph(self, starts, goals):
-        planning_graph = self.g.copy()
-        print("Initial graph size = ", self.g.number_of_nodes())
-
-        nodes_to_agent_maps = {}
-        for idx, (start, goal) in enumerate(zip(starts, goals)):
-
-            num_nodes = planning_graph.number_of_nodes() - 1
-            start_id = num_nodes + 1
-            goal_id = num_nodes + 2
-            nodes_to_agent_maps["start" + str(idx)] = start_id
-            nodes_to_agent_maps["goal" + str(idx)] = goal_id
-
-            start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
-                {"observation": start, "goal": goal}
-            )
-            for i, (dist_from_start, dist_to_goal) in enumerate(
-                zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
-            ):
-
-                if dist_from_start < self.max_search_steps:
-                    planning_graph.add_edge(start_id, i, weight=dist_from_start)
-                if dist_to_goal < self.max_search_steps:
-                    planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
-
-                # if dist_from_start < self.max_search_steps:
-                # planning_graph.add_edge(
-                #     "start" + str(idx), i, weight=dist_from_start
-                # )
-                #     planning_graph.add_edge(num_nodes + 1, i, weight=dist_from_start)
-                # if dist_to_goal < self.max_search_steps:
-                # planning_graph.add_edge(i, "goal" + str(idx), weight=dist_to_goal)
-                # planning_graph.add_edge(i, num_nodes + 2, weight=dist_to_goal)
-                # nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
-                # nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
-
-            if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
-                rb_to_goal_dist < self.max_search_steps
-            ):
-                self.stats["localization_fails"] += 1
-        print("Final graph size = ", planning_graph.number_of_nodes())
-        return planning_graph, nodes_to_agent_maps
 
     def get_path(self, state):
         g2 = self.construct_planning_graph(state)
@@ -326,111 +253,14 @@ class SearchPolicy(BasePolicy):
         self.waypoint_attempts = 0
         self.reached_final_waypoint = False
 
-    def initialize_paths(self, starts, goals):
-        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
-            starts, goals
-        )
-        start_ids = [
-            nodes_to_agents_maps["start" + str(idx)] for idx in range(len(starts))
-        ]
-        goal_ids = [
-            nodes_to_agents_maps["goal" + str(idx)] for idx in range(len(goals))
-        ]
-
-        augmented_wps = self.rb_vec.copy()
-        for idx, (start, goal) in enumerate(zip(starts, goals)):
-            augmented_wps = np.vstack([augmented_wps, start, goal])
-
-        cbs_solver = CBSSolver(graph, augmented_wps, start_ids, goal_ids)  # type: ignore
-        paths = cbs_solver.find_paths()
-
-        self.debug_graph = graph
-
-        print("Printing the paths")
-        for id, path in enumerate(paths):
-            print("--" * 10)
-            print("Path for agent ", id)
-            for vertex in path:
-                if vertex in start_ids or vertex in goal_ids:
-                    if vertex in start_ids:
-                        print("Start: ", starts[id])
-                    else:
-                        print("Goal: ", goals[id])
-                else:
-                    print("Vertex: ", self.rb_vec[vertex])
-
-        self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = (
-            [],
-            [],
-        )
-        for path in paths:
-            edge_lengths = []
-            for i, j in zip(path[:-1], path[1:]):
-                edge_lengths.append(graph[i][j]["weight"])
-            waypoint_to_goal_dist = np.cumsum(edge_lengths[::-1])[::-1]
-            waypoint_indices = list(path)[1:-1]
-            self.augmented_waypoint_indices.append(waypoint_indices)
-            self.augmented_waypoint_to_goal_dist_vec.append(waypoint_to_goal_dist[1:])
-        self.augmented_waypoint_counters = np.zeros(len(starts), dtype=int)
-        self.augmented_waypoint_attempts = np.zeros(len(starts), dtype=int)
-        self.augmented_reached_final_waypoints = np.zeros(len(starts), dtype=bool)
-        self.augmented_waypoint_stays = np.zeros(len(starts), dtype=bool)
-        self.nodes_to_agents_maps = nodes_to_agents_maps
-        self.start_ids = start_ids
-        self.goal_ids = goal_ids
-        self.starts = starts
-        self.goals = goals
-
     def get_current_waypoint(self):
         waypoint_index = self.waypoint_indices[self.waypoint_counter]
         waypoint = self.rb_vec[waypoint_index]
         return waypoint, waypoint_index
 
-    def get_current_waypoints(self):
-        augmented_wp_indices = []
-        augmented_waypoints = []
-        for idx in range(self.augmented_waypoint_counters.shape[0]):
-            waypoint_index = self.augmented_waypoint_indices[idx][
-                self.augmented_waypoint_counters[idx]
-            ]
-            if waypoint_index > self.rb_vec.shape[0]:
-                if waypoint_index == self.start_ids[idx]:
-                    waypoint = self.starts[idx]
-                elif waypoint_index == self.goal_ids[idx]:
-                    waypoint = self.goals[idx]
-            else:
-                waypoint = self.rb_vec[waypoint_index]
-            if idx > 0:
-                waypoint_qvals = self.agent.get_pairwise_dist(
-                    [waypoint], augmented_waypoints, aggregate=None
-                )
-                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
-                    # if waypoint_index in augmented_wp_indices:
-                    if (
-                        self.augmented_waypoint_counters[idx] > 0
-                        and not self.augmented_waypoint_stays[idx]
-                    ):
-                        self.augmented_waypoint_counters[idx] -= 1
-                        self.augmented_waypoint_stays[idx] = True
-                    waypoint_index = self.augmented_waypoint_indices[idx][
-                        self.augmented_waypoint_counters[idx]
-                    ]
-                    waypoint = self.rb_vec[waypoint_index]
-            augmented_wp_indices.append(waypoint_index)
-            augmented_waypoints.append(waypoint)
-        return augmented_waypoints, augmented_wp_indices
-
     def get_waypoints(self):
         waypoints = [self.rb_vec[i] for i in self.waypoint_indices]
         return waypoints
-
-    def get_augmented_waypoints(self):
-        augmented_waypoints = []
-        for i in range(len(self.augmented_waypoint_indices)):
-            augmented_waypoints.append(
-                [self.rb_vec[j] for j in self.augmented_waypoint_indices[i]]
-            )
-        return augmented_waypoints
 
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
         # return dist_to_waypoint < self.max_search_steps
@@ -438,16 +268,14 @@ class SearchPolicy(BasePolicy):
 
     def select_action(self, state):
         goal = state["goal"]
-        dist_to_goal = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[
-            0
-        ]
+        dist_to_goal = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[0]
 
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
                 self.initialize_path(state)
 
             if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
-                # prune edge and replan
+                # Prune edge and replan
                 if self.waypoint_counter != 0 and not self.reached_final_waypoint:
                     src_node = self.waypoint_indices[self.waypoint_counter - 1]
                     dest_node = self.waypoint_indices[self.waypoint_counter]
@@ -479,8 +307,10 @@ class SearchPolicy(BasePolicy):
                 dist_to_waypoint + self.waypoint_to_goal_dist_vec[self.waypoint_counter]
             )
         else:
-            # closed loop, replan waypoint at each step
-            waypoint, dist_to_goal_via_waypoint = self.get_closest_waypoint(state)
+            # Closed loop, replan waypoint at each step
+            waypoint, waypoint_index, dist_to_goal_via_waypoint = (
+                self.get_closest_waypoint(state)
+            )
 
         if (
             (self.no_waypoint_hopping and not self.reached_final_waypoint)
@@ -494,33 +324,629 @@ class SearchPolicy(BasePolicy):
             state["goal"] = goal
         return super().select_action(state)
 
-    def select_multiple_actions(self, state):
-        assert "composite_goals" in state.keys()
 
-        composite_goals = state["composite_goals"]
-        dist_to_composite_goals = []
-        for idx, c_goal in enumerate(composite_goals):
-            state_copy = state.copy()
-            state_copy["observation"] = state["agent_observations"][idx]
-            state_copy["goal"] = c_goal
-            dist_to_composite_goals.append(
-                self.agent.get_dist_to_goal({k: [v] for k, v in state_copy.items()})[0]
+class VisualSearchPolicy(SearchPolicy):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        pdist=None,
+        aggregate="min",
+        open_loop=False,
+        max_search_steps=7,
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+    ):
+        """
+        Args:
+            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
+            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
+                   rb_vec[i] to rb_vec[j]
+            max_search_steps: (int)
+            open_loop: if True, only performs search once at the beginning of the episode
+            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
+            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
+        """
+        super().__init__(
+            agent,
+            rb_vec,
+            pdist,
+            aggregate,
+            open_loop,
+            max_search_steps,
+            no_waypoint_hopping,
+            weighted_path_planning,
+            waypoint_consistency_cutoff,
+        )
+
+        assert isinstance(rb_vec, tuple)
+        self.rb_vec_grid, self.rb_vec = rb_vec
+
+        self.build_rb_graph(self.rb_vec_grid)
+        if not self.open_loop:
+            pdist2 = self.agent.get_pairwise_dist(
+                self.rb_vec,
+                aggregate=self.aggregate,
+                max_search_steps=self.max_search_steps,
+                masked=True,
             )
+            self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
+                pdist2, directed=True
+            )
+
+    def get_waypoints(self):
+        waypoints = [(self.rb_vec_grid[i], self.rb_vec[i]) for i in self.waypoint_indices]
+        return waypoints
+
+    def select_action(self, state):
+        goal = state["goal"]
+        grid_goal = state["grid"]["goal"]
+        dist_to_goal = self.agent.get_dist_to_goal({k: [v] for k, v in state.items()})[0]
 
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
+                self.initialize_path(state)
+
+            if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
+                # Prune edge and replan
+                if self.waypoint_counter != 0 and not self.reached_final_waypoint:
+                    src_node = self.waypoint_indices[self.waypoint_counter - 1]
+                    dest_node = self.waypoint_indices[self.waypoint_counter]
+                    self.g.remove_edge(src_node, dest_node)
+                self.initialize_path(state)
+
+            waypoint, waypoint_index = self.get_current_waypoint()
+            state["goal"] = waypoint
+            state["grid"]["goal"] = self.rb_vec_grid[waypoint_index]
+            dist_to_waypoint = self.agent.get_dist_to_goal(
+                {k: [v] for k, v in state.items()}
+            )[0]
+
+            if self.reached_waypoint(dist_to_waypoint, state, waypoint_index):
+                if not self.reached_final_waypoint:
+                    self.waypoint_attempts = 0
+
+                self.waypoint_counter += 1
+                if self.waypoint_counter >= len(self.waypoint_indices):
+                    self.reached_final_waypoint = True
+                    self.waypoint_counter = len(self.waypoint_indices) - 1
+
+                waypoint, waypoint_index = self.get_current_waypoint()
+                state["goal"] = waypoint
+                state["grid"]["goal"] = self.rb_vec_grid[waypoint_index]
+                dist_to_waypoint = self.agent.get_dist_to_goal(
+                    {k: [v] for k, v in state.items()}
+                )[0]
+
+            dist_to_goal_via_waypoint = (
+                dist_to_waypoint + self.waypoint_to_goal_dist_vec[self.waypoint_counter]
+            )
+        else:
+            # Closed loop, replan waypoint at each step
+            waypoint, waypoint_index, dist_to_goal_via_waypoint = (
+                self.get_closest_waypoint(state)
+            )
+
+        if (
+            (self.no_waypoint_hopping and not self.reached_final_waypoint)
+            or (dist_to_goal_via_waypoint < dist_to_goal)
+            or (dist_to_goal > self.max_search_steps)
+        ):
+            state["goal"] = waypoint
+            state["grid"]["goal"] = self.rb_vec_grid[waypoint_index]
+            if self.open_loop:
+                self.waypoint_attempts += 1
+        else:
+            state["goal"] = goal
+            state["grid"]["goal"] = grid_goal
+        return super(SearchPolicy, self).select_action(state)
+
+
+class MultiAgentSearchPolicy(SearchPolicy):
+    def __init__(
+        self,
+        policy,
+        rb_vec,
+        n_agents,
+        pdist=None,
+        radius=0.1,
+        aggregate="min",
+        open_loop=False,
+        max_search_steps=7,
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+    ):
+        """
+        Args:
+            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
+            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
+                   rb_vec[i] to rb_vec[j]
+            max_search_steps: (int)
+            open_loop: if True, only performs search once at the beginning of the episode
+            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
+            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
+        """
+        super().__init__(
+            policy,
+            rb_vec,
+            pdist,
+            aggregate,
+            open_loop,
+            max_search_steps,
+            no_waypoint_hopping,
+            weighted_path_planning,
+            waypoint_consistency_cutoff,
+        )
+        self.n_agents = n_agents
+        self.radius = radius
+
+    def get_closest_waypoints(self, state):
+
+        assert "composite_goals" in state.keys()
+        assert len(state["composite_goals"]) == self.n_agents
+
+        augmented_waypoints = []
+        augmented_waypoint_indices = []
+        augmented_min_search_dists = []
+
+        for agent_id in range(self.n_agents):
+
+            state_copy = state.copy()
+            state_copy["goal"] = state["composite_goals"][agent_id]
+            state_copy["observation"] = state["agent_observations"][agent_id]
+
+            waypoint, waypoint_index, min_search_dist = self.get_closest_waypoint(state_copy)
+
+            augmented_waypoint_indices.append(waypoint_index)
+
+            if waypoint in augmented_waypoints:
+                augmented_min_search_dists.append(0)
+                augmented_waypoints.append(state["agent_waypoints"][agent_id])
+            else:
+                augmented_waypoints.append(waypoint)
+                augmented_min_search_dists.append(min_search_dist)
+                state["agent_waypoints"][agent_id] = waypoint
+                state["agent_waypoints_visual"][agent_id] = waypoint
+        return (
+            augmented_waypoints,
+            augmented_waypoint_indices,
+            augmented_min_search_dists,
+        )
+
+    def construct_augmented_planning_graph(self, starts, goals):
+        planning_graph = self.g.copy()
+        print("Initial graph size = ", self.g.number_of_nodes())
+
+        num_nodes = self.rb_vec.shape[0] - 1
+
+        nodes_to_agent_maps = {}
+        for agent_id, (start, goal) in enumerate(zip(starts, goals)):
+
+            start_id = num_nodes + 1
+            nodes_to_agent_maps["start" + str(agent_id)] = start_id
+
+            goal_id = num_nodes + 2
+            nodes_to_agent_maps["goal" + str(agent_id)] = goal_id
+
+            planning_graph = self.construct_planning_graph(
+                {"observation": start, "goal": goal}, planning_graph, start_id, goal_id  # type: ignore
+            )
+
+            assert planning_graph.has_node(start_id)
+            assert planning_graph.has_node(goal_id)
+            num_nodes += 2
+
+        print("Final graph size = ", planning_graph.number_of_nodes())
+        return planning_graph, nodes_to_agent_maps
+
+    def initialize_paths(self, rb_vec, starts, goals):
+        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(starts, goals)
+
+        goal_ids = [nodes_to_agents_maps["goal" + str(agent_id)] for agent_id in range(self.n_agents)]
+        start_ids = [nodes_to_agents_maps["start" + str(agent_id)] for agent_id in range(self.n_agents)]
+
+        augmented_wps = rb_vec.copy()
+        for _, (start, goal) in enumerate(zip(starts, goals)):
+            augmented_wps = np.vstack([augmented_wps, start, goal])
+
+        cbs_solver = CBSSolver(
+            graph,
+            augmented_wps,
+            start_ids,
+            goal_ids,
+            weighted=self.weighted_path_planning,
+            collision_radius=self.radius,
+        )
+        paths = cbs_solver.find_paths()
+
+        print("Printing the paths")
+        for agent_id, path in enumerate(paths):
+            print("--" * 10)
+            print("Path for agent ", agent_id)
+            for vertex in path:
+                if vertex in start_ids or vertex in goal_ids:
+                    print("Start: ", starts[agent_id]) if vertex in start_ids else print("Goal: ", goals[agent_id])
+                else:
+                    print("Vertex: ", rb_vec[vertex])
+
+        self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = [], []
+        for path in paths:
+            edge_lengths = []
+            for i, j in zip(path[:-1], path[1:]):
+                edge_lengths.append(graph[i][j]["weight"])
+            waypoint_to_goal_dist = np.cumsum(edge_lengths[::-1])[::-1]
+            waypoint_indices = list(path)[1:-1]
+            self.augmented_waypoint_indices.append(waypoint_indices)
+            self.augmented_waypoint_to_goal_dist_vec.append(waypoint_to_goal_dist[1:])
+
+        self.augmented_waypoint_stays = np.zeros(self.n_agents, dtype=bool)
+        self.augmented_waypoint_counters = np.zeros(self.n_agents, dtype=int)
+        self.augmented_waypoint_attempts = np.zeros(self.n_agents, dtype=int)
+        self.augmented_reached_final_waypoints = np.zeros(self.n_agents, dtype=bool)
+
+        self.goals = goals
+        self.starts = starts
+        self.goal_ids = goal_ids
+        self.start_ids = start_ids
+        self.nodes_to_agents_maps = nodes_to_agents_maps
+
+    def get_current_waypoints(self):
+        augmented_waypoints = []
+        augmented_wp_indices = []
+
+        for agent_id in range(self.n_agents):
+            waypoint_index = self.augmented_waypoint_indices[agent_id][self.augmented_waypoint_counters[agent_id]]
+            if waypoint_index > self.rb_vec.shape[0]:
+                waypoint = self.starts[agent_id] if waypoint_index == self.start_ids[agent_id] else self.goals[agent_id]
+            else:
+                waypoint = self.rb_vec[waypoint_index]
+
+            if agent_id > 0:
+                waypoint_qvals = self.agent.get_pairwise_dist([waypoint], augmented_waypoints, aggregate=None)
+                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
+                    waypoint_index = self.augmented_waypoint_indices[agent_id][
+                        self.augmented_waypoint_counters[agent_id]
+                    ]
+                    waypoint = self.rb_vec[waypoint_index]
+
+            augmented_waypoints.append(waypoint)
+            augmented_wp_indices.append(waypoint_index)
+        return augmented_waypoints, augmented_wp_indices
+
+    def get_augmented_waypoints(self):
+        augmented_waypoints = []
+        for agent_id in range(self.n_agents):
+            augmented_waypoints.append([self.rb_vec[j] for j in self.augmented_waypoint_indices[agent_id]])
+        return augmented_waypoints
+
+    def select_action(self, state):
+        assert "composite_goals" in state.keys()
+        assert len(state["composite_goals"]) == self.n_agents
+
+        # Composite start and goals are the grid representation of the state
+        composite_goals = state["composite_goals"]
+        dist_to_composite_goals = []
+        for agent_id in range(self.n_agents):
+            c_goal = composite_goals[agent_id]
+            state_copy = state.copy()
+            state_copy["goal"] = c_goal
+            state_copy["observation"] = state["agent_observations"][agent_id]
+            dist_to_composite_goals.append(self.agent.get_dist_to_goal({k: [v] for k, v in state_copy.items()})[0])
+
+        if self.open_loop or self.cleanup:
+
+            if state.get("first_step", False):
+
                 print("Composite starts: ", state["composite_starts"])
                 print("Composite goals: ", state["composite_goals"])
-                self.initialize_paths(
-                    state["composite_starts"], state["composite_goals"]
-                )
+                self.initialize_paths(self.rb_vec, state["composite_starts"], state["composite_goals"])
 
             if self.cleanup:
-                for idx, (
-                    waypoint_counter,
-                    waypoint_attempts,
-                    reached_final_waypoint,
-                ) in enumerate(
+                for idx, (waypoint_counter, waypoint_attempts, reached_final_waypoint) in enumerate(
+                    zip(
+                        self.augmented_waypoint_counters,
+                        self.augmented_waypoint_attempts,
+                        self.augmented_reached_final_waypoints)
+                ):
+                    if (
+                        waypoint_attempts >= self.attempt_cutoff
+                        and waypoint_counter != 0
+                        and not reached_final_waypoint
+                    ):
+                        src_node = self.augmented_waypoint_indices[idx][waypoint_counter - 1]
+                        dest_node = self.augmented_waypoint_indices[idx][waypoint_counter]
+                        self.g.remove_edge(src_node, dest_node)
+
+                self.initialize_paths(self.rb_vec, state["composite_starts"], state["composite_goals"])
+
+            waypoints, waypoint_indices = self.get_current_waypoints()
+
+            dist_to_goal_via_waypoints = []
+            for agent_id in range(self.n_agents):
+                state_copy = state.copy()
+                state_copy["goal"] = waypoints[agent_id]
+                state_copy["observation"] = state["agent_observations"][agent_id]
+                dist_to_waypoint = self.agent.get_dist_to_goal(
+                    {k: [v] for k, v in state_copy.items()}
+                )[0]
+
+                if self.reached_waypoint(
+                    dist_to_waypoint, state_copy, waypoint_indices[agent_id]
+                ):
+                    if not self.augmented_reached_final_waypoints[agent_id]:
+                        self.augmented_waypoint_attempts[agent_id] = 0
+
+                    self.augmented_waypoint_counters[agent_id] += 1
+                    if self.augmented_waypoint_counters[agent_id] >= len(
+                        self.augmented_waypoint_indices[agent_id]
+                    ):
+                        self.augmented_reached_final_waypoints[agent_id] = True
+                        self.augmented_waypoint_counters[agent_id] = len(self.augmented_waypoint_indices[agent_id]) - 1
+
+                    waypoints, waypoint_indices = self.get_current_waypoints()
+                    state_copy["goal"] = waypoints[agent_id]
+                    dist_to_waypoint = self.agent.get_dist_to_goal(
+                        {k: [v] for k, v in state_copy.items()}
+                    )[0]
+
+                dist_to_goal_via_waypoint = (
+                    dist_to_waypoint
+                    + self.augmented_waypoint_to_goal_dist_vec[agent_id][
+                        self.augmented_waypoint_counters[agent_id]
+                    ]
+                )
+                dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
+        else:
+            # Closed loop, replan waypoint at each step
+            waypoints, waypoint_indices, dist_to_goal_via_waypoints = (
+                self.get_closest_waypoints(state)
+            )
+
+        # These variables are used by the "get_trajectories" function to update agent's goals with intermediate
+        # waypoints
+        agent_goals = []
+        agent_actions = []
+        for agent_id in range(self.n_agents):
+            state_copy = state.copy()
+            if (
+                (
+                    self.no_waypoint_hopping
+                    and not self.augmented_reached_final_waypoints[agent_id]
+                )
+                or (dist_to_goal_via_waypoints[agent_id] < dist_to_composite_goals[agent_id])
+                or (dist_to_composite_goals[agent_id] > self.max_search_steps)
+            ):
+                state_copy["goal"] = waypoints[agent_id]
+                if self.open_loop:
+                    self.augmented_waypoint_attempts[agent_id] += 1
+            else:
+                state_copy["goal"] = composite_goals[agent_id]
+
+            agent_goals.append(state_copy["goal"])
+            state_copy["observation"] = state["agent_observations"][agent_id]
+
+            agent_action = super(SearchPolicy, self).select_action(state_copy)
+            agent_actions.append(agent_action)
+
+        return agent_actions, agent_goals
+
+
+class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
+    def __init__(
+        self,
+        policy,
+        rb_vec,
+        n_agents,
+        pdist=None,
+        radius=0.1,
+        aggregate="min",
+        open_loop=False,
+        max_search_steps=7,
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+    ):
+        """
+        Args:
+            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
+            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
+                   rb_vec[i] to rb_vec[j]
+            max_search_steps: (int)
+            open_loop: if True, only performs search once at the beginning of the episode
+            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
+            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
+        """
+        super().__init__(
+            policy,
+            rb_vec,
+            n_agents,
+            pdist,
+            radius,
+            aggregate,
+            open_loop,
+            max_search_steps,
+            no_waypoint_hopping,
+            weighted_path_planning,
+            waypoint_consistency_cutoff,
+        )
+
+        assert isinstance(rb_vec, tuple)
+        self.rb_vec_grid, self.rb_vec = rb_vec
+
+        self.build_rb_graph(self.rb_vec_grid)
+        if not self.open_loop:
+            pdist2 = self.agent.get_pairwise_dist(
+                self.rb_vec,
+                aggregate=self.aggregate,
+                max_search_steps=self.max_search_steps,
+                masked=True,
+            )
+            self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
+                pdist2, directed=True
+            )
+
+    def get_closest_waypoints(self, state):
+
+        augmented_waypoints = []
+        augmented_waypoint_indices = []
+        augmented_visual_waypoints = []
+        augmented_min_search_dists = []
+
+        for agent_id in range(self.n_agents):
+
+            state_copy = state.copy()
+
+            state_copy["goal"] = state["composite_goals"][agent_id][1]
+            state_copy["grid"]["goal"] = state["composite_goals"][agent_id][0]
+            state_copy["observation"] = state["agent_observations_visual"][agent_id][1]
+            state_copy["grid"]["observation"] = state["agent_observations"][agent_id][0]
+
+            waypoint, waypoint_index, min_search_dist = self.get_closest_waypoint(state_copy)
+            waypoint_grid = self.rb_vec_grid[waypoint_index]
+
+            augmented_waypoint_indices.append(waypoint_index)
+            if waypoint_grid in augmented_waypoints:
+                augmented_min_search_dists.append(0)
+                augmented_waypoints.append(state["agent_waypoints"][agent_id][0])
+                augmented_visual_waypoints.append(state["agent_waypoints"][agent_id][1])
+            else:
+                augmented_waypoints.append(waypoint_grid)
+                augmented_visual_waypoints.append(waypoint)
+                augmented_min_search_dists.append(min_search_dist)
+                state["agent_waypoints"][agent_id] = (waypoint_grid, waypoint)
+
+        return (
+            (
+                augmented_waypoints,
+                augmented_visual_waypoints,
+            ),
+            augmented_waypoint_indices,
+            augmented_min_search_dists,
+        )
+
+    def initialize_paths(self, rb_vec, starts, goals):
+
+        goals_grid = [goal[0] for goal in goals]
+        goals = [goal[1] for goal in goals]
+        starts_grid = [start[0] for start in starts]
+        starts = [start[1] for start in starts]
+        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(starts, goals)
+
+        goal_ids = [nodes_to_agents_maps["goal" + str(agent_id)] for agent_id in range(self.n_agents)]
+        start_ids = [nodes_to_agents_maps["start" + str(agent_id)] for agent_id in range(self.n_agents)]
+
+        augmented_wps = rb_vec.copy()
+        for agent_id, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
+            augmented_wps = np.vstack([augmented_wps, start, goal])
+
+        cbs_solver = CBSSolver(
+            graph,
+            augmented_wps,
+            start_ids,
+            goal_ids,
+            weighted=self.weighted_path_planning,
+            collision_radius=self.radius,
+        )
+        paths = cbs_solver.find_paths()
+
+        print("Printing the paths")
+        for a_id, path in enumerate(paths):
+            print("--" * 10)
+            print("Path for agent ", a_id)
+            for vertex in path:
+                if vertex in start_ids or vertex in goal_ids:
+                    print("Start: ", starts_grid[a_id]) if vertex in start_ids else print("Goal: ", goals_grid[a_id])
+                else:
+                    print("Vertex: ", rb_vec[vertex])
+
+        self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = [], []
+
+        for path in paths:
+            edge_lengths = []
+            for i, j in zip(path[:-1], path[1:]):
+                edge_lengths.append(graph[i][j]["weight"])
+            waypoint_to_goal_dist = np.cumsum(edge_lengths[::-1])[::-1]
+            waypoint_indices = list(path)[1:-1]
+            self.augmented_waypoint_indices.append(waypoint_indices)
+            self.augmented_waypoint_to_goal_dist_vec.append(waypoint_to_goal_dist[1:])
+
+        self.augmented_waypoint_stays = np.zeros(len(starts), dtype=bool)
+        self.augmented_waypoint_counters = np.zeros(len(starts), dtype=int)
+        self.augmented_waypoint_attempts = np.zeros(len(starts), dtype=int)
+        self.augmented_reached_final_waypoints = np.zeros(len(starts), dtype=bool)
+
+        self.goals = goals
+        self.starts = starts
+        self.goal_ids = goal_ids
+        self.start_ids = start_ids
+        self.nodes_to_agents_maps = nodes_to_agents_maps
+
+    def get_current_waypoints(self):
+
+        augmented_waypoints = []
+        augmented_wp_indices = []
+        augmented_grid_waypoints = []
+
+        for agent_id in range(self.n_agents):
+            waypoint_index = self.augmented_waypoint_indices[agent_id][self.augmented_waypoint_counters[agent_id]]
+            if waypoint_index > self.rb_vec.shape[0]:
+                waypoint = self.starts[agent_id] if waypoint_index == self.start_ids[agent_id] else self.goals[agent_id]
+            else:
+                waypoint = self.rb_vec[waypoint_index]
+
+            if agent_id > 0:
+                waypoint_qvals = self.agent.get_pairwise_dist(
+                    [waypoint], augmented_waypoints, aggregate=None
+                )
+                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
+                    waypoint_index = self.augmented_waypoint_indices[agent_id][
+                        self.augmented_waypoint_counters[agent_id]
+                    ]
+                    waypoint = self.rb_vec[waypoint_index]
+
+            augmented_waypoints.append(waypoint)
+            augmented_wp_indices.append(waypoint_index)
+            augmented_grid_waypoints.append(self.rb_vec_grid[waypoint_index])
+        return (augmented_grid_waypoints, augmented_waypoints), augmented_wp_indices
+
+    def get_augmented_waypoints(self):
+        augmented_waypoints = []
+        for agent_id in range(self.n_agents):
+            augmented_waypoints.append([(self.rb_vec_grid[j], self.rb_vec[j]) for j in self.augmented_waypoint_indices[agent_id]])
+        return augmented_waypoints
+
+    def select_action(self, state):
+        assert "composite_goals" in state.keys()
+        assert len(state["composite_goals"]) == self.n_agents
+
+        # Composite start and goals are the grid representation of the state
+        composite_goals = state["composite_goals"]
+        composite_goals_grid = [goal[0] for goal in composite_goals]
+        composite_goals = [goal[1] for goal in composite_goals]
+
+        composite_starts_grid = [start[0] for start in state["composite_starts"]]
+        dist_to_composite_goals = []
+        for agent_id in range(self.n_agents):
+
+            state_copy = state.copy()
+            state_copy["goal"] = composite_goals[agent_id]
+            state_copy["grid"]["goal"] = composite_goals_grid[agent_id]
+            state_copy["observation"] = state["agent_observations"][agent_id][1]
+            state_copy["grid"]["observation"] = state["agent_observations"][agent_id][0]
+            dist_to_composite_goals.append(self.agent.get_dist_to_goal({k: [v] for k, v in state_copy.items()})[0])
+
+        if self.open_loop or self.cleanup:
+
+            if state.get("first_step", False):
+
+                print("Composite starts: ", composite_starts_grid)
+                print("Composite goals: ", composite_goals_grid)
+                self.initialize_paths(self.rb_vec_grid, state["composite_starts"], state["composite_goals"])
+
+            if self.cleanup:
+                for idx, (waypoint_counter, waypoint_attempts, reached_final_waypoint) in enumerate(
                     zip(
                         self.augmented_waypoint_counters,
                         self.augmented_waypoint_attempts,
@@ -539,89 +965,96 @@ class SearchPolicy(BasePolicy):
                             waypoint_counter
                         ]
                         self.g.remove_edge(src_node, dest_node)
-                self.initialize_paths(
-                    state["composite_starts"], state["composite_goals"]
-                )
+
+                self.initialize_paths(self.rb_vec_grid, state["composite_starts"], state["composite_goals"])
 
             waypoints, waypoint_indices = self.get_current_waypoints()
+            waypoints_grid, waypoints = waypoints
 
             dist_to_goal_via_waypoints = []
-            for idx in range(len(composite_goals)):
+            for agent_id in range(self.n_agents):
                 state_copy = state.copy()
-                state_copy["observation"] = state["agent_observations"][idx]
-                state_copy["goal"] = waypoints[idx]
+
+                state_copy["goal"] = waypoints[agent_id]
+                state_copy["grid"]["goal"] = waypoints_grid[agent_id]
+                state_copy["observation"] = state["agent_observations"][agent_id][1]
+                state_copy["grid"]["observation"] = state["agent_observations"][agent_id][0]
                 dist_to_waypoint = self.agent.get_dist_to_goal(
                     {k: [v] for k, v in state_copy.items()}
                 )[0]
 
                 if self.reached_waypoint(
-                    dist_to_waypoint, state_copy, waypoint_indices[idx]
+                    dist_to_waypoint, state_copy, waypoint_indices[agent_id]
                 ):
-                    if not self.augmented_reached_final_waypoints[idx]:
-                        self.augmented_waypoint_attempts[idx] = 0
+                    if not self.augmented_reached_final_waypoints[agent_id]:
+                        self.augmented_waypoint_attempts[agent_id] = 0
 
-                    # if (
-                    #     len(self.augmented_waypoint_indices[idx])
-                    #     < self.augmented_waypoint_counters[idx] + 1
-                    #     and self.augmented_waypoint_indices[idx][
-                    #         self.augmented_waypoint_counters[idx] + 1
-                    #     ]
-                    #     not in waypoint_indices[:idx] + waypoint_indices[idx + 1 :]
-                    # ):
-                    #     self.augmented_waypoint_counters[idx] += 1
-                    self.augmented_waypoint_counters[idx] += 1
-                    self.augmented_waypoint_stays[idx] = False
-                    if self.augmented_waypoint_counters[idx] >= len(
-                        self.augmented_waypoint_indices[idx]
+                    self.augmented_waypoint_counters[agent_id] += 1
+                    if self.augmented_waypoint_counters[agent_id] >= len(
+                        self.augmented_waypoint_indices[agent_id]
                     ):
-                        self.augmented_reached_final_waypoints[idx] = True
-                        self.augmented_waypoint_counters[idx] = (
-                            len(self.augmented_waypoint_indices[idx]) - 1
+                        self.augmented_reached_final_waypoints[agent_id] = True
+                        self.augmented_waypoint_counters[agent_id] = (
+                            len(self.augmented_waypoint_indices[agent_id]) - 1
                         )
 
                     waypoints, waypoint_indices = self.get_current_waypoints()
-                    state_copy["goal"] = waypoints[idx]
+                    waypoints_grid, waypoints = waypoints
+
+                    state_copy["goal"] = waypoints[agent_id]
+                    state_copy["grid"]["goal"] = waypoints_grid[agent_id]
                     dist_to_waypoint = self.agent.get_dist_to_goal(
                         {k: [v] for k, v in state_copy.items()}
                     )[0]
 
                 dist_to_goal_via_waypoint = (
                     dist_to_waypoint
-                    + self.augmented_waypoint_to_goal_dist_vec[idx][
-                        self.augmented_waypoint_counters[idx]
+                    + self.augmented_waypoint_to_goal_dist_vec[agent_id][
+                        self.augmented_waypoint_counters[agent_id]
                     ]
                 )
                 dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
         else:
-            # closed loop, replan waypoint at each step
+            # Closed loop, replan waypoint at each step
+            waypoints, waypoint_indices, dist_to_goal_via_waypoints = (
+                self.get_closest_waypoints(state)
+            )
+            waypoints_grid, waypoints = waypoints
 
-            waypoints, dist_to_goal_via_waypoints = self.get_closest_waypoints(state)
-
-        agent_actions = []
+        # These variables are used by the "get_trajectories" function to update agent's goals with intermediate
+        # waypoints
         agent_goals = []
-        for idx in range(len(composite_goals)):
+        agent_actions = []
+        for agent_id in range(self.n_agents):
             state_copy = state.copy()
             if (
                 (
                     self.no_waypoint_hopping
-                    and not self.augmented_reached_final_waypoints[idx]
+                    and not self.augmented_reached_final_waypoints[agent_id]
                 )
-                or (dist_to_goal_via_waypoints[idx] < dist_to_composite_goals[idx])
-                or (dist_to_composite_goals[idx] > self.max_search_steps)
+                or (dist_to_goal_via_waypoints[agent_id] < dist_to_composite_goals[agent_id])
+                or (dist_to_composite_goals[agent_id] > self.max_search_steps)
             ):
-                state_copy["goal"] = waypoints[idx]
+                state_copy["goal"] = waypoints[agent_id]
+                state_copy["grid"]["goal"] = waypoints_grid[agent_id]
                 if self.open_loop:
-                    self.augmented_waypoint_attempts[idx] += 1
+                    self.augmented_waypoint_attempts[agent_id] += 1
             else:
-                state_copy["goal"] = composite_goals[idx]
-            agent_goals.append(state_copy["goal"])
-            state_copy["observation"] = state["agent_observations"][idx]
-            agent_action = super().select_action(state_copy)
+                state_copy["goal"] = composite_goals[agent_id]
+                state_copy["grid"]["goal"] = composite_goals_grid[agent_id]
+
+            agent_goals.append((state_copy["grid"]["goal"], state_copy["goal"]))
+            state_copy["observation"] = state["agent_observations"][agent_id][1]
+            state_copy["grid"]["observation"] = state["agent_observations"][agent_id][0]
+
+            agent_action = super(SearchPolicy, self).select_action(state_copy)
             agent_actions.append(agent_action)
+
         return agent_actions, agent_goals
 
 
 class SparseSearchPolicy(SearchPolicy):
+
     def __init__(
         self,
         *args,

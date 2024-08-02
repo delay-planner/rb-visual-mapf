@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 from networkx import Graph
 from numpy.typing import NDArray
-from typing import List, Union, Tuple, Dict
+from typing import List, Union, Dict
 from pud.algos.single_agent_planner import (
     a_star,
     compute_heuristics,
@@ -13,10 +13,9 @@ from pud.algos.single_agent_planner import (
 
 
 def detect_collision(
-    pathA: List[int], pathB: List[int], graph_waypoints: NDArray
-) -> Union[List[Tuple[List, int, str]], None]:
+    pathA: List[int], pathB: List[int], graph_waypoints: NDArray, collision_radius=0.1
+):
 
-    collisions = []
     path1 = pathA.copy()
     path2 = pathB.copy()
     if len(path1) >= len(path2):
@@ -30,82 +29,54 @@ def detect_collision(
         short_path.append(short_path[-1])
 
     for timestep in range(len(path1)):
-        # if path1[timestep] == path2[timestep]:
-        #     collisions.append(([path1[timestep]], timestep, "vertex"))
-        #     # return [path1[timestep]], timestep, "vertex"
-        # if timestep < len(path1) - 1:
-        #     if (
-        #         path1[timestep] == path2[timestep + 1]
-        #         and path1[timestep + 1] == path2[timestep]
-        #     ):
-        #         collisions.append(
-        #             ([path1[timestep], path1[timestep + 1]], timestep + 1, "edge")
-        #         )
-        #         # return (
-        #         #     [path1[timestep], path1[timestep + 1]],
-        #         #     timestep + 1,
-        #         #     "edge",
-        #         # )
         if (
             np.linalg.norm(
                 graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
             )
-            <= 0.5
+            <= collision_radius
         ):
-            print("Colliding the low-level space")
-            collisions.append(([path1[timestep]], timestep, "vertex"))
-            # return [path1[timestep]], timestep, "vertex"
+            return [path1[timestep]], timestep, "vertex"
         if timestep < len(path1) - 1:
             if (
                 np.linalg.norm(
                     graph_waypoints[path1[timestep]]
                     - graph_waypoints[path2[timestep + 1]]
                 )
-                <= 0.5
+                <= collision_radius
                 and np.linalg.norm(
                     graph_waypoints[path1[timestep + 1]]
                     - graph_waypoints[path2[timestep]]
                 )
-                <= 0.5
+                <= collision_radius
             ):
-                collisions.append(
-                    (
-                        [
-                            path1[timestep],
-                            path1[timestep + 1],
-                            path2[timestep],
-                            path2[timestep + 1],
-                        ],
-                        timestep + 1,
-                        "edge",
-                    )
+                return (
+                    [path1[timestep], path1[timestep + 1]],
+                    timestep + 1,
+                    "edge",
                 )
-                # return (
-                #     [path1[timestep], path1[timestep + 1], path2[timestep], path2[timestep + 1]],
-                #     timestep + 1,
-                #     "edge",
-                # )
 
     return None
 
 
-def detect_collisions(paths: List[List[int]], graph_waypoints: NDArray) -> List[Dict]:
+def detect_collisions(
+    paths: List[List[int]], graph_waypoints: NDArray, collision_radius=0.1
+) -> List[Dict]:
     agg_collisions = []
     for i in range(len(paths)):
         for j in range(i + 1, len(paths)):
-            collisions = detect_collision(paths[i], paths[j], graph_waypoints)
-            # collision = detect_collision(paths[i], paths[j])
+            collisions = detect_collision(
+                paths[i], paths[j], graph_waypoints, collision_radius
+            )
             if collisions is not None:
-                for collision in collisions:
-                    agg_collisions.append(
-                        {
-                            "agent_A": i,
-                            "agent_B": j,
-                            "location": collision[0],
-                            "timestep": collision[1],
-                            "type": collision[2],
-                        }
-                    )
+                agg_collisions.append(
+                    {
+                        "agent_A": i,
+                        "agent_B": j,
+                        "location": collisions[0],
+                        "timestep": collisions[1],
+                        "type": collisions[2],
+                    }
+                )
     return agg_collisions
 
 
@@ -196,11 +167,11 @@ def to_inflate(
             graph, constraint["location"][0], radius=radius
         ).nodes
         for node in nearest_nodes:
-            test_path = nx.shortest_path(
+            tpath = nx.shortest_path(
                 graph, source=constraint["location"][0], target=node
             )
-            for i in range(len(test_path) - 1):
-                if test_path[i + 1] in other_agent_path[constraint["timestep"] :]:
+            for i in range(len(tpath) - 1):
+                if tpath[i + 1] in other_agent_path[constraint["timestep"] :]:  # noqa
                     return True
     return False
 
@@ -215,7 +186,8 @@ class CBSSolver(object):
         goals: List[int],
         disjoint: bool = False,
         seed: Union[int, None] = None,
-        max_steps: Union[int, None] = None,
+        weighted: bool = False,
+        collision_radius=0.1,
     ):
 
         if seed is not None:
@@ -223,14 +195,18 @@ class CBSSolver(object):
         self.graph = graph
         self.goals = goals
         self.starts = starts
+        self.weighted = weighted
         self.disjoint = disjoint
         self.num_agents = len(starts)
         self.graph_waypoints = graph_waypoints
+        self.collision_radius = collision_radius
 
         self.open_list = []
         self.heuristics = []
         for goal in self.goals:
-            self.heuristics.append(compute_heuristics(self.graph, goal))
+            self.heuristics.append(
+                compute_heuristics(self.graph, goal, weighted=self.weighted)
+            )
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -252,14 +228,17 @@ class CBSSolver(object):
                 self.goals[i],
                 self.heuristics[i],
                 root["constraints"],
+                weighted=self.weighted,
             )
             if agent_path is None:
                 raise BaseException("No path found for agent {}".format(i))
 
             root["paths"].append(agent_path)
 
-        root["cost"] = compute_sum_of_costs(root["paths"], self.graph)
-        root["collisions"] = detect_collisions(root["paths"], self.graph_waypoints)
+        root["cost"] = compute_sum_of_costs(root["paths"], self.graph, weighted=self.weighted)
+        root["collisions"] = detect_collisions(
+            root["paths"], self.graph_waypoints, self.collision_radius
+        )
 
         print(root["collisions"])
         for collision in root["collisions"]:
@@ -318,6 +297,7 @@ class CBSSolver(object):
                         # else update_h
                     ),
                     successor["constraints"],
+                    weighted=self.weighted,
                 )
 
                 skip = False
@@ -370,6 +350,7 @@ class CBSSolver(object):
                                 self.goals[agent],
                                 self.heuristics[agent],
                                 successor["constraints"],
+                                weighted=self.weighted,
                             )
 
                             if agent_path is None:

@@ -22,6 +22,7 @@ class TestCBSSolver(unittest.TestCase):
         columns = int(columns)
 
         G = nx.empty_graph(0, create_using=nx.DiGraph)
+        graph_waypoints = []
 
         boolean_map = []
         for r in range(rows):
@@ -48,10 +49,14 @@ class TestCBSSolver(unittest.TestCase):
             starts.append((start_x, start_y))
             goals.append((goal_x, goal_y))
 
+            graph_waypoints.append([start_x, start_y])
+            graph_waypoints.append([goal_x, goal_y])
+
         f.close()
 
         for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
             node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
+            graph_waypoints.append([node_x, node_y])
             potential_neighbors = [
                 (node_x - 1, node_y),
                 (node_x + 1, node_y),
@@ -79,7 +84,8 @@ class TestCBSSolver(unittest.TestCase):
             goal_node = goal_node[0] * boolean_map.shape[1] + goal_node[1]
             goal_ids.append(goal_node)
 
-        solver = CBSSolver(G, start_ids, goal_ids, seed=0)
+        graph_waypoints = np.array(graph_waypoints)
+        solver = CBSSolver(G, graph_waypoints, start_ids, goal_ids, seed=0)
         paths = solver.find_paths()
         print(paths)
 
