@@ -367,6 +367,10 @@ class PointEnv(gym.Env):
             dtype=np.float32)
         self.reset()
 
+    def sample_empty_state(self):
+        """public method for _sample_empty_state"""
+        return self._sample_empty_state()
+
     def _sample_empty_state(self):
         candidate_states = np.where(self._walls == 0)
         num_candidate_states = len(candidate_states[0])
@@ -620,18 +624,20 @@ def env_load_fn(environment_name,
     return env
 
 
-def plot_walls(walls):
-    walls = walls.T
+def plot_walls(walls, ax:plt.axes):
     (height, width) = walls.shape
+    # only plot walls
     for (i, j) in zip(*np.where(walls)):
-        x = np.array([j, j+1]) / float(width)
-        y0 = np.array([i, i]) / float(height)
-        y1 = np.array([i+1, i+1]) / float(height)
-        plt.fill_between(x, y0, y1, color='grey')
-    plt.xlim([0, 1])
-    plt.ylim([0, 1])
-    plt.xticks([])
-    plt.yticks([])
+        x = np.array([i, i+1]) / float(height)
+        y0 = np.array([j, j]) / float(width)
+        y1 = np.array([j+1, j+1]) / float(width)
+        ax.fill_between(x, y0, y1, color='grey')
+    
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    return ax
 
 
 def set_env_difficulty(eval_env, difficulty):

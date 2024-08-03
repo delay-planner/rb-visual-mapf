@@ -10,8 +10,8 @@ from copy import deepcopy
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
-                                     train_eval)
+#from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
+#                                     train_eval)
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
@@ -30,6 +30,10 @@ def setup_args_parser(parser:argparse.ArgumentParser):
         type=str,
         default="configs/config_SafePointEnv.yaml",
         help='training configuration')
+    parser.add_argument("--buffer_size",
+        type=int,
+        default=-1,
+        help="buffer size")
     parser.add_argument('--figsavedir',
         type=str,
         help='directory to save figures')
@@ -59,6 +63,8 @@ def setup_env(args:argparse.Namespace):
     # override cfs from terminal
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
+    if args.buffer_size > 0:
+        cfg.replay_buffer.max_size = args.buffer_size
     
     cfg.pprint()
 
@@ -163,7 +169,7 @@ if __name__ == "__main__":
         )
 
     # rb_vec is normalized between 0 and 1
-    rb_vec = Collector.sample_initial_states(eval_env, replay_buffer.max_size)
+    rb_vec = Collector.sample_initial_unconstrained_states(eval_env, replay_buffer.max_size)
 
     from pud.visualize import visualize_buffer
     visualize_buffer(rb_vec, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())

@@ -72,17 +72,19 @@ def visualize_trajectory(
         plt.show()
 
 
-def visualize_buffer(rb_vec, eval_env, outpath: str = "", habitat=False):
+def visualize_buffer(rb_vec, eval_env, outpath: str = "", habitat=False, ax:plt.axes=None, fig:plt.figure=None):
     if habitat:
-        fig, ax = plt.subplots()
+        if ax is None:
+            fig, ax = plt.subplots()
         height, width = eval_env.walls.shape
         ax = plot_wall(eval_env.walls, ax)
         scaled_rb_vec = rb_vec / np.array([height, width])
-        ax.scatter(*scaled_rb_vec.T)
+        ax.scatter(scaled_rb_vec[:,0], scaled_rb_vec[:,1])
     else:
-        plt.figure(figsize=(6, 6))
-        plt.scatter(*rb_vec.T)
-        plot_walls(eval_env.walls)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(rb_vec[:,0], rb_vec[:,1])
+        plot_walls(eval_env.walls, ax=ax)
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
     else:
@@ -153,7 +155,7 @@ def visualize_problems(
             goals=goals,
             )
 
-def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False):
+def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False, ax:plt.axes=None, fig:plt.figure=None):
     if habitat:
         fig, ax = plt.subplots()
         height, width = eval_env.walls.shape
@@ -161,9 +163,10 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpa
         scaled_rb_vec = rb_vec / np.array([height, width])
         ax.scatter(*scaled_rb_vec.T)
     else:
-        plt.figure(figsize=(6, 6))
-        plot_walls(eval_env.walls)
-        plt.scatter(*rb_vec.T)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 6))
+        plot_walls(eval_env.walls, ax=ax)
+        ax.scatter(*rb_vec.T)
     pdist_combined = np.max(pdist, axis=0)
     for i, s_i in enumerate(rb_vec):
         if habitat:
@@ -175,11 +178,12 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpa
                     s_j = s_j / np.array([height, width])
                     ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c='k', alpha=0.5)
                 else:
-                    plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
+                    ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
     if len(outpath) > 0:
-        plt.savefig(outpath, dpi=300)
+        fig.savefig(outpath, dpi=300)
     else:
         plt.show()
+    return ax
 
 def visualize_cost_graph(
             rb_vec, 
@@ -200,7 +204,7 @@ def visualize_cost_graph(
             eval_env.get_cost_map(), 
             cost_limit=cost_limit, 
             ax=ax)
-    ax.scatter(*rb_vec.T)
+    ax.scatter(rb_vec[:,0], rb_vec[:,1])
     pbar = tqdm(total=len(rb_vec))
     for i, s_i in enumerate(rb_vec):
         for count, j in enumerate(np.argsort(pcost_combined[i])):
@@ -250,29 +254,29 @@ def visualize_combined_graph(
         plt.show()
     plt.close(fig)
 
-def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False):
-    
+def visualize_graph_ensemble(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath="", habitat=False, ax:plt.axes=None, fig:plt.figure=None):
     ensemble_size = pdist.shape[0]
-    plt.figure(figsize=(5 * ensemble_size, 4))
+    if ax is None:
+        fig, ax = plt.subplots(nrows=1, ncols=ensemble_size, figsize=(5 * ensemble_size, 4))
+    
     height, width = eval_env.walls.shape
     if habitat:
         rb_vec = rb_vec / np.array([height, width])
     for col_index in range(ensemble_size):
-        ax = plt.subplot(1, ensemble_size, col_index + 1)
         if habitat:
-            ax = plot_wall(eval_env.walls, ax)
+            ax[col_index] = plot_wall(eval_env.walls, ax=ax[col_index])
         else:
-            plot_walls(eval_env.walls)
-        plt.title("critic %d" % (col_index + 1))
+            ax[col_index] = plot_walls(eval_env.walls, ax=ax[col_index])
+        ax[col_index].set_title("critic %d" % (col_index + 1))
 
-        plt.scatter(*rb_vec.T)
+        ax[col_index].scatter(*rb_vec.T)
         for i, s_i in enumerate(rb_vec):
             for count, j in enumerate(np.argsort(pdist[col_index, i])):
                 if count < edges_to_display and pdist[col_index, i, j] < cutoff:
                     s_j = rb_vec[j]
-                    plt.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
+                    ax[col_index].plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
     if len(outpath) > 0:
-        plt.savefig(outpath, dpi=300)
+        fig.savefig(outpath, dpi=300)
     else:
         plt.show()
 
