@@ -86,6 +86,7 @@ class DRLDDPGLag(UVFDDPG):
         )
         self.lagrange_on = False
         self.device = device
+        self.constraints = dict(min_cost=cost_min, max_cost=cost_max)
 
         # add cost critic
         CostCriticCls = functools.partial(CriticCls, output_dim=cost_N)

@@ -1,22 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from moviepy.editor import ImageSequenceClip
-from matplotlib.animation import FuncAnimation
 
 from pud.collector import Collector
 from pud.utils import set_env_seed, set_global_seed
 from pud.envs.habitat_navigation_env import plot_wall
+from pud.visualize import plot_agent_paths, visualize_path
 from pud.envs.simple_navigation_env import set_env_difficulty
-
-AGENT_COLORS = [
-    ("darkblue", "blue"),
-    ("darkred", "red"),
-    ("darkgreen", "green"),
-    ("darkorange", "orange"),
-    ("darkmagenta", "magenta"),
-    ("darkcyan", "cyan"),
-    ("black", "gray"),
-]
 
 
 def visualize_buffer(rb_vec, eval_env, outpath: str = ""):
@@ -97,66 +87,6 @@ def visualize_habitat_agent(frames, outpath, bs=1, border_color=(1, 0, 0, 0)):
 
     goal_image = Image.fromarray(final_frames[-1])
     goal_image.save(outpath[:-4] + "_goal.png")
-
-
-def visualize_path(paths, eval_env, filename, save_fig=False, waypoints=None):
-    num_of_agents = len(paths)
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax = plot_wall(eval_env.walls, ax)
-
-    ends = []
-    lines = []
-    starts = []
-    waypoint_lines = []
-
-    for agent in range(num_of_agents):
-        (line,) = ax.plot([], [], "o-", lw=2, c=AGENT_COLORS[agent][1], alpha=0.7)
-        (start,) = ax.plot([], [], "x", lw=2, c=AGENT_COLORS[agent][0], alpha=0.7)
-        (end,) = ax.plot([], [], "*", lw=2, c=AGENT_COLORS[agent][0], alpha=0.7)
-        if waypoints is not None:
-            (waypoint_line,) = ax.plot([], [], "s-", lw=2, c=AGENT_COLORS[agent][1], alpha=0.7)
-            waypoint_lines.append(waypoint_line)
-        ends.append(end)
-        lines.append(line)
-        starts.append(start)
-
-    def init():
-        for i, path in enumerate(paths):
-            starts[i].set_data(path[0][0], path[0][1])
-            ends[i].set_data(path[-1][0], path[-1][1])
-        return starts
-
-    def update(frame):
-        for i, path in enumerate(paths):
-            if frame >= len(path):
-                continue
-            x_data = [point[0] for point in path[: frame + 1]]
-            y_data = [point[1] for point in path[: frame + 1]]
-            lines[i].set_data(x_data, y_data)
-            if waypoints is not None:
-                wps_x_data = [point[0] for point in waypoints[i][: frame + 1]]
-                wps_y_data = [point[1] for point in waypoints[i][: frame + 1]]
-                waypoint_lines[i].set_data(wps_x_data, wps_y_data)
-
-        return lines if waypoints is None else lines + waypoint_lines
-
-    frames = max(len(path) for path in paths)
-    animation = FuncAnimation(fig, update, frames=frames, init_func=init, blit=True, repeat=False)
-    if save_fig:
-        animation.save(filename, writer="pillow", fps=1)
-
-
-def plot_agent_paths(a_id, start, goal, obs, title, ax, wps=None):
-
-    ax.plot(obs[:, 0], obs[:, 1], "o-", c=AGENT_COLORS[a_id][1], alpha=0.3)
-    ax.scatter([start[0]], [start[1]], marker="+", c=AGENT_COLORS[a_id][0], s=200, label="Start " + str(a_id))
-    ax.scatter([obs[-1, 0]], [obs[-1, 1]], marker="x", c=AGENT_COLORS[a_id][0], s=200, label="End " + str(a_id))
-    ax.scatter([goal[0]], [goal[1]], marker="*", c=AGENT_COLORS[a_id][0], s=200, label="Goal " + str(a_id))
-    if wps is not None:
-        ax.plot(wps[:, 0], wps[:, 1], "s-", c=AGENT_COLORS[a_id][1], alpha=0.3, label="Waypoint " + str(a_id))
-    ax.set_title(title, fontsize=24)
-    ax.legend(loc="lower left", bbox_to_anchor=(0.0, -1.15), ncol=4, fontsize=16)
-    return ax
 
 
 def visualize_search_path_single_agent(search_policy, eval_env, outpath="", difficulty=0.5):
@@ -300,7 +230,9 @@ def visualize_search_path_multi_agent(search_policy, eval_env, num_agents, outpa
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
         save_path = outpath[:-4] + ".gif"
-        visualize_path(agent_waypoints, eval_env, save_path, save_fig=True)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = plot_wall(eval_env.walls, ax)
+        visualize_path(agent_waypoints, eval_env, save_path, (fig, ax), save_fig=True)
     else:
         plt.show()
 
@@ -347,6 +279,7 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
         observations_visual = [obs[1] for obs in observations]
 
         waypoints_grid = np.array([wp[0] for wp in waypoints]) / normalizing_factor
+        waypoints_grid = waypoints_grid if use_search else None
 
         print(f"Policy: {title}")
         print(f"Start: {start_grid}")
@@ -354,11 +287,7 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
         print(f"Steps: {observations_grid.shape[0] - 1}")
         print("-" * 10)
 
-        if use_search:
-            ax = plot_agent_paths(0, start_grid, goal_grid, observations_grid, title, ax, waypoints_grid)
-        else:
-            # If the agent is used then the waypoints are just the original goal so no need to plot
-            ax = plot_agent_paths(0, start_grid, goal_grid, observations_grid, title, ax)
+        ax = plot_agent_paths(0, start_grid, goal_grid, observations_grid, title, ax, waypoints_grid)
 
         if len(outpath) > 0:
             save_path = outpath[:-4] + "_search.mp4" if use_search else outpath[:-4] + "_no_search.mp4"
@@ -425,37 +354,29 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
             observations_visual = [obs[1] for obs in observations[agent_id]]
 
             waypoints_grid = np.array([wp[0] for wp in waypoints[agent_id]]) / normalizing_factor
+            waypoints_grid = waypoints_grid if use_search else None
 
             print(f"Agent: {agent_id}")
             print(f"Start: {agent_start_grid}")
             if use_search:
+                search_waypoints.append(waypoints_grid)
+                search_observations.append(observations_grid)
                 print(f"Waypoints: {waypoints_grid}")
+            else:
+                no_search_observations.append(observations_grid)
             print(f"Goal: {agent_goal_grid}")
             print(f"Steps: {observations_grid.shape[0] - 1}")
             print("-" * 10)
 
-            if use_search:
-                search_waypoints.append(waypoints_grid)
-                search_observations.append(observations_grid)
-                ax = plot_agent_paths(
-                    agent_id,
-                    agent_start_grid,
-                    agent_goal_grid,
-                    observations_grid,
-                    title,
-                    ax,
-                    waypoints_grid
-                )
-            else:
-                no_search_observations.append(observations_grid)
-                ax = plot_agent_paths(
-                    agent_id,
-                    agent_start_grid,
-                    agent_goal_grid,
-                    observations_grid,
-                    title,
-                    ax
-                )
+            ax = plot_agent_paths(
+                agent_id,
+                agent_start_grid,
+                agent_goal_grid,
+                observations_grid,
+                title,
+                ax,
+                waypoints_grid
+            )
 
             if len(outpath) > 0:
                 if use_search:
@@ -466,10 +387,16 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
 
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
+
         save_path = outpath[:-4] + "_search.gif"
-        visualize_path(search_observations, eval_env, save_path, save_fig=True, waypoints=search_waypoints)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = plot_wall(eval_env.walls, ax)
+        visualize_path(search_observations, eval_env, save_path, (fig, ax), save_fig=True, waypoints=search_waypoints)
+
         save_path = outpath[:-4] + "_no_search.gif"
-        visualize_path(no_search_observations, eval_env, save_path, save_fig=True)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax = plot_wall(eval_env.walls, ax)
+        visualize_path(no_search_observations, eval_env, save_path, (fig, ax), save_fig=True)
     else:
         plt.show()
 
