@@ -4,6 +4,7 @@
 env="CentralObstacle"
 env="LQuarter"
 env="Line"
+env="CenterDot"
 
 #comment="cost_limit=10"
 SLURM_JOB_ID="_${STY}"
@@ -18,11 +19,12 @@ config="configs/config_PointEnv_Queue.yaml"
 config="configs/config_PointEnv_Queue_debug.yaml"
 config="configs/config_PointEnv_Queue_LQuarter.yaml"
 config="configs/config_PointEnv_Queue_Line.yaml"
+config="configs/config_PointEnv_Queue_CenterDot.yaml"
 #config="configs/config_PointEnv_Queue_LQuarter_debug.yaml"
 #config="configs/config_SafePointEnv_debug.yaml"
 
 #device="cpu"
-device="cuda:1"
+device="cuda:0"
 
 cd "${project_root}"
 
@@ -52,7 +54,16 @@ cost_radius=8.0
 illustration_pb_file="pud/envs/safe_pointenv/illustration_set/Line_resize_4_linear_r8.txt"
 action_noise=0.0
 resize_factor=4
-actor_lr=0.00001
+actor_lr=0.0001
+critic_lr=0.0003
+
+
+cost_name="linear"
+cost_radius=3.0
+illustration_pb_file="pud/envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3.txt"
+action_noise=0.0
+resize_factor=3
+actor_lr=0.0001
 critic_lr=0.0003
 
 
