@@ -337,13 +337,23 @@ class ConstrainedCollector(Collector):
                     break
 
     @classmethod
-    def get_grid_trajectory(cls, policy, eval_env):
+    def get_grid_trajectory(cls, policy, eval_env, start=None, goal=None):
         ep_reward_list = []
         ep_waypoint_list = []
         ep_observation_list = []
 
         state, info = eval_env.reset()
+        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
+
+        if start is not None and goal is not None:
+            state["goal"] = goal.copy()
+            state["observation"] = start.copy()
+            if "goalconditioned" in type(eval_env.env).__name__.lower():
+                eval_env.env._goal = goal * denormalize_factor
+            eval_env.unwrapped.state = start * denormalize_factor
+
         ep_goal = state["goal"]
+        ep_start = state["observation"]
         while True:
             ep_observation_list.append(state["observation"])
 
@@ -359,18 +369,20 @@ class ConstrainedCollector(Collector):
                 ep_observation_list.append(info["terminal_observation"]["observation"])
                 break
 
-        return ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
+        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
 
     @classmethod
-    def get_visual_trajectory(cls, policy, eval_env):
+    def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None):
         raise NotImplementedError
 
     @classmethod
-    def get_trajectory(cls, policy, eval_env, habitat=False):
+    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, habitat=False):
         if habitat:
-            return cls.get_visual_trajectory(policy, eval_env)
+            if input_start is not None and input_goal is not None:
+                assert len(input_start) == 2 and len(input_goal) == 2
+            return cls.get_visual_trajectory(policy, eval_env, input_start, input_goal)
         else:
-            return cls.get_grid_trajectory(policy, eval_env)
+            return cls.get_grid_trajectory(policy, eval_env, input_start, input_goal)
 
     @classmethod
     def get_grid_trajectories(
@@ -386,7 +398,7 @@ class ConstrainedCollector(Collector):
         augmented_ep_waypoint_list = [[] for _ in range(num_agents)]
         augmented_ep_observation_list = [[] for _ in range(num_agents)]
 
-        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width])
+        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
 
         state, info = eval_env.reset()
 
@@ -400,8 +412,6 @@ class ConstrainedCollector(Collector):
 
             state["composite_starts"] = starts.copy()
             state["agent_observations"] = starts.copy()
-
-            eval_env.unwrapped.state *= denormalize_factor
         else:
 
             # Use the sampled start and goal for the first agent
@@ -418,15 +428,15 @@ class ConstrainedCollector(Collector):
             # Sample the starts and goals for the other agents
             for _ in range(num_agents - 1):
 
-                agent_state = eval_env.reset()
+                agent_state, info = eval_env.reset()
                 agent_goal = [agent_state["goal"]]
                 agent_start = [agent_state["observation"]]
 
                 # Add the new observations and goals to the state
                 goals.extend(agent_goal.copy())
                 starts.extend(agent_start.copy())
-                state["agent_waypoints"].append(agent_goal.copy())
-                state["agent_observations"].append(agent_start.copy())
+                state["agent_waypoints"].extend(agent_goal.copy())
+                state["agent_observations"].extend(agent_start.copy())
 
             # Immutable objects - Should not change ever!
             state["composite_goals"] = goals.copy()
@@ -442,8 +452,8 @@ class ConstrainedCollector(Collector):
             state["observation"] = state["agent_observations"][0]
 
             if "goalconditioned" in type(eval_env.env).__name__.lower():
-                eval_env.env._goal = goals[0]
-            eval_env.unwrapped.state = state["observation"]
+                eval_env.env._goal = goals[0] * denormalize_factor
+            eval_env.unwrapped.state = state["observation"] * denormalize_factor
 
             # NOTE: state's agent_observations, agent_waypoints and goal are updated
             if isinstance(policy, BasePolicy):
@@ -471,8 +481,8 @@ class ConstrainedCollector(Collector):
                 action = actions[agent_id] if isinstance(policy, BasePolicy) else policy.select_action(state)
 
                 if "goalconditioned" in type(eval_env.env).__name__.lower():
-                    eval_env.env._goal = goals[agent_id]
-                eval_env.unwrapped.state_grid = state["observation"]
+                    eval_env.env._goal = goals[agent_id] * denormalize_factor
+                eval_env.unwrapped.state = state["observation"] * denormalize_factor
 
                 state, reward, done, info = eval_env.step(np.copy(action), num_agents=num_agents)
 

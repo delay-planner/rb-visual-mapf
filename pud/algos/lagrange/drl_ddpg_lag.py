@@ -269,6 +269,8 @@ class DRLDDPGLag(UVFDDPG):
                 expected_q_values = torch.mean(expected_q_values, dim=0)
             elif aggregate == 'min':
                 expected_q_values, _ = torch.min(expected_q_values, dim=0)
+            elif aggregate == 'max':
+                expected_q_values, _ = torch.max(expected_q_values, dim=0)
             else:
                 raise ValueError
         return expected_q_values

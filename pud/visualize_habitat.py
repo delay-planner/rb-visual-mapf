@@ -124,7 +124,7 @@ def visualize_search_path_single_agent(search_policy, eval_env, outpath="", diff
     print(f"Steps: {waypoints_grid.shape}")
     print("-" * 10)
 
-    ax = plot_agent_paths(0, start_grid, goal_grid, waypoints_grid, "Search", ax)
+    ax = plot_agent_paths(0, start_grid, goal_grid, np.array([start_grid, *waypoints_grid, goal_grid]), "Search", ax)
     if len(outpath) > 0:
         plt.savefig(outpath, dpi=300)
         visualize_habitat_agent(
@@ -218,9 +218,10 @@ def visualize_search_path_multi_agent(search_policy, eval_env, num_agents, outpa
             agent_id,
             agent_start_grid,
             agent_goal_grid,
-            waypoints_grid,
+            np.array([agent_start_grid, *waypoints_grid, agent_goal_grid]),
             "Search",
-            ax
+            ax,
+            legend_position=(0.0, -1.15)
         )
 
         if len(outpath) > 0:
@@ -287,7 +288,17 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
         print(f"Steps: {observations_grid.shape[0] - 1}")
         print("-" * 10)
 
-        ax = plot_agent_paths(0, start_grid, goal_grid, observations_grid, title, ax, waypoints_grid)
+        ax = plot_agent_paths(
+            0,
+            start_grid,
+            goal_grid,
+            observations_grid,
+            title,
+            ax,
+            waypoints_grid,
+            legend_position=(0.0, -1.15),
+            use_legend=not use_search
+        )
 
         if len(outpath) > 0:
             save_path = outpath[:-4] + "_search.mp4" if use_search else outpath[:-4] + "_no_search.mp4"
@@ -375,7 +386,9 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
                 observations_grid,
                 title,
                 ax,
-                waypoints_grid
+                waypoints_grid,
+                legend_position=(0.0, -1.15),
+                use_legend=not use_search
             )
 
             if len(outpath) > 0:

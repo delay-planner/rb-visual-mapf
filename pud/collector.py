@@ -81,13 +81,24 @@ class Collector:
                     break
 
     @classmethod
-    def get_grid_trajectory(cls, policy, eval_env):
+    def get_grid_trajectory(cls, policy, eval_env, start=None, goal=None):
         ep_reward_list = []
         ep_waypoint_list = []
         ep_observation_list = []
 
         state = eval_env.reset()
+
+        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
+
+        if start is not None and goal is not None:
+            state["goal"] = goal.copy()
+            state["observation"] = start.copy()
+            if "goalconditioned" in type(eval_env.env).__name__.lower():
+                eval_env.env._goal = goal * denormalize_factor
+            eval_env.unwrapped.state = state["observation"] * denormalize_factor
+
         ep_goal = state["goal"]
+        ep_start = state["observation"]
         while True:
             ep_observation_list.append(state["observation"])
             action = policy.select_action(state)  # NOTE: state['goal'] may be modified
@@ -98,16 +109,27 @@ class Collector:
                 ep_observation_list.append(info["terminal_observation"]["observation"])
                 break
 
-        return ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
+        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
 
     @classmethod
-    def get_visual_trajectory(cls, policy, eval_env):
+    def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None):
         ep_reward_list = []
         ep_waypoint_list = []
         ep_observation_list = []
 
         state = eval_env.reset()
+
+        if start is not None and goal is not None:
+            state["goal"] = goal[1].copy()
+            state["grid"]["goal"] = goal[0].copy()
+            state["observation"] = start[1].copy()
+            state["grid"]["observation"] = start[0].copy()
+            if "goalconditioned" in type(eval_env.env).__name__.lower():
+                eval_env.env._goal = goal[0]
+            eval_env.unwrapped.state_grid = state["grid"]["observation"]
+
         ep_goal = (state["grid"]["goal"], state["goal"])
+        ep_start = (state["grid"]["observation"], state["observation"])
         while True:
             ep_observation = (state["grid"]["observation"], state["observation"])
             ep_observation_list.append(ep_observation)
@@ -121,11 +143,15 @@ class Collector:
             ep_reward_list.append(reward)
 
             if done:
-                ep_observation = (info["terminal_observation"]["grid"]["observation"], info["terminal_observation"]["observation"])
+                ep_observation = (
+                    info["terminal_observation"]["grid"]["observation"],
+                    info["terminal_observation"]["observation"]
+                )
                 ep_observation_list.append(ep_observation)
                 break
 
         return (
+            ep_start,
             ep_goal,
             ep_observation_list,
             ep_waypoint_list,
@@ -133,11 +159,13 @@ class Collector:
         )
 
     @classmethod
-    def get_trajectory(cls, policy, eval_env, habitat=False):
+    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, habitat=False):
         if habitat:
-            return cls.get_visual_trajectory(policy, eval_env)
+            if input_start is not None and input_goal is not None:
+                assert len(input_start) == 2 and len(input_goal[0]) == 2
+            return cls.get_visual_trajectory(policy, eval_env, input_start, input_goal)
         else:
-            return cls.get_grid_trajectory(policy, eval_env)
+            return cls.get_grid_trajectory(policy, eval_env, input_start, input_goal)
 
     @classmethod
     def get_grid_trajectories(
@@ -154,7 +182,7 @@ class Collector:
         augmented_ep_waypoint_list = [[] for _ in range(num_agents)]
         augmented_ep_observation_list = [[] for _ in range(num_agents)]
 
-        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width])
+        denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
 
         state = eval_env.reset()
 
@@ -169,7 +197,6 @@ class Collector:
             state["composite_starts"] = starts.copy()
             state["agent_observations"] = starts.copy()
 
-            eval_env.unwrapped.state *= denormalize_factor
         else:
             # Use the sampled start and goal for the first agent
             agent_goal = [state["goal"]]
@@ -209,8 +236,8 @@ class Collector:
             state["observation"] = state["agent_observations"][0]
 
             if "goalconditioned" in type(eval_env.env).__name__.lower():
-                eval_env.env._goal = goals[0]
-            eval_env.unwrapped.state = state["observation"]
+                eval_env.env._goal = goals[0] * denormalize_factor
+            eval_env.unwrapped.state = state["observation"] * denormalize_factor
 
             # NOTE: state's agent_observations, agent_waypoints and goal are updated
             if isinstance(policy, BasePolicy):
@@ -236,8 +263,8 @@ class Collector:
                 state["observation"] = state_copy["agent_observations"][agent_id]
 
                 if "goalconditioned" in type(eval_env.env).__name__.lower():
-                    eval_env.env._goal = goals[0]
-                eval_env.unwrapped.state = state["observation"]
+                    eval_env.env._goal = goals[0] * denormalize_factor
+                eval_env.unwrapped.state = state["observation"] * denormalize_factor
 
                 action = actions[agent_id] if isinstance(policy, BasePolicy) else policy.select_action(state)
 

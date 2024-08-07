@@ -12,7 +12,7 @@ from pud.utils import set_env_seed, set_global_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_collector import eval_agent_from_Q
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.envs.safe_pointenv.pb_sampler import sample_cost_pbs_by_agent
+from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent, sample_pbs_by_agent
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
@@ -124,6 +124,7 @@ def setup_env(args):
 
     ckpt_file = args.ckpt
     agent.load_state_dict(torch.load(ckpt_file))
+    agent.to(torch.device(args.device))
     agent.eval()
 
     replay_buffer = ConstrainedReplayBuffer(obs_dim, goal_dim, action_dim, **cfg.replay_buffer)
@@ -165,7 +166,7 @@ if __name__ == "__main__":
     from pud.visualize import visualize_trajectory
     # We'll give the agent lots of time to try to find the goal.
     eval_env.duration = 100  # type: ignore
-    visualize_trajectory(agent, eval_env, difficulty=0.5)
+    visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=figdir.joinpath("vis_traj.jpg").as_posix())
 
     # We now will implement the search policy, which automatically finds these waypoints via graph search.
     # The first step is to fill the replay buffer with random data.
@@ -193,9 +194,9 @@ if __name__ == "__main__":
         pcost=pcost,
         rb_vec=rb_vec,
         eval_env=eval_env,
+        edges_to_display=10,
         cost_limit=cfg.agent.cost_limit,  # type: ignore
         outpath=figdir.joinpath("vis_cost_graph.jpg").as_posix(),
-        edges_to_display=10,
     )
 
     from pud.visualize import visualize_combined_graph
@@ -248,11 +249,21 @@ if __name__ == "__main__":
     from pud.visualize import visualize_graph
     visualize_graph(rb_vec, eval_env, pdist, outpath=figdir.joinpath("vis_graph.jpg").as_posix())
 
-    # We can also visualize the predictions from each critic.
-    # Note that while each critic may make incorrect decisions
-    # for distant states, their predictions in aggregate are correct.
+    # # We can also visualize the predictions from each critic.
+    # # Note that while each critic may make incorrect decisions
+    # # for distant states, their predictions in aggregate are correct.
     from pud.visualize import visualize_graph_ensemble
     visualize_graph_ensemble(rb_vec, eval_env, pdist, outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix())
+
+    from pud.visualize import visualize_combined_graph_ensemble
+    visualize_combined_graph_ensemble(
+        rb_vec,
+        eval_env,
+        pdist,
+        pcost,
+        cfg.agent.cost_limit,  # type: ignore
+        outpath=figdir.joinpath("vis_combined_graph_ensemble.jpg").as_posix()
+    )
 
     # Rollout trained policy and visualize trajectory
     eval_env.set_prob_constraint(1.0)  # type: ignore
@@ -352,8 +363,27 @@ if __name__ == "__main__":
     fig.savefig(figdir.joinpath("test_pbs_3.jpg"), dpi=300)
     plt.close(fig)
 
+    if len(args.illustration_pb_file) > 0:
+        problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
+    else:
+        problems = sample_pbs_by_agent(
+            env=eval_env,  # type: ignore
+            agent=agent,  # type: ignore
+            num_states=100,
+            target_val=10,
+            K=10,
+            min_dist=0,
+            max_dist=eval_env.max_goal_dist,  # type: ignore
+            use_uncertainty=False,
+            ensemble_agg="mean",
+        )
+        assert len(problems) > 0
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    eval_env.set_use_q(True)  # type: ignore
+
     from pud.policies import SearchPolicy, ConstrainedSearchPolicy
-    search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True)
+    search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
     # We'll give the agent lots of time to try to find the goal.
     eval_env.duration = 300   # type: ignore
 
@@ -367,6 +397,8 @@ if __name__ == "__main__":
     # leading to the goal. As before, the slider allows you to change the
     # distance to the goal. Note that only the search policy is able to reach distant goals.
 
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
     from pud.visualize import visualize_compare_search
     visualize_compare_search(
         agent,
@@ -376,14 +408,25 @@ if __name__ == "__main__":
         outpath=figdir.joinpath("vis_compare.jpg").as_posix()
     )
 
-    constrained_search_policy = ConstrainedSearchPolicy(agent, rb_vec, pdist=pdist, pcost=pcost, open_loop=True)
-    
+    constrained_search_policy = ConstrainedSearchPolicy(
+        agent,
+        rb_vec,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        no_waypoint_hopping=True
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
     visualize_search_path(
         constrained_search_policy,
         eval_env,
         difficulty=0.9,
         outpath=figdir.joinpath("vis_constrained_search.jpg").as_posix()
     )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     visualize_compare_search(
         agent,
@@ -396,7 +439,16 @@ if __name__ == "__main__":
     from pud.policies import MultiAgentSearchPolicy, ConstrainedMultiAgentSearchPolicy
 
     num_agents = 4
-    ma_search_policy = MultiAgentSearchPolicy(agent, rb_vec, num_agents, pdist=pdist, open_loop=True)
+    ma_search_policy = MultiAgentSearchPolicy(
+        agent,
+        rb_vec,
+        num_agents,
+        pdist=pdist,
+        open_loop=True,
+        no_waypoint_hopping=True
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     visualize_search_path(
         ma_search_policy,
@@ -405,6 +457,8 @@ if __name__ == "__main__":
         difficulty=0.9,
         outpath=figdir.joinpath("vis_multi_agent_search.jpg").as_posix()
     )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     visualize_compare_search(
         agent,
@@ -416,7 +470,17 @@ if __name__ == "__main__":
     )
 
     constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
-        agent, rb_vec, num_agents, pdist=pdist, pcost=pcost, open_loop=True)
+        agent,
+        rb_vec,
+        num_agents,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        no_waypoint_hopping=True,
+        max_cost_limit=2.0
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     visualize_search_path(
         constrained_ma_search_policy,
@@ -425,6 +489,8 @@ if __name__ == "__main__":
         difficulty=0.9,
         outpath=figdir.joinpath("vis_constrained_multi_agent_search.jpg").as_posix()
     )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     visualize_compare_search(
         agent,
