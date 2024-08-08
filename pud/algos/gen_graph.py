@@ -367,15 +367,15 @@ if __name__ == "__main__":
         problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
     else:
         problems = sample_pbs_by_agent(
-            env=eval_env,  # type: ignore
-            agent=agent,  # type: ignore
-            num_states=100,
-            target_val=10,
             K=10,
             min_dist=0,
-            max_dist=eval_env.max_goal_dist,  # type: ignore
-            use_uncertainty=False,
+            agent=agent,  # type: ignore
+            env=eval_env,  # type: ignore
+            target_val=10,
+            num_states=100,
             ensemble_agg="mean",
+            use_uncertainty=False,
+            max_dist=eval_env.max_goal_dist,  # type: ignore
         )
         assert len(problems) > 0
 
@@ -398,7 +398,6 @@ if __name__ == "__main__":
     # distance to the goal. Note that only the search policy is able to reach distant goals.
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     from pud.visualize import visualize_compare_search
     visualize_compare_search(
         agent,
@@ -414,11 +413,11 @@ if __name__ == "__main__":
         pdist=pdist,
         pcost=pcost,
         open_loop=True,
-        no_waypoint_hopping=True
+        no_waypoint_hopping=True,
+        max_cost_limit=cfg.agent.cost_limit,  # type: ignore
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_search_path(
         constrained_search_policy,
         eval_env,
@@ -427,7 +426,6 @@ if __name__ == "__main__":
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_compare_search(
         agent,
         constrained_search_policy,
@@ -437,7 +435,6 @@ if __name__ == "__main__":
     )
 
     from pud.policies import MultiAgentSearchPolicy, ConstrainedMultiAgentSearchPolicy
-
     num_agents = 4
     ma_search_policy = MultiAgentSearchPolicy(
         agent,
@@ -449,7 +446,6 @@ if __name__ == "__main__":
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_search_path(
         ma_search_policy,
         eval_env,
@@ -459,7 +455,6 @@ if __name__ == "__main__":
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_compare_search(
         agent,
         ma_search_policy,
@@ -477,11 +472,10 @@ if __name__ == "__main__":
         pcost=pcost,
         open_loop=True,
         no_waypoint_hopping=True,
-        max_cost_limit=2.0
+        max_cost_limit=cfg.agent.cost_limit,  # type: ignore
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_search_path(
         constrained_ma_search_policy,
         eval_env,
@@ -491,7 +485,6 @@ if __name__ == "__main__":
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
     visualize_compare_search(
         agent,
         constrained_ma_search_policy,

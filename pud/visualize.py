@@ -59,21 +59,21 @@ def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
         set_env_difficulty(eval_env, difficulty)
 
     plt.figure(figsize=(8, 4))
-    for col_index in range(2):
+    for trajectory in range(2):
 
-        ax = plt.subplot(1, 2, col_index + 1)
+        ax = plt.subplot(1, 2, trajectory + 1)
         ax = wall_plotting_fn(eval_env, ax, constrained)
 
         collector_cls = ConstrainedCollector if constrained else Collector
-        start, goal, observations_list, _, _ = collector_cls.get_trajectory(agent, eval_env)
+        start, goal, observations, _, _ = collector_cls.get_trajectory(agent, eval_env)
 
-        obs_vec = np.array(observations_list)
-        print(f"Trajectory {col_index}")
+        obs_vec = np.array(observations)
+        print(f"Trajectory {trajectory}")
         print(f"Start: {start}")
         print(f"Goal: {goal}")
         print(f"Steps: {obs_vec.shape[0]}")
 
-        ax = plot_agent_paths(0, obs_vec[0], goal, obs_vec, "Trajectory " + str(col_index + 1), ax)
+        ax = plot_agent_paths(0, start, goal, obs_vec, "Trajectory " + str(trajectory + 1), ax)
 
     plt.legend(loc="lower center", bbox_to_anchor=(-0.1, -0.2), ncol=4, fontsize=16)
     plt.savefig(outpath, dpi=300) if len(outpath) > 0 else plt.show()
@@ -83,7 +83,7 @@ def visualize_buffer(rb_vec, eval_env, outpath=""):
     _, ax = plt.subplots(figsize=(6, 6))
     ax = plot_walls(eval_env.walls, ax=ax)
     ax.scatter(rb_vec[:, 0], rb_vec[:, 1])
-    plt.title(f"Replay Buffer (Size: {rb_vec.shape[0]})")
+    plt.title(f"Replay Buffer (Size: {rb_vec.shape[0]})", fontsize=24)
     plt.savefig(outpath, dpi=300) if len(outpath) > 0 else plt.show()
 
 
@@ -148,7 +148,7 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpa
                 s_j = rb_vec[j]
                 ax.plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="k", alpha=0.5)
 
-    plt.title("Graph")
+    plt.title("Graph", fontsize=24)
     plt.savefig(outpath, dpi=300) if len(outpath) > 0 else plt.show()
 
 
@@ -184,7 +184,7 @@ def visualize_combined_graph(rb_vec, eval_env, pdist, pcost, cost_limit, cutoff=
 
     _, ax = plt.subplots()
     ax.scatter(*rb_vec.T)
-    plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
+    ax = plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
 
     pbar = tqdm(total=len(rb_vec))
     pdist_combined = np.max(pdist, axis=0)
@@ -251,7 +251,7 @@ def visualize_combined_graph_ensemble(
         outpath=""):
 
     ensemble_size = pdist.shape[0]
-    _, ax = plt.subplots(nrows=1, ncols=ensemble_size, figsize=(5 * ensemble_size, 6))
+    _, ax = plt.subplots(nrows=1, ncols=ensemble_size, figsize=(5 * ensemble_size, 5))
 
     for col_index in range(ensemble_size):
         ax[col_index] = plot_safe_walls(
@@ -358,7 +358,7 @@ def visualize_search_path_single_agent(search_policy, eval_env, difficulty=0.5, 
         waypoints = search_policy.get_waypoints()
     else:
         collector_cls = ConstrainedCollector if constrained else Collector
-        start, goal, observations, waypoints, _ = collector_cls.get_trajectory(search_policy, eval_env)
+        start, goal, _, waypoints, _ = collector_cls.get_trajectory(search_policy, eval_env)
 
     _, ax = plt.subplots(figsize=(6, 6))
     ax = wall_plotting_fn(eval_env, ax, constrained)
@@ -423,7 +423,7 @@ def visualize_search_path_multi_agent(search_policy, eval_env, num_agents, diffi
         waypoints = search_policy.get_augmented_waypoints()
     else:
         collector_cls = ConstrainedCollector if constrained else Collector
-        starts, goals, observations, waypoints, _ = collector_cls.get_trajectories(search_policy, eval_env, num_agents)
+        starts, goals, _, waypoints, _ = collector_cls.get_trajectories(search_policy, eval_env, num_agents)
 
     _, ax = plt.subplots(figsize=(8, 9))
     ax = wall_plotting_fn(eval_env, ax, constrained)
@@ -483,7 +483,7 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, diffic
     else:
         set_env_difficulty(eval_env, difficulty)
 
-    plt.figure(figsize=(12, 7))
+    plt.figure(figsize=(12, 6))
 
     for col_index in range(2):
 
@@ -610,7 +610,6 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
 
 
 def visualize_compare_search(agent, search_policy, eval_env, difficulty=0.5, seed=0, outpath="", num_agents=None):
-
     if num_agents is None:
         visualize_compare_search_single_agent(agent, search_policy, eval_env, difficulty, seed, outpath)
     else:

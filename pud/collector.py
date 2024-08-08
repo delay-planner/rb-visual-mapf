@@ -471,7 +471,7 @@ class Collector:
         num_agents,
         input_starts=None,
         input_goals=None,
-        threshold: float = 0.05,
+        threshold=0.05,
         habitat=False,
     ):
         if habitat:
