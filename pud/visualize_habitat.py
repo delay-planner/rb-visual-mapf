@@ -222,7 +222,7 @@ def visualize_search_path_single_agent(search_policy, eval_env, outpath="", diff
     print(f"Start: {start_grid}")
     print(f"Waypoints: {waypoints_grid}")
     print(f"Goal: {goal_grid}")
-    print(f"Steps: {waypoints_grid[0].shape - 1}")
+    print(f"Steps: {waypoints_grid.shape[0] - 1}")
     print("-" * 10)
 
     ax = plot_agent_paths(
