@@ -86,6 +86,7 @@ class DRLDDPGLag(UVFDDPG):
         )
         self.lagrange_on = False
         self.device = device
+        self.constraints = dict(min_cost=cost_min, max_cost=cost_max)
 
         # add cost critic
         CostCriticCls = functools.partial(CriticCls, output_dim=cost_N)
@@ -268,6 +269,8 @@ class DRLDDPGLag(UVFDDPG):
                 expected_q_values = torch.mean(expected_q_values, dim=0)
             elif aggregate == 'min':
                 expected_q_values, _ = torch.min(expected_q_values, dim=0)
+            elif aggregate == 'max':
+                expected_q_values, _ = torch.max(expected_q_values, dim=0)
             else:
                 raise ValueError
         return expected_q_values

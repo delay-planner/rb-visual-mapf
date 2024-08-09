@@ -11,6 +11,7 @@ from pud.vision_agent import VisionUVFDDPG
 from pud.policies import VectorGaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.algos.visual_buffer import VisualReplayBuffer
+from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_pbs_by_agent
 from pud.envs.safe_habitatenv.unit_tests.train_uvddpg_vec_habitat import setup_logger
 from pud.envs.habitat_navigation_env import (
     GoalConditionedHabitatPointWrapper,
@@ -23,38 +24,41 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
 
 
 def setup_args_parser(parser):
+    parser.add_argument("--scene", type=str, default="", help="Override scene")
+    parser.add_argument("--cost_N", type=int, default=0, help="Override if > 0")
+    parser.add_argument("--pbar", action="store_true", help="Show progress bar")
+    parser.add_argument("--resume", type=str, default="", help="Resume training")
+    parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
+    parser.add_argument("--figsavedir", type=str, help="Directory to save figures")
+    parser.add_argument("--cost_max", type=float, default=-1, help="Override if > 0")
+    parser.add_argument("--cost_name", type=str, default="", help="Override cost type")
+    parser.add_argument("--cost_radius", type=float, default=-1, help="Override cost type")
+    parser.add_argument("--cost_limit", type=float, default=-1, help="Override cost limit")
+    parser.add_argument("--lambda_lr", type=float, default=-1, help="Override lagrange lr")
+    parser.add_argument("--eval_interval", type=int, default=-1, help="Evaluation interval")
+    parser.add_argument("--actor_lr", type=float, default=-1, help="Learning rate for actor")
+    parser.add_argument("--critic_lr", type=float, default=-1, help="Learning rate for critic")
+    parser.add_argument("--visual", action="store_true", help="Generate and save visual trajs")
+    parser.add_argument("--embedding_size", type=int, default=-1, help="Size of the embeddings")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose printing/logging")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run on. cpu | cuda")
+    parser.add_argument("--apsp_path", type=str, default="", help="Supply pre-computed apsp path")
+    parser.add_argument("--num_iterations", type=int, default=-1, help="Override num of iterations")
+    parser.add_argument("--num_envs", type=int, default=1, help="Number of envs for batch inference")
+    parser.add_argument("--replay_buffer_size", type=int, default=-1, help="Maximum replay buffer size")
+    parser.add_argument("--encoder", type=str, default="VisualEncoder", help="VisualRGBEncoder | VisualEncoder")
+    parser.add_argument("--ckpt", type=str, default="", help="If non-empty, load the checkpoint into agent model")
     parser.add_argument(
         "--cfg",
         type=str,
         default="configs/config_HabitatReplicaCAD.yaml",
         help="Training configuration",
     )
-    parser.add_argument("--cost_name", type=str, default="", help="Override cost type")
-    parser.add_argument(
-        "--cost_radius", type=float, default=-1, help="Override cost type"
-    )
-    parser.add_argument("--cost_max", type=float, default=-1, help="Override if > 0")
-    parser.add_argument("--cost_N", type=int, default=0, help="Override if > 0")
-    parser.add_argument(
-        "--cost_limit", type=float, default=-1, help="Override cost limit"
-    )
-    parser.add_argument(
-        "--num_envs", type=int, default=1, help="Number of envs for batch inference"
-    )
-    parser.add_argument(
-        "--embedding_size", type=int, default=-1, help="Size of the embeddings"
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        default="",
-        help="If non-empty, load the checkpoint into agent model",
-    )
     parser.add_argument(
         "--i_start",
         type=int,
         default=1,
-        help="Override the start iteration index, for resume training",
+        help="Override the start iteration index, for resume training"
     )
     parser.add_argument(
         "--collect_steps",
@@ -63,51 +67,10 @@ def setup_args_parser(parser):
         help="Override the number of steps per agent update",
     )
     parser.add_argument(
-        "--num_iterations", type=int, default=-1, help="Override num of iterations"
-    )
-    parser.add_argument(
-        "--eval_interval", type=int, default=-1, help="Evaluation interval"
-    )
-    parser.add_argument("--scene", type=str, default="", help="Override scene")
-    parser.add_argument(
-        "--actor_lr", type=float, default=-1, help="Learning rate for actor"
-    )
-    parser.add_argument(
-        "--critic_lr", type=float, default=-1, help="Learning rate for critic"
-    )
-    parser.add_argument(
-        "--lambda_lr", type=float, default=-1, help="Override lagrange lr"
-    )
-    parser.add_argument(
-        "--replay_buffer_size", type=int, default=-1, help="Maximum replay buffer size"
-    )
-    parser.add_argument(
-        "--apsp_path", type=str, default="", help="Supply pre-computed apsp path"
-    )
-    parser.add_argument(
-        "--encoder",
-        type=str,
-        default="VisualEncoder",
-        help="VisualRGBEncoder | VisualEncoder",
-    )
-    parser.add_argument(
         "--illustration_pb_file",
         type=str,
         help="Problems that serve as illustration and evaluation set",
     )
-    parser.add_argument("--resume", type=str, default="", help="Resume training")
-    parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
-    parser.add_argument(
-        "--device", type=str, default="cpu", help="Device to run on. cpu | cuda"
-    )
-    parser.add_argument("--pbar", action="store_true", help="Show progress bar")
-    parser.add_argument(
-        "--visual", action="store_true", help="Generate and save visual trajs"
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose printing/logging"
-    )
-    parser.add_argument("--figsavedir", type=str, help="Directory to save figures")
     return parser
 
 
@@ -281,8 +244,15 @@ if __name__ == "__main__":
     agent = setup["agent"]
     policy = setup["policy"]
     eval_env = setup["eval_env"]
-    figsavedir = setup["figsavedir"]
+    figdir = setup["figsavedir"]
     replay_buffer = setup["replay_buffer"]
+
+    assert isinstance(figdir, Path)
+
+    from pud.visualize_habitat import visualize_trajectory
+    # We'll give the agent lots of time to try to find the goal.
+    eval_env.duration = 100  # type: ignore
+    visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=figdir.joinpath("vis_traj.jpg").as_posix())
 
     eval_env.set_sample_goal_args(  # type: ignore
         prob_constraint=0.0,
@@ -293,65 +263,70 @@ if __name__ == "__main__":
     rb_vec_grid, rb_vec_visual = sample_initial_states(eval_env, replay_buffer.max_size)  # type: ignore
 
     from pud.visualize_habitat import visualize_buffer
-
-    visualize_buffer(
-        rb_vec_grid, eval_env, outpath=figsavedir.joinpath("vis_buffer.jpg").as_posix()  # type: ignore
-    )
+    visualize_buffer(rb_vec_grid, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())
 
     pdist = agent.get_pairwise_dist(rb_vec_visual, aggregate=None)  # type: ignore
 
     from pud.visualize import visualize_pairwise_dists
-
-    visualize_pairwise_dists(pdist, outpath=figsavedir.joinpath("vis_pdist.jpg").as_posix())  # type: ignore
+    visualize_pairwise_dists(pdist, outpath=figdir.joinpath("vis_pdist.jpg").as_posix())  # type: ignore
 
     from pud.visualize_habitat import visualize_graph
-
-    visualize_graph(
-        rb_vec_grid,
-        eval_env,
-        pdist,
-        outpath=figsavedir.joinpath("vis_graph.jpg").as_posix(),  # type: ignore
-    )
+    visualize_graph(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph.jpg").as_posix())
 
     from pud.visualize_habitat import visualize_graph_ensemble
+    visualize_graph_ensemble(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix())
 
-    visualize_graph_ensemble(
-        rb_vec_grid,
-        eval_env,
-        pdist,
-        outpath=figsavedir.joinpath("vis_graph_ensemble.jpg").as_posix(),  # type: ignore
-    )
+    if "safe" in type(eval_env.env).__name__.lower():  # type: ignore
+        eval_env.set_prob_constraint(1.0)  # type: ignore
 
-    from pud.policies import VisualSearchPolicy, VisualMultiAgentSearchPolicy
-    eval_env.duration = 300  # type: ignore
+    queue_env = False
+    if "queue" in type(eval_env.env).__name__.lower():  # type: ignore
+        queue_env = True
 
+        if len(args.illustration_pb_file) > 0:
+            problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)   # type: ignore
+        else:
+            problems = sample_pbs_by_agent(
+                K=10,
+                min_dist=0,
+                agent=agent,  # type: ignore
+                env=eval_env,  # type: ignore
+                target_val=10,
+                num_states=100,
+                ensemble_agg="mean",
+                use_uncertainty=False,
+                max_dist=eval_env.max_goal_dist,  # type: ignore
+            )
+            assert len(problems) > 0
+
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+        eval_env.set_use_q(True)  # type: ignore
+
+    from pud.policies import VisualSearchPolicy
     search_policy = VisualSearchPolicy(
         agent,
         (rb_vec_grid, rb_vec_visual),
         pdist=pdist,
         open_loop=True,
         max_search_steps=3,
+        no_waypoint_hopping=True,
     )
+    eval_env.duration = 300  # type: ignore
 
     from pud.visualize_habitat import visualize_search_path
+    visualize_search_path(search_policy, eval_env, difficulty=0.9, outpath=figdir.joinpath("vis_search.jpg").as_posix())
 
-    visualize_search_path(
-        search_policy,
-        eval_env,
-        difficulty=0.9,
-        outpath=figsavedir.joinpath("vis_search.jpg").as_posix(),  # type: ignore
-    )
-
+    eval_env.set_pbs(pb_list=problems.copy()) if queue_env else None  # type: ignore
     from pud.visualize_habitat import visualize_compare_search
-
     visualize_compare_search(
         agent,
         search_policy,
         eval_env,
         difficulty=0.9,
-        outpath=figsavedir.joinpath("vis_compare.jpg").as_posix(),  # type: ignore
+        outpath=figdir.joinpath("vis_compare.jpg").as_posix(),  # type: ignore
     )
 
+    from pud.policies import VisualMultiAgentSearchPolicy
     num_agents = 4
     ma_search_policy = VisualMultiAgentSearchPolicy(
         agent,
@@ -360,21 +335,24 @@ if __name__ == "__main__":
         pdist=pdist,
         open_loop=True,
         max_search_steps=3,
+        no_waypoint_hopping=True,
     )
 
+    eval_env.set_pbs(pb_list=problems.copy()) if queue_env else None  # type: ignore
     visualize_search_path(
         ma_search_policy,
         eval_env,
-        difficulty=0.9,
         num_agents=4,
-        outpath=figsavedir.joinpath("vis_multi_agent_search.jpg").as_posix(),  # type: ignore
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_multi_agent_search.jpg").as_posix()
     )
 
+    eval_env.set_pbs(pb_list=problems.copy()) if queue_env else None  # type: ignore
     visualize_compare_search(
         agent,
         ma_search_policy,
         eval_env,
-        difficulty=0.9,
         num_agents=4,
-        outpath=figsavedir.joinpath("vis_compare_multi_agent.jpg").as_posix(),  # type: ignore
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_compare_multi_agent.jpg").as_posix(),  # type: ignore
     )

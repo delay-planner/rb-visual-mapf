@@ -6,8 +6,9 @@ from pud.algos.cbs import CBSSolver
 
 
 class BasePolicy:
-    def __init__(self, agent):
+    def __init__(self, agent, **kwargs):
         self.agent = agent
+        self.constraints = None if not hasattr(agent, "constraints") else agent.constraints
 
     def select_action(self, state):
         return self.agent.select_action(state)
@@ -85,6 +86,7 @@ class SearchPolicy(BasePolicy):
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
+        **kwargs,
     ):
         """
         Args:
@@ -96,7 +98,7 @@ class SearchPolicy(BasePolicy):
             weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
             no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
         """
-        super().__init__(agent)
+        super().__init__(agent=agent, **kwargs)
         self.rb_vec = rb_vec
         self.pdist = pdist
 
@@ -152,6 +154,8 @@ class SearchPolicy(BasePolicy):
             for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
+                    g.add_node(i, position=s_i)
+                    g.add_node(j, position=s_j)
                     g.add_edge(i, j, weight=length)
         self.g = g
 
@@ -264,7 +268,7 @@ class SearchPolicy(BasePolicy):
 
     def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
         # return dist_to_waypoint < self.max_search_steps
-        return dist_to_waypoint < 2
+        return dist_to_waypoint < 2.0
 
     def select_action(self, state):
         goal = state["goal"]
@@ -325,6 +329,142 @@ class SearchPolicy(BasePolicy):
         return super().select_action(state)
 
 
+class ConstrainedSearchPolicy(SearchPolicy):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        pdist=None,
+        pcost=None,
+        open_loop=False,
+        max_search_steps=7,
+        max_cost_limit=1.0,
+        dist_aggregate="min",
+        cost_aggregate="max",
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+        **kwargs,
+    ):
+        """
+        Args:
+            pcost: a matrix of dimension len(rb_vec) x len(rb_vec) where pcost[i,j] gives the cost of going from
+                   rb_vec[i] to rb_vec[j]
+            max_cost_limit: (int)
+            cost_aggregate: (str) aggregation function to use when computing cost from ensembles
+        """
+        self.pcost = pcost
+        self.cost_aggregate = cost_aggregate
+        self.max_cost_limit = max_cost_limit
+
+        assert hasattr(agent, "constraints") and agent.constraints is not None
+        self.constraints = agent.constraints
+
+        super().__init__(
+            agent=agent,
+            pdist=pdist,
+            rb_vec=rb_vec,
+            open_loop=open_loop,
+            aggregate=dist_aggregate,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
+        )
+
+    def build_rb_graph(self, rb_vec):
+        g = nx.DiGraph()
+        assert self.pdist is not None
+        assert self.pcost is not None
+        pdist_combined = np.max(self.pdist, axis=0)
+        pcost_combined = np.max(self.pcost, axis=0)
+
+        for i, s_i in enumerate(rb_vec):
+            for j, s_j in enumerate(rb_vec):
+                cost = pcost_combined[i, j]
+                length = pdist_combined[i, j]
+                if length < self.max_search_steps and cost < self.max_cost_limit:
+                    g.add_node(i, position=s_i)
+                    g.add_node(j, position=s_j)
+                    g.add_edge(i, j, weight=length)
+        self.g = g
+
+    def get_pairwise_cost_to_rb(self, state, masked=True):
+        start_to_rb_cost = self.agent.get_pairwise_cost(
+            [state["observation"]],
+            self.rb_vec,
+            aggregate=self.cost_aggregate,
+        )
+        rb_to_goal_cost = self.agent.get_pairwise_cost(
+            self.rb_vec,
+            [state["goal"]],
+            aggregate=self.cost_aggregate,
+        )
+        return start_to_rb_cost, rb_to_goal_cost
+
+    def get_closest_waypoint(self, state):
+        """
+        For closed loop replanning at each step. Uses the precomputed distances
+        `rb_distances` b/w states in `rb_vec`
+        """
+        obs_to_rb_cost, _ = self.get_pairwise_cost_to_rb(state)
+        obs_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
+        # (B x A), (A x B)
+
+        # The search_dist tensor should be (B x A x A)
+        search_dist = sum(
+            [
+                np.expand_dims(obs_to_rb_dist, 2),
+                np.expand_dims(self.rb_distances, 0),
+                np.expand_dims(np.transpose(rb_to_goal_dist), 1),
+            ]
+        )  # elementwise sum
+
+        # We assume a batch size of 1.
+        not_safe = True
+        while not_safe:
+            min_search_dist = np.min(search_dist)
+            waypoint_index = np.argmin(np.min(search_dist, axis=2), axis=1)[0]
+            waypoint = self.rb_vec[waypoint_index]
+
+            if obs_to_rb_cost[0, waypoint_index] < self.max_cost_limit:
+                not_safe = False
+
+        return waypoint, waypoint_index, min_search_dist
+
+    def construct_planning_graph(
+        self, state, planning_graph=None, start_id="start", goal_id="goal"
+    ):
+        start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
+        start_to_rb_cost, rb_to_goal_cost = self.get_pairwise_cost_to_rb(state)
+        if planning_graph is None:
+            planning_graph = self.g.copy()
+
+        for i, (from_start, to_goal) in enumerate(
+            zip(
+                zip(start_to_rb_dist.flatten(), start_to_rb_cost.flatten()),
+                zip(rb_to_goal_dist.flatten(), rb_to_goal_cost.flatten())
+            )
+        ):
+            dist_from_start, cost_from_start = from_start
+            dist_to_goal, cost_to_goal = to_goal
+            if dist_from_start < self.max_search_steps and cost_from_start < self.max_cost_limit:
+                planning_graph.add_edge(start_id, i, weight=dist_from_start)
+            if dist_to_goal < self.max_search_steps and cost_to_goal < self.max_cost_limit:
+                planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
+
+        if (
+            not np.any(start_to_rb_dist < self.max_search_steps)
+            or not np.any(rb_to_goal_dist < self.max_search_steps)
+            or not np.any(start_to_rb_cost < self.max_cost_limit)
+            or not np.any(rb_to_goal_cost < self.max_cost_limit)
+        ):
+            self.stats["localization_fails"] += 1
+
+        return planning_graph
+
+
 class VisualSearchPolicy(SearchPolicy):
     def __init__(
         self,
@@ -337,27 +477,19 @@ class VisualSearchPolicy(SearchPolicy):
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
+        **kwargs,
     ):
-        """
-        Args:
-            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
-            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
-                   rb_vec[i] to rb_vec[j]
-            max_search_steps: (int)
-            open_loop: if True, only performs search once at the beginning of the episode
-            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
-            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
-        """
         super().__init__(
-            agent,
-            rb_vec,
-            pdist,
-            aggregate,
-            open_loop,
-            max_search_steps,
-            no_waypoint_hopping,
-            weighted_path_planning,
-            waypoint_consistency_cutoff,
+            agent=agent,
+            rb_vec=rb_vec,
+            pdist=pdist,
+            aggregate=aggregate,
+            open_loop=open_loop,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
         )
 
         assert isinstance(rb_vec, tuple)
@@ -446,7 +578,7 @@ class VisualSearchPolicy(SearchPolicy):
 class MultiAgentSearchPolicy(SearchPolicy):
     def __init__(
         self,
-        policy,
+        agent,
         rb_vec,
         n_agents,
         pdist=None,
@@ -457,30 +589,22 @@ class MultiAgentSearchPolicy(SearchPolicy):
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
+        **kwargs,
     ):
-        """
-        Args:
-            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
-            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
-                   rb_vec[i] to rb_vec[j]
-            max_search_steps: (int)
-            open_loop: if True, only performs search once at the beginning of the episode
-            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
-            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
-        """
         super().__init__(
-            policy,
-            rb_vec,
-            pdist,
-            aggregate,
-            open_loop,
-            max_search_steps,
-            no_waypoint_hopping,
-            weighted_path_planning,
-            waypoint_consistency_cutoff,
+            agent=agent,
+            rb_vec=rb_vec,
+            pdist=pdist,
+            aggregate=aggregate,
+            open_loop=open_loop,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
         )
-        self.n_agents = n_agents
         self.radius = radius
+        self.n_agents = n_agents
 
     def get_closest_waypoints(self, state):
 
@@ -733,10 +857,48 @@ class MultiAgentSearchPolicy(SearchPolicy):
         return agent_actions, agent_goals
 
 
+class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearchPolicy):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        n_agents,
+        pdist=None,
+        pcost=None,
+        radius=0.1,
+        open_loop=False,
+        max_search_steps=7,
+        max_cost_limit=1.0,
+        dist_aggregate="min",
+        cost_aggregate="max",
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+        **kwargs,
+    ):
+        super().__init__(
+            agent=agent,
+            rb_vec=rb_vec,
+            pdist=pdist,
+            pcost=pcost,
+            radius=radius,
+            n_agents=n_agents,
+            open_loop=open_loop,
+            dist_aggregate=dist_aggregate,
+            cost_aggregate=cost_aggregate,
+            max_cost_limit=max_cost_limit,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
+        )
+
+
 class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
     def __init__(
         self,
-        policy,
+        agent,
         rb_vec,
         n_agents,
         pdist=None,
@@ -747,29 +909,21 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
+        **kwargs,
     ):
-        """
-        Args:
-            rb_vec: a replay buffer vector storing the observations that will be used as nodes in the graph
-            pdist: a matrix of dimension len(rb_vec) x len(rb_vec) where pdist[i,j] gives the distance going from
-                   rb_vec[i] to rb_vec[j]
-            max_search_steps: (int)
-            open_loop: if True, only performs search once at the beginning of the episode
-            weighted_path_planning: whether or not to use edge weights when planning a shortest path from start to goal
-            no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
-        """
         super().__init__(
-            policy,
-            rb_vec,
-            n_agents,
-            pdist,
-            radius,
-            aggregate,
-            open_loop,
-            max_search_steps,
-            no_waypoint_hopping,
-            weighted_path_planning,
-            waypoint_consistency_cutoff,
+            pdist=pdist,
+            agent=agent,
+            rb_vec=rb_vec,
+            radius=radius,
+            n_agents=n_agents,
+            aggregate=aggregate,
+            open_loop=open_loop,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
         )
 
         assert isinstance(rb_vec, tuple)
@@ -838,7 +992,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         start_ids = [nodes_to_agents_maps["start" + str(agent_id)] for agent_id in range(self.n_agents)]
 
         augmented_wps = rb_vec.copy()
-        for agent_id, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
+        for _, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
             augmented_wps = np.vstack([augmented_wps, start, goal])
 
         cbs_solver = CBSSolver(
@@ -914,7 +1068,9 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
     def get_augmented_waypoints(self):
         augmented_waypoints = []
         for agent_id in range(self.n_agents):
-            augmented_waypoints.append([(self.rb_vec_grid[j], self.rb_vec[j]) for j in self.augmented_waypoint_indices[agent_id]])
+            augmented_waypoints.append(
+                [(self.rb_vec_grid[j], self.rb_vec[j]) for j in self.augmented_waypoint_indices[agent_id]]
+            )
         return augmented_waypoints
 
     def select_action(self, state):
