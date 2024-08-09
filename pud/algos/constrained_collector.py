@@ -204,9 +204,9 @@ class ConstrainedCollector(Collector):
             rb_vec.append(s0)
         rb_vec = np.array([x["observation"] for x in rb_vec])
         return rb_vec
-    
+
     @classmethod
-    def sample_initial_unconstrained_states(cls, eval_env, num_states):
+    def sample_initial_unconstrained_grid_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
             obs = eval_env.sample_empty_state()
@@ -214,6 +214,23 @@ class ConstrainedCollector(Collector):
             rb_vec.append(s0)
         rb_vec = np.array(rb_vec)
         return rb_vec
+
+    @classmethod
+    def sample_initial_unconstrained_visual_states(cls, eval_env, num_states):
+        rb_vec = []
+        for _ in range(num_states):
+            state = eval_env.reset()
+            rb_vec.append(state)
+        rb_vec_grid = np.array([x["grid"]["observation"] for x in rb_vec])
+        rb_vec_visual = np.array([x["observation"] for x in rb_vec])
+        return rb_vec_grid, rb_vec_visual
+
+    @classmethod
+    def sample_initial_unconstrained_states(cls, eval_env, num_states, habitat=False):
+        if habitat:
+            return cls.sample_initial_unconstrained_visual_states(eval_env, num_states)
+        else:
+            return cls.sample_initial_unconstrained_grid_states(eval_env, num_states)
 
     @classmethod
     def eval_agent(cls, policy, eval_env, n, by_episode=True):

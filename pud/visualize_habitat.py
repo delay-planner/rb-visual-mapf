@@ -388,7 +388,7 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
         goal_grid = goal_grid / normalizing_factor
 
         start = observations[0]
-        start_grid, start_visual = start
+        start_grid, _ = start
         start_grid = start_grid / normalizing_factor
 
         observations_grid = np.array([obs[0] for obs in observations]) / normalizing_factor
