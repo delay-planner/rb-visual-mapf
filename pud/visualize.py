@@ -11,12 +11,12 @@ from pud.envs.simple_navigation_env import plot_walls, set_env_difficulty
 from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
 
 AGENT_COLORS = [
-    ("darkblue", "blue"),
+    ("darkblue", "#1f77b4"),
+    ("darkmagenta", "#d62728"),
+    ("darkgreen", "#2ca02c"),
+    ("darkcyan", "#9467bd"),
     ("darkred", "red"),
-    ("darkgreen", "green"),
     ("darkorange", "orange"),
-    ("darkmagenta", "magenta"),
-    ("darkcyan", "cyan"),
     ("black", "gray"),
 ]
 
@@ -29,12 +29,17 @@ def wall_plotting_fn(eval_env, ax, constrained=False):
     return ax
 
 
-def plot_agent_paths(a_id, start, goal, obs, title, ax, wps=None, obs_marker="o"):
+def plot_agent_paths(a_id, start, goal, obs, title, ax, wps=None, obs_marker="o", use_agent_id=True):
 
-    ax.plot(obs[:, 0], obs[:, 1], obs_marker + "-", c=AGENT_COLORS[a_id][1], alpha=0.3)
-    ax.scatter([start[0]], [start[1]], marker="+", c=AGENT_COLORS[a_id][0], s=200, label="Start " + str(a_id))
-    ax.scatter([obs[-1, 0]], [obs[-1, 1]], marker="x", c=AGENT_COLORS[a_id][0], s=200, label="End " + str(a_id))
-    ax.scatter([goal[0]], [goal[1]], marker="*", c=AGENT_COLORS[a_id][0], s=200, label="Goal " + str(a_id))
+    end_label = "End " + str(a_id) if use_agent_id else "End"
+    goal_label = "Goal " + str(a_id) if use_agent_id else "Goal"
+    start_label = "Start " + str(a_id) if use_agent_id else "Start"
+    waypoint_label = "Waypoint " + str(a_id) if use_agent_id else "Waypoint"
+
+    ax.plot(obs[:, 0], obs[:, 1], obs_marker + "-", c=AGENT_COLORS[a_id][1], alpha=0.8)
+    ax.scatter([start[0]], [start[1]], marker="+", c=AGENT_COLORS[a_id][1], s=200, label=start_label)
+    ax.scatter([obs[-1, 0]], [obs[-1, 1]], marker="x", c=AGENT_COLORS[a_id][1], s=200, label=end_label)
+    ax.scatter([goal[0]], [goal[1]], marker="*", c=AGENT_COLORS[a_id][1], s=200, label=goal_label)
     if wps is not None:
         ax.plot(
             [start[0], *wps[:, 0]],
@@ -42,9 +47,9 @@ def plot_agent_paths(a_id, start, goal, obs, title, ax, wps=None, obs_marker="o"
             "s-",
             c=AGENT_COLORS[a_id][1],
             alpha=0.3,
-            label="Waypoint " + str(a_id)
+            label=waypoint_label
         )
-    ax.set_title(title, fontsize=24)
+    ax.set_title(title, fontsize=16)
     return ax
 
 
