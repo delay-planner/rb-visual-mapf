@@ -99,17 +99,22 @@ class Collector:
 
         ep_goal = state["goal"]
         ep_start = state["observation"]
+        ep_record = {"rewards": 0.0, "steps": 0}
+
         while True:
             ep_observation_list.append(state["observation"])
             action = policy.select_action(state)  # NOTE: state['goal'] may be modified
             ep_waypoint_list.append(state["goal"])
             state, reward, done, info = eval_env.step(np.copy(action))
+            ep_record["steps"] += 1
+            ep_record["rewards"] += reward
             ep_reward_list.append(reward)
             if done:
+                ep_record["success"] = info["success"]
                 ep_observation_list.append(info["terminal_observation"]["observation"])
                 break
 
-        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
+        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list, ep_record
 
     @classmethod
     def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None):
@@ -128,6 +133,7 @@ class Collector:
                 eval_env.env._goal = goal[0]
             eval_env.unwrapped.state_grid = state["grid"]["observation"]
 
+        ep_record = {"rewards": 0.0, "steps": 0}
         ep_goal = (state["grid"]["goal"], state["goal"])
         ep_start = (state["grid"]["observation"], state["observation"])
         while True:
@@ -140,9 +146,12 @@ class Collector:
             ep_waypoint_list.append(ep_waypoint)
 
             state, reward, done, info = eval_env.step(np.copy(action))
+            ep_record["steps"] += 1
+            ep_record["rewards"] += reward
             ep_reward_list.append(reward)
 
             if done:
+                ep_record["success"] = info["success"]
                 ep_observation = (
                     info["terminal_observation"]["grid"]["observation"],
                     info["terminal_observation"]["observation"]
@@ -156,10 +165,12 @@ class Collector:
             ep_observation_list,
             ep_waypoint_list,
             ep_reward_list,
+            ep_record,
         )
 
     @classmethod
-    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, habitat=False):
+    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, start_cost=None, habitat=False):
+        assert start_cost is None
         if habitat:
             if input_start is not None and input_goal is not None:
                 assert len(input_start) == 2 and len(input_goal[0]) == 2
@@ -181,6 +192,7 @@ class Collector:
         augmented_ep_reward_list = [[] for _ in range(num_agents)]
         augmented_ep_waypoint_list = [[] for _ in range(num_agents)]
         augmented_ep_observation_list = [[] for _ in range(num_agents)]
+        augmented_ep_records_list = [{"rewards": 0.0, "steps": 0} for _ in range(num_agents)]
 
         denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
 
@@ -270,6 +282,9 @@ class Collector:
 
                 state, reward, done, info = eval_env.step(np.copy(action), num_agents=num_agents)
 
+                augmented_ep_records_list[agent_id]["steps"] += 1
+                augmented_ep_records_list[agent_id]["rewards"] += reward
+
                 # At this point the state is changed and does not have the extra attributes so add them back
                 state["composite_goals"] = state_copy["composite_goals"]
                 state["composite_starts"] = state_copy["composite_starts"]
@@ -283,6 +298,7 @@ class Collector:
                 augmented_ep_reward_list[agent_id].append(reward)
 
                 if done:
+                    augmented_ep_records_list[agent_id]["success"] = info["success"]
                     terminal_agent_observation = info["terminal_observation"]["observation"]
                     augmented_ep_observation_list[agent_id].append(terminal_agent_observation)
                     agent_dones[agent_id] = True
@@ -307,6 +323,7 @@ class Collector:
             augmented_ep_observation_list,
             augmented_ep_waypoint_list,
             augmented_ep_reward_list,
+            augmented_ep_records_list,
         )
 
     @classmethod
@@ -323,6 +340,7 @@ class Collector:
         augmented_ep_reward_list = [[] for _ in range(num_agents)]
         augmented_ep_waypoint_list = [[] for _ in range(num_agents)]
         augmented_ep_observation_list = [[] for _ in range(num_agents)]
+        augmented_ep_records_list = [{"rewards": 0.0, "steps": 0} for _ in range(num_agents)]
 
         state = eval_env.reset()
 
@@ -421,6 +439,9 @@ class Collector:
 
                 state, reward, done, info = eval_env.step(np.copy(action), num_agents=num_agents)
 
+                augmented_ep_records_list[agent_id]["steps"] += 1
+                augmented_ep_records_list[agent_id]["rewards"] += reward
+
                 # At this point the state is changed and does not have the extra attributes so add them back
                 state["composite_goals"] = state_copy["composite_goals"]
                 state["composite_starts"] = state_copy["composite_starts"]
@@ -434,6 +455,7 @@ class Collector:
                 augmented_ep_reward_list[agent_id].append(reward)
 
                 if done:
+                    augmented_ep_records_list[agent_id]["success"] = info["success"]
                     terminal_agent_observation = (
                         info["terminal_observation"]["grid"]["observation"],
                         info["terminal_observation"]["observation"]
@@ -461,6 +483,7 @@ class Collector:
             augmented_ep_observation_list,
             augmented_ep_waypoint_list,
             augmented_ep_reward_list,
+            augmented_ep_records_list
         )
 
     @classmethod
@@ -471,9 +494,11 @@ class Collector:
         num_agents,
         input_starts=None,
         input_goals=None,
+        start_costs=None,
         threshold=0.05,
         habitat=False,
     ):
+        assert start_costs is None
         if habitat:
             if input_starts is not None and input_goals is not None:
                 assert isinstance(input_starts, list) and isinstance(input_goals, list)

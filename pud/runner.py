@@ -133,11 +133,11 @@ def eval_search_policy(search_policy, eval_env, num_evals=10, constrained=False)
     for _ in range(num_evals):
         try:
             if constrained:
-                _, _, _, ep_reward_list = ConstrainedCollector.get_trajectory(
+                _, _, _, _, ep_reward_list, _ = ConstrainedCollector.get_trajectory(
                     search_policy, eval_env
                 )
             else:
-                _, _, _, ep_reward_list = Collector.get_trajectory(
+                _, _, _, _, ep_reward_list, _ = Collector.get_trajectory(
                     search_policy, eval_env
                 )
             successes += int(len(ep_reward_list) < eval_env.duration)

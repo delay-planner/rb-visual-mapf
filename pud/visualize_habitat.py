@@ -30,9 +30,9 @@ def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
         ax = plot_wall(eval_env.walls, ax)
 
         collector_cls = ConstrainedCollector if constrained else Collector
-        start, goal, observations, _, _ = collector_cls.get_trajectory(agent, eval_env, habitat=True)
+        start, goal, observations, _, _, records = collector_cls.get_trajectory(agent, eval_env, habitat=True)
 
-        goal_grid, goal_visual = goal
+        goal_grid, _ = goal
         goal_grid = goal_grid / normalizing_factor
 
         start_grid, start_visual = start
@@ -44,7 +44,12 @@ def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
         print(f"Trajectory {trajectory}")
         print(f"Start: {start_grid}")
         print(f"Goal: {goal_grid}")
-        print(f"Steps: {obs_vec.shape[0] - 1}")
+        print(f"Reward: {records['rewards']}")
+        print(f"Steps: {records['steps']}")
+        if "max_step_cost" in records:
+            print(f"Max Step Cost: {records['max_step_cost']}")
+            print(f"Cumulative Cost: {records['cumulative_costs']}")
+        print("-" * 10)
 
         ax = plot_agent_paths(0, start_grid, goal_grid, obs_vec, "Trajectory " + str(trajectory + 1), ax)
 
@@ -203,7 +208,7 @@ def visualize_search_path_single_agent(search_policy, eval_env, outpath="", diff
         waypoints = search_policy.get_waypoints()
     else:
         collector_cls = ConstrainedCollector if constrained else Collector
-        start, goal, _, waypoints, _ = collector_cls.get_trajectory(search_policy, eval_env, habitat=True)
+        start, goal, _, waypoints, _, _ = collector_cls.get_trajectory(search_policy, eval_env, habitat=True)
 
     _, ax = plt.subplots(figsize=(6, 6))
     ax = plot_wall(eval_env.walls, ax)
@@ -289,6 +294,7 @@ def visualize_search_path_multi_agent(search_policy, eval_env, num_agents, outpa
             goals,
             _,
             waypoints,
+            _,
             _,
         ) = collector_cls.get_trajectories(search_policy, eval_env, num_agents, habitat=True, threshold=threshold)
 
@@ -378,10 +384,13 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
 
         collector_cls = ConstrainedCollector if constrained else Collector
         if col_index == 0:
-            start, goal, observations, waypoints, _ = collector_cls.get_trajectory(policy, eval_env, habitat=True)
+            start, goal, observations, waypoints, _, records = collector_cls.get_trajectory(
+                policy, eval_env, habitat=True
+            )
         else:
-            _, _, observations, waypoints, _ = collector_cls.get_trajectory(
-                policy, eval_env, habitat=True, input_start=start, input_goal=goal
+            start_cost = records["first_step_cost"] if "first_step_cost" in records else None
+            _, _, observations, waypoints, _, records = collector_cls.get_trajectory(
+                policy, eval_env, habitat=True, input_start=start, input_goal=goal, start_cost=start_cost
             )
 
         goal_grid, goal_visual = goal
@@ -400,7 +409,11 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
         print(f"Policy: {title}")
         print(f"Start: {start_grid}")
         print(f"Goal: {goal_grid}")
-        print(f"Steps: {observations_grid.shape[0] - 1}")
+        print(f"Reward: {records['rewards']}")
+        print(f"Steps: {records['steps']}")
+        if "max_step_cost" in records:
+            print(f"Max Step Cost: {records['max_step_cost']}")
+            print(f"Cumulative Cost: {records['cumulative_costs']}")
         print("-" * 10)
 
         ax = plot_agent_paths(0, start_grid, goal_grid, observations_grid, title, ax, waypoints_grid)
@@ -445,12 +458,19 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
         collector_cls = ConstrainedCollector if constrained else Collector
 
         if col_index == 0:
-            starts, goals, observations, waypoints, _ = collector_cls.get_trajectories(
+            starts, goals, observations, waypoints, _, records = collector_cls.get_trajectories(
                 policy, eval_env, n_agents, habitat=True, threshold=threshold
             )
         else:
-            _, _, observations, waypoints, _ = collector_cls.get_trajectories(
-                policy, eval_env, n_agents, starts, goals, habitat=True, threshold=threshold
+            start_costs = []
+            for agent_id in range(n_agents):
+                if "first_step_cost" in records[agent_id]:
+                    start_costs.append(records[agent_id]["first_step_cost"])
+                else:
+                    start_costs = None
+                    break
+            _, _, observations, waypoints, _, records = collector_cls.get_trajectories(
+                policy, eval_env, n_agents, starts, goals, habitat=True, start_costs=start_costs, threshold=threshold
             )
 
         print(f"Policy: {title}")
@@ -479,7 +499,11 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
             else:
                 no_search_observations.append(observations_grid)
             print(f"Goal: {agent_goal_grid}")
-            print(f"Steps: {observations_grid.shape[0] - 1}")
+            print(f"Reward: {records[agent_id]['rewards']}")
+            print(f"Steps: {records[agent_id]['steps']}")
+            if "max_step_cost" in records[agent_id]:
+                print(f"Max Step Cost: {records[agent_id]['max_step_cost']}")
+                print(f"Cumulative Cost: {records[agent_id]['cumulative_costs']}")
             print("-" * 10)
 
             ax = plot_agent_paths(
