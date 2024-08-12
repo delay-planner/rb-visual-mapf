@@ -8,9 +8,14 @@ from dotmap import DotMap
 from pud.ddpg import GoalConditionedCritic
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.policies import SearchPolicy, ConstrainedSearchPolicy
 from pud.algos.constrained_collector import ConstrainedCollector
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent
+from pud.policies import (
+    SearchPolicy,
+    ConstrainedSearchPolicy,
+    MultiAgentSearchPolicy,
+    ConstrainedMultiAgentSearchPolicy,
+)
 from pud.envs.safe_pointenv.safe_wrappers import (
     safe_env_load_fn,
     SafeGoalConditionedPointWrapper,
@@ -87,6 +92,21 @@ def setup(args):
     return config, eval_env, agent, trained_cost_limit
 
 
+def load_agent_and_env(agent, eval_env, args, config, constrained=False):
+    if constrained:
+        agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    else:
+        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
+    agent.to(torch.device(config.device))
+    agent.eval()
+
+    eval_env.duration = 300  # type: ignore
+    eval_env.set_use_q(True)  # type: ignore
+    eval_env.set_prob_constraint(1.0)  # type: ignore
+
+    return agent, eval_env
+
+
 def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False):
 
     rb_vec = ConstrainedCollector.sample_initial_unconstrained_states(eval_env, config.replay_buffer.max_size)
@@ -97,7 +117,7 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
         problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
     else:
         problems = sample_cost_pbs_by_agent(
-            K=config.num_samples * 2,
+            K=config.num_samples * 100,
             min_dist=0,
             agent=agent,  # type: ignore
             env=eval_env,  # type: ignore
@@ -148,15 +168,9 @@ def argument_parser():
 
 
 def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+
     problems = problem_setup[3]
-
-    agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
-    agent.to(torch.device(config.device))
-    agent.eval()
-
-    eval_env.duration = 300  # type: ignore
-    eval_env.set_use_q(True)  # type: ignore
-    eval_env.set_prob_constraint(1.0)  # type: ignore
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     unconstrained_records = []
@@ -165,41 +179,75 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, sa
         unconstrained_records.append(records)
 
     if save:
-        np.save("pud/plots/unconstrained_records.npy", unconstrained_records)
+        np.save("pud/plots/data/single_agent/unconstrained_records.npy", unconstrained_records)
+    return unconstrained_records
+
+
+def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+
+    problems = problem_setup[3]
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    unconstrained_records = []
+    for _ in range(config.num_samples):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents)
+        unconstrained_records.append(records)
+
+    if save:
+        np.save(f"pud/plots/data/multi_agent/unconstrained_records_{args.num_agents}.npy", unconstrained_records)
     return unconstrained_records
 
 
 def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
-    rb_vec, pdist, problems = problem_setup[0], problem_setup[1], problem_setup[3]
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
-    eval_env.duration = 300  # type: ignore
-    eval_env.set_use_q(True)  # type: ignore
-    eval_env.set_prob_constraint(1.0)  # type: ignore
+    rb_vec, pdist, problems = problem_setup[0], problem_setup[1], problem_setup[3]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     pbar = tqdm(total=config.num_samples)
     unconstrained_search_records = []
     for _ in range(config.num_samples):
-        search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
+        search_policy = SearchPolicy(agent, rb_vec.copy(), pdist=pdist.copy(), open_loop=True, no_waypoint_hopping=True)
         _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env)
         unconstrained_search_records.append(records)
         pbar.update(1)
+    pbar.close()
 
     if save:
-        np.save("pud/plots/unconstrained_search_records.npy", unconstrained_search_records)
+        np.save("pud/plots/data/single_agent/unconstrained_search_records.npy", unconstrained_search_records)
+    return unconstrained_search_records
+
+
+def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+
+    rb_vec, pdist, problems = problem_setup[0], problem_setup[1], problem_setup[3]
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    pbar = tqdm(total=config.num_samples)
+    unconstrained_search_records = []
+    for _ in range(config.num_samples):
+        ma_search_policy = MultiAgentSearchPolicy(
+            agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True
+        )
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(ma_search_policy, eval_env, args.num_agents)
+        unconstrained_search_records.append(records)
+        pbar.update(1)
+    pbar.close()
+
+    if save:
+        np.save(
+            f"pud/plots/data/multi_agent/unconstrained_search_records_{args.num_agents}.npy",
+            unconstrained_search_records
+        )
     return unconstrained_search_records
 
 
 def single_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+
     problems = problem_setup[3]
-
-    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
-    agent.to(torch.device(config.device))
-    agent.eval()
-
-    eval_env.duration = 300  # type: ignore
-    eval_env.set_use_q(True)  # type: ignore
-    eval_env.set_prob_constraint(1.0)  # type: ignore
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     constrained_records = []
@@ -208,19 +256,30 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, save
         constrained_records.append(records)
 
     if save:
-        np.save("pud/plots/constrained_records.npy", constrained_records)
+        np.save("pud/plots/data/single_agent/constrained_records.npy", constrained_records)
+    return constrained_records
+
+
+def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+
+    problems = problem_setup[3]
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    constrained_records = []
+    for _ in range(config.num_samples):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents)
+        constrained_records.append(records)
+
+    if save:
+        np.save(f"pud/plots/data/multi_agent/constrained_records_{args.num_agents}.npy", constrained_records)
     return constrained_records
 
 
 def single_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+
     rb_vec, pdist, pcost, problems = problem_setup
-
-    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
-    agent.to(torch.device(config.device))
-    agent.eval()
-
-    eval_env.duration = 300  # type: ignore
-    eval_env.set_use_q(True)  # type: ignore
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
     constrained_search_factored_records = []
@@ -247,14 +306,66 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
             _, _, _, _, _, records = ConstrainedCollector.get_trajectory(constrained_search_policy, eval_env)
             constrained_search_records.append(records)
             pbar.update(1)
+        pbar.close()
 
         if save:
-            np.save(f"pud/plots/constrained_search_records_{factor}.npy", constrained_search_records)
+            np.save(f"pud/plots/data/single_agent/constrained_search_records_{factor}.npy", constrained_search_records)
 
         constrained_search_factored_records.append(constrained_search_records)
 
     if save:
-        np.save("pud/plots/constrained_search_factored_records.npy", constrained_search_factored_records)
+        np.save(
+            "pud/plots/data/single_agent/constrained_search_factored_records.npy", constrained_search_factored_records
+        )
+    return constrained_search_factored_records
+
+
+def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+    rb_vec, pdist, pcost, problems = problem_setup
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+
+    constrained_search_factored_records = []
+    edge_cost_limit_factors = [0.1, 0.5, 1.0]
+    for factor in edge_cost_limit_factors:
+        print(f"Factor: {factor}")
+
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+        pbar = tqdm(total=config.num_samples)
+        constrained_search_records = []
+        edge_cost_limit = trained_cost_limit * factor
+
+        for _ in range(config.num_samples):
+            constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
+                agent,
+                rb_vec,
+                args.num_agents,
+                pdist=pdist,
+                pcost=pcost,
+                open_loop=True,
+                no_waypoint_hopping=True,
+                max_cost_limit=edge_cost_limit
+            )
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                constrained_ma_search_policy, eval_env, args.num_agents
+            )
+            constrained_search_records.append(records)
+            pbar.update(1)
+        pbar.close()
+
+        if save:
+            np.save(
+                f"pud/plots/data/multi_agent/constrained_search_records_{args.num_agents}_{factor}.npy",
+                constrained_search_records
+            )
+
+        constrained_search_factored_records.append(constrained_search_records)
+
+    if save:
+        np.save(
+            f"pud/plots/data/multi_agent/constrained_search_factored_records_{args.num_agents}.npy",
+            constrained_search_factored_records
+        )
     return constrained_search_factored_records
 
 
@@ -268,14 +379,27 @@ if __name__ == "__main__":
     else:
         problem_setup = setup_problems(eval_env, agent, trained_cost_limit, args, config, save=True)
 
-    assert args.num_agents == 1
     if args.method_type == "unconstrained":
-        single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+        if args.num_agents == 1:
+            single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+        else:
+            multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=True)
     elif args.method_type == "unconstrained_search":
-        single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=True)
+        if args.num_agents == 1:
+            single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=True)
+        else:
+            multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=True)
     elif args.method_type == "constrained":
-        single_constrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+        if args.num_agents == 1:
+            single_constrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+        else:
+            multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=True)
     elif args.method_type == "constrained_search":
-        single_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True)
+        if args.num_agents == 1:
+            single_constrained_search_policy(
+                agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True
+            )
+        else:
+            multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True)
     else:
         raise ValueError("Invalid method type")

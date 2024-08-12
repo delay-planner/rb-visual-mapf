@@ -1,0 +1,198 @@
+import yaml
+import torch
+import argparse
+import numpy as np
+from tqdm import tqdm
+from pathlib import Path
+from dotmap import DotMap
+
+from pud.ddpg import GoalConditionedCritic
+from pud.utils import set_global_seed, set_env_seed
+from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
+from pud.algos.constrained_collector import ConstrainedCollector
+from pud.envs.safe_pointenv.safe_wrappers import (
+    safe_env_load_fn,
+    SafeGoalConditionedPointWrapper,
+    SafeGoalConditionedPointBlendWrapper,
+    SafeGoalConditionedPointQueueWrapper,
+)
+
+
+def setup(args):
+    assert len(args.config_file) > 0
+    assert len(args.constrained_ckpt_file) > 0
+
+    with open(args.config_file, 'r') as f:
+        config = yaml.safe_load(f)
+    config = DotMap(config)
+
+    # User defined parameters for evaluation
+    trained_cost_limit = config.agent.cost_limit
+
+    config.device = args.device
+    config.num_samples = args.num_samples
+    config.replay_buffer.max_size = args.replay_buffer_size
+
+    set_global_seed(config.seed)
+
+    gym_env_wrappers = []
+    gym_env_wrapper_kwargs = []
+    for wrapper_name in config.wrappers:
+        if wrapper_name == "SafeGoalConditionedPointWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointBlendWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointBlendWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedPointQueueWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedPointQueueWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+
+    eval_env = safe_env_load_fn(
+        config.env.toDict(),
+        config.cost_function.toDict(),
+        max_episode_steps=config.time_limit.max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,
+        wrapper_kwargs=gym_env_wrapper_kwargs,
+        terminate_on_timeout=True,
+    )
+
+    set_env_seed(eval_env, config.seed + 2)
+
+    obs_dim = eval_env.observation_space['observation'].shape[0]  # type: ignore
+    goal_dim = obs_dim
+    state_dim = obs_dim + goal_dim
+    action_dim = eval_env.action_space.shape[0]
+    max_action = float(eval_env.action_space.high[0])
+    print(f'Obs dim: {obs_dim},\n'
+          f'Goal dim: {goal_dim},\n'
+          f'State dim: {state_dim},\n'
+          f'Action dim: {action_dim},\n'
+          f'Max action: {max_action}')
+
+    agent = DRLDDPGLag(
+            state_dim,  # Concatenating obs and goal
+            action_dim,
+            max_action,
+            CriticCls=GoalConditionedCritic,
+            device=torch.device(config.device),
+            **config.agent,
+        )
+
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    agent.to(torch.device(config.device))
+    agent.eval()
+
+    return config, eval_env, agent, trained_cost_limit
+
+
+def load_agent_and_env(agent, eval_env, args, config, constrained=False):
+    if constrained:
+        agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    else:
+        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
+    agent.to(torch.device(config.device))
+    agent.eval()
+
+    eval_env.duration = 300  # type: ignore
+    eval_env.set_use_q(True)  # type: ignore
+    eval_env.set_prob_constraint(1.0)  # type: ignore
+
+    return agent, eval_env
+
+
+def load_problem_set(file_path, env, agent):
+    load = np.load(file_path, allow_pickle=True)
+    rb_vec = load["rb_vec"]
+    pdist = load["pdist"]
+    pcost = load["pcost"]
+    problems = load["problems"]
+    return rb_vec, pdist, pcost, problems.tolist()
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_file", type=str, default="")
+    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--num_samples", type=int, default=1000)
+    parser.add_argument("--problem_set_file", type=str, default="")
+    parser.add_argument("--constrained_ckpt_file", type=str, default="")
+    parser.add_argument("--replay_buffer_size", type=int, default="1000")
+
+    args = parser.parse_args()
+    return args
+
+
+def extract_metrics(records):
+    success_rate = 0.0
+    steps = []
+    rewards = []
+    cumulative_costs = []
+    for record in records:
+        if record["cumulative_costs"] < trained_cost_limit:
+            if record["success"]:
+                success_rate += 1
+        steps.append(record["steps"])
+        rewards.append(record["rewards"])
+        cumulative_costs.append(record["cumulative_costs"])
+
+    metrics = {
+        'steps': steps,
+        'rewards': rewards,
+        'cumulative_costs': cumulative_costs,
+        'success_rate': success_rate / len(records),
+    }
+    return metrics
+
+
+def single_constrained_policy(agent, eval_env, problem_setup, args, config):
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+
+    problems = problem_setup[3]
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    constrained_records = []
+    for _ in range(config.num_samples):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env)
+        constrained_records.append(records)
+
+    return constrained_records
+
+
+if __name__ == "__main__":
+
+    args = argument_parser()
+    config, eval_env, agent, trained_cost_limit = setup(args)
+    assert len(args.problem_set_file) > 0
+    problem_setup = load_problem_set(args.problem_set_file, eval_env, agent)
+
+    constrained_ckpt_dir = Path(args.constrained_ckpt_file).parent
+    records_dir = constrained_ckpt_dir.parent / "records"
+    num_records = len(list(records_dir.glob("*.npy")))
+
+    ckpts = sorted(list(constrained_ckpt_dir.glob("ckpt_*")))
+    ckpts = ckpts[num_records:]
+
+    pbar = tqdm(ckpts)
+
+    ckpt_file_names = []
+    success_rates = []
+    for ckpt in ckpts:
+        args.constrained_ckpt_file = str(ckpt)
+        record = single_constrained_policy(agent, eval_env, problem_setup, args, config)
+        np.save(ckpt.parent.parent / "records" / f"{ckpt.stem}.npy", record)
+        metric = extract_metrics(record)
+        ckpt_file_names.append(ckpt)
+        success_rates.append(metric["success_rate"])
+        pbar.update(1)
+    pbar.close()
+
+    print(f"Mean success rate: {np.mean(success_rates)}")
+    print(f"Std success rate: {np.std(success_rates)}")
+    print(f"Max success rate: {np.max(success_rates)}")
+    print(f"Argmax success rate: {np.argmax(success_rates)}, {ckpts[np.argmax(success_rates)]}")
+    print(f"Min success rate: {np.min(success_rates)}")
+    print(f"Argmin success rate: {np.argmin(success_rates)}, {ckpts[np.argmin(success_rates)]}")
+
+    np.save("constrained_ckpt_file_names.npy", ckpt_file_names)
+    np.save("constrained_ckpt_success_rates.npy", success_rates)
