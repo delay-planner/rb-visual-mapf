@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.typing import NDArray
 from matplotlib.axes import Axes
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, Literal
 import argparse
 import os
 from pathlib import Path
@@ -13,30 +13,30 @@ from pud.envs.habitat_navigation_env import HabitatNavigationEnv
 class SafeHabitatNavigationEnv(HabitatNavigationEnv):
     def __init__(
         self,
-        scene: str,
+        env_type: Literal["HabitatSim", "ReplicaCAD"],
         height: Union[float, None] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
-        apsp_path: Union[str, None] = None,
+        sensor_type:Literal["rgb", "depth"] ="depth",
+        apsp_path: str = "",
+        device:str="cpu",
         # Cost specific arguments
         cost_f_args: dict = {},
         cost_limit: float = 0.5,
-        device: str = "cpu",
     ):
 
         super().__init__(
-            scene=scene, 
-            height=height, 
-            action_noise=action_noise, 
-            simulator_settings=simulator_settings, 
-            apsp_path=apsp_path,
-            device=device,
+                env_type=env_type,
+                height=height,
+                action_noise=action_noise,
+                simulator_settings=simulator_settings,
+                sensor_type=sensor_type,
+                apsp_path=apsp_path,
+                device=device,
             )
 
-        self.scene = scene
         self.cost_function = None
         self.cost_limit = cost_limit
-        self.action_noise = action_noise
         self.cost_f_cfg = cost_f_args
 
         obstacles_x, obstacles_y = np.where(self._walls == 0)
@@ -49,11 +49,13 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         if cost_fn_name: 
             import functools   
             from pud.envs.safe_pointenv.cost_functions import \
-                    cost_from_cosine_distance, cost_from_linear_distance     
+                    cost_from_cosine_distance, cost_from_linear_distance, const_cost_from_distance
             if cost_fn_name == "cosine":
                 self.cost_function = functools.partial(cost_from_cosine_distance, r=self.cost_f_cfg['radius'])
             elif cost_fn_name == "linear":
                 self.cost_function = functools.partial(cost_from_linear_distance, r=self.cost_f_cfg['radius'])
+            elif cost_fn_name == "constant":
+                self.cost_function = functools.partial(const_cost_from_distance, r=self.cost_f_cfg['radius'])
             else:
                 raise Exception("Unsupported cost function")
 
@@ -153,17 +155,18 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         idx = np.random.randint(0, num_candidate_states)
         new_state = self._safe_empty_states[idx].astype(np.float32)
-
-        undiscretized_new_state_x, undiscretized_new_state_y = self.get_habitat_xy_from_grid_xy(
-            (int(new_state[0]), int(new_state[1]))
-        )
-        undiscretized_new_state = np.array(
-            [undiscretized_new_state_x, undiscretized_new_state_y]
-        )
+        
 
         # NOTE: Don't remove the checks below
-        assert not self._is_blocked(undiscretized_new_state)
+        assert not self._is_blocked(new_state)
         assert self._get_state_cost(new_state) < self.cost_limit
+
+        #undiscretized_new_state_x, undiscretized_new_state_y = self.get_habitat_xy_from_grid_xy(
+        #    (int(new_state[0]), int(new_state[1]))
+        #)
+        #undiscretized_new_state = np.array(
+        #    [undiscretized_new_state_x, undiscretized_new_state_y]
+        #).astype(np.float32)
         return new_state
 
     def seed(self, seed: int) -> None:
@@ -254,16 +257,16 @@ def display_map(
 
     height, width = topdown_map.shape
     for i, j in zip(*np.where(topdown_map == 0)):
-        x = np.array([j, j + 1]) / float(width)
-        y0 = np.array([i, i]) / float(height)
-        y1 = np.array([i + 1, i + 1]) / float(height)
+        x = np.array([i, i + 1]) / float(height)
+        y0 = np.array([j, j]) / float(width)
+        y1 = np.array([j+1, j+1]) / float(width)
         ax.fill_between(x, y0, y1, color="grey")
 
     unsafe_points = np.where(cost_map > cost_limit)
     unsafe_points = np.column_stack(unsafe_points)
     ax.scatter(
-        unsafe_points[:, 1] / float(width),
         unsafe_points[:, 0] / float(height),
+        unsafe_points[:, 1] / float(width),
         s=2,
         marker="o",
         c="red",
@@ -271,23 +274,23 @@ def display_map(
 
     if key_points is not None:
         ax.plot(
-            key_points[:, 1] / float(width),
             key_points[:, 0] / float(height),
+            key_points[:, 1] / float(width),
             "b-o",
             markersize=0.5,
             alpha=0.8,
         )
         ax.scatter(
-            key_points[0][1] / float(width),
             key_points[0][0] / float(height),
+            key_points[0][1] / float(width),
             marker="+",
             color="cyan",
             s=10,
             label="start",
         )
         ax.scatter(
-            key_points[-1][1] / float(width),
             key_points[-1][0] / float(height),
+            key_points[-1][1] / float(width),
             marker="*",
             color="green",
             s=10,
@@ -305,28 +308,18 @@ def display_map(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_scene",
-        type=str,
-        default="skokloster-castle.glb",
-        help="test scene name")
-
     args = parser.parse_args()
 
-    scene = (
-        "external_data/scene_datasets/"
-        "habitat-test-scenes/skokloster-castle.glb"
-    )
-    env_var = "HATBITAT_DATA_DIR"
-    if env_var in os.environ:
-        scene = (Path(os.environ[env_var]).joinpath("scene_datasets/habitat-test-scenes/{}".format(args.test_scene)).as_posix())
-
     env = SafeHabitatNavigationEnv(
-        scene=scene,
-        height=0,
+        env_type="ReplicaCAD",
+        sensor_type="rgb",
+        device="cuda:1",
         cost_f_args={"name": "cosine", "radius": 2.0},
         cost_limit=1.0,
     )
-    plt.figure(figsize=(12, 8))
+
+    fig = plt.figure(figsize=(12, 8))
     ax = plt.subplot(1, 1, 1)
-    ax = display_map(env.walls, "Skokloster Castle", env.cost_map, env.cost_limit, ax=ax)  # type: ignore
-    plt.show()
+    ax = display_map(env.walls, "map_visual", env.cost_map, env.cost_limit, ax=ax)  # type: ignore
+    #plt.show()
+    plt.savefig("temp/visual.jpg", dpi=300)

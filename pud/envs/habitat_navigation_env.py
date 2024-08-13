@@ -171,7 +171,7 @@ class HabitatNavigationEnv(gym.Env):
         # The channels are RGBA
         self.action_space = gym.spaces.Box(
             low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]),
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
         # Ensure that the pathfinder utility of the simulator is loaded
@@ -194,7 +194,7 @@ class HabitatNavigationEnv(gym.Env):
         self.grid_observation_space = gym.spaces.Box(
             low=np.array([0.0, 0.0]),
             high=np.array([self._wall_height, self._wall_width]),
-            dtype=np.float64,)
+            dtype=np.float32,)
 
         # discrete maze all-pair-shortest-path load or calculation
         t0 = time.time()
@@ -261,7 +261,7 @@ class HabitatNavigationEnv(gym.Env):
         return dist
 
     def _discretize_state(self, state: TypeGridXY):
-        (i, j) = np.floor(state).astype(np.int64)
+        (i, j) = np.floor(state).astype(np.int32)
         # Round down to the nearest cell if at the boundary.
         if i == self._wall_height:
             i -= 1
@@ -273,6 +273,7 @@ class HabitatNavigationEnv(gym.Env):
         """
         check occupancy through 2D maze matrix, the same as the point env
         """
+        assert self.grid_observation_space.dtype == state.dtype, "mismatch data type"
         if not self.grid_observation_space.contains(state):
             return True
         (i, j) = self._discretize_state(state)
@@ -285,7 +286,7 @@ class HabitatNavigationEnv(gym.Env):
         for _ in range(max_attempts):
             state_index = np.random.choice(num_candidate_states)
             state_grid = np.array([candidate_states[0][state_index],
-                            candidate_states[1][state_index]], dtype=np.float64)
+                            candidate_states[1][state_index]], dtype=np.float32)
             state_grid += np.random.uniform(size=2)
             if not self._is_blocked(state_grid):
                 return state_grid
@@ -563,7 +564,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array(
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
-            dtype=np.float64,
+            dtype=np.float32,
         )
         goal += np.random.uniform(size=2)
         dist_to_goal = self.get_distance(obs, goal)
