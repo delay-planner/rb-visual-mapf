@@ -79,7 +79,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         for cx, cy in zip(*empty_states):
             # Only sample states whose costs are lower than an upper bound
-            if self._cost_map[cx, cy] < cost_limit:
+            if self._cost_map[cx, cy] <= cost_limit:
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
 
@@ -139,7 +139,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         return cost_map
 
-    def _get_state_cost(self, xy: NDArray) -> float:
+    def get_state_cost(self, xy: NDArray) -> float:
         """
         Assumes that the xy argument is the grid position and not the continuous position
         """
@@ -159,14 +159,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         # NOTE: Don't remove the checks below
         assert not self._is_blocked(new_state)
-        assert self._get_state_cost(new_state) < self.cost_limit
-
-        #undiscretized_new_state_x, undiscretized_new_state_y = self.get_habitat_xy_from_grid_xy(
-        #    (int(new_state[0]), int(new_state[1]))
-        #)
-        #undiscretized_new_state = np.array(
-        #    [undiscretized_new_state_x, undiscretized_new_state_y]
-        #).astype(np.float32)
+        assert self.get_state_cost(new_state) < self.cost_limit
         return new_state
 
     def seed(self, seed: int) -> None:
@@ -178,31 +171,9 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 "[INFO] Skipping the reset in HabitatNavigationEnv.__init__ because setup is not ready yet"
             )
             return
-
-        # TODO: Perhaps suffer from label inbalance?
-        # Extract a safe (x, y) position for the agent based on the navigation grid and cost map
         safe_agent_position = self._sample_safe_empty_state(cost_limit=self.cost_limit)
-        agent_cost = self._get_state_cost(xy=safe_agent_position)
+        agent_cost = self.get_state_cost(xy=safe_agent_position)
         info = {"cost": agent_cost}
-
-        # Reset the simulator
-        self.state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
-        observations = self._simulator.reset()
-
-        # Spawn the agent at the corresponding real-world coordinates in the habitat environment
-        safe_agent_position_x, safe_agent_position_y = self.get_habitat_xy_from_grid_xy(
-            (int(safe_agent_position[0]), int(safe_agent_position[1]))
-        )
-        self.set_agent_pos_w_habitatxy(
-            np.array([safe_agent_position_x, safe_agent_position_y])
-        )
-
-        # Get the initial observations and return the state
-        observations = self._simulator.get_sensor_observations()
-
-        for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)  # type: ignore
-            self.state[idx] = value
         return self.state.copy(), info
 
     def step(self, action: NDArray) -> Tuple[NDArray, float, bool, Dict]:
@@ -212,36 +183,24 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert self.action_space.contains(action)
 
         # NOTE: Use the maximum cost along the action segment
-        agent_position = self.get_xy_in_habitat()
-        (i, j) = self.get_grid_xy_from_habitat_xy(agent_position)
-        cost = self._get_state_cost(np.array([i, j]))
+        start_state = self.state_grid.copy()
+        cost = self.get_state_cost(start_state)
+
+        assert not self._is_blocked(start_state)
 
         num_substeps = 10
         dt = 1.0 / num_substeps
-        for _ in np.linspace(0, 1, num_substeps):
-            for axis, axis_action in enumerate(action):
-                new_state = self.get_xy_in_habitat()
-                new_state[axis] += dt * axis_action
-                if not self._is_blocked(new_state):
-                    self.set_agent_pos_w_habitatxy(new_state)
-
-                    (i, j) = self.get_grid_xy_from_habitat_xy(new_state)
-                    state_cost = self._get_state_cost(np.array([i, j]))
-                    if cost < state_cost:
-                        cost = state_cost
+        for dt in np.linspace(0, 1, num_substeps):
+            new_state = start_state + dt * action
+            if not self._is_blocked(new_state):
+                self.state_grid = new_state
+                new_cost = self.get_state_cost(new_state)
+                cost = max(new_cost, cost)
+            else:
+                break
 
         done = False
-        agent_position = self.get_xy_in_habitat()
-        rew = float(-1.0 * np.linalg.norm(agent_position))
-
-        new_state = np.zeros((4, self._height, self._width, 4), dtype=np.uint8)
-        observations = self._simulator.get_sensor_observations()
-        for idx, (key, value) in enumerate(observations.items()):
-            assert value.shape == (self._height, self._width, 4)  # type: ignore
-            new_state[idx] = value
-        self.state = new_state
-
-        return self.state.copy(), rew, done, {"cost": cost}
+        return  self.state_grid.copy(), -1., done, {"cost": cost}
 
 
 def display_map(
