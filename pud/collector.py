@@ -1,3 +1,4 @@
+import logging
 from pud.dependencies import *
 from pud.policies import BasePolicy
 
@@ -237,7 +238,7 @@ class Collector:
             # Immutable objects - Should not change ever!
             state["composite_goals"] = goals.copy()
             state["composite_starts"] = starts.copy()
-            print("Sampled the required starts and goals")
+            logging.debug("Sampled the required starts and goals")
 
         all_done = False
         agent_dones = [False for _ in range(num_agents)]
@@ -313,7 +314,7 @@ class Collector:
                     other_agent_state = np.array(state["agent_observations"][other_agent_id])
 
                     if (np.linalg.norm(agent_state - other_agent_state) < threshold):
-                        print(f"Agent {agent_id} is within threshold of agent {other_agent_id}")
+                        logging.info(f"Agent {agent_id} is within threshold of agent {other_agent_id}")
 
             all_done = all(agent_dones)
 
@@ -389,7 +390,7 @@ class Collector:
             # Immutable objects - Should not change ever!
             state["composite_goals"] = goals.copy()
             state["composite_starts"] = starts.copy()
-            print("Sampled the required starts and goals")
+            logging.debug("Sampled the required starts and goals")
 
         all_done = False
         agent_dones = [False for _ in range(num_agents)]
@@ -473,7 +474,7 @@ class Collector:
                     other_agent_state = np.array(state["agent_observations"][other_agent_id][0])
 
                     if (np.linalg.norm(agent_state - other_agent_state) < threshold):
-                        print(f"Agent {agent_id} is within threshold of agent {other_agent_id}")
+                        logging.info(f"Agent {agent_id} is within threshold of agent {other_agent_id}")
 
             all_done = all(agent_dones)
 

@@ -122,7 +122,8 @@ def sample_cost_pbs_by_agent(
         K:int=5, # num of samples nearest to the target metric
         use_uncertainty:bool=True, # boost samples of high uncertainty 
         uncertainty_lb:float=0.0, 
-        uncertainty_ub:float=1.0, 
+        uncertainty_ub:float=1.0,
+        non_grid:bool=False, 
     ):
     """
     filter based on distance constraints
@@ -132,13 +133,23 @@ def sample_cost_pbs_by_agent(
     """
     rb_vec = [None] * num_states
     for i in range(num_states):
-        s0, info = env.reset_orig()
+        if non_grid:
+            s0 = env.sample_safe_empty_state(cost_limit=agent.lagrange.cost_limit)
+            s0 += np.random.uniform(size=2)
+            s0 = {'observation': env.normalize_obs(s0)}
+        else:
+            s0, info = env.reset_orig()
         rb_vec[i] = s0
     rb_vec = np.array([x["observation"] for x in rb_vec])
 
     rb_vec_goal = [None] * num_states
     for i in range(num_states):
-        s0, info = env.reset_orig()
+        if non_grid:
+            s0 = env.sample_safe_empty_state(cost_limit=agent.lagrange.cost_limit)
+            s0 += np.random.uniform(size=2)
+            s0 = {'observation': env.normalize_obs(s0)}
+        else:
+            s0, info = env.reset_orig()
         rb_vec_goal[i] = s0
     rb_vec_goal = np.array([x["observation"] for x in rb_vec_goal])
 

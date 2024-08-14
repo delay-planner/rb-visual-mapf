@@ -1,5 +1,6 @@
 import yaml
 import torch
+import logging
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -64,11 +65,11 @@ def setup(args):
     state_dim = obs_dim + goal_dim
     action_dim = eval_env.action_space.shape[0]
     max_action = float(eval_env.action_space.high[0])
-    print(f'Obs dim: {obs_dim},\n'
-          f'Goal dim: {goal_dim},\n'
-          f'State dim: {state_dim},\n'
-          f'Action dim: {action_dim},\n'
-          f'Max action: {max_action}')
+    logging.debug(f'Obs dim: {obs_dim},\n'
+                  f'Goal dim: {goal_dim},\n'
+                  f'State dim: {state_dim},\n'
+                  f'Action dim: {action_dim},\n'
+                  f'Max action: {max_action}')
 
     agent = DRLDDPGLag(
             state_dim,  # Concatenating obs and goal
@@ -170,6 +171,8 @@ if __name__ == "__main__":
     records_dir = constrained_ckpt_dir.parent / "records"
     num_records = len(list(records_dir.glob("*.npy")))
 
+    logging.info(f"Starting from {num_records} ckpt")
+
     ckpts = sorted(list(constrained_ckpt_dir.glob("ckpt_*")))
     ckpts = ckpts[num_records:]
 
@@ -187,12 +190,24 @@ if __name__ == "__main__":
         pbar.update(1)
     pbar.close()
 
-    print(f"Mean success rate: {np.mean(success_rates)}")
-    print(f"Std success rate: {np.std(success_rates)}")
-    print(f"Max success rate: {np.max(success_rates)}")
-    print(f"Argmax success rate: {np.argmax(success_rates)}, {ckpts[np.argmax(success_rates)]}")
-    print(f"Min success rate: {np.min(success_rates)}")
-    print(f"Argmin success rate: {np.argmin(success_rates)}, {ckpts[np.argmin(success_rates)]}")
+    srates = []
+    for record_file in records_dir.glob("*.npy"):
+        record = np.load(record_file, allow_pickle=True)
+        metric = extract_metrics(record)
+        srates.append(metric["success_rate"])
 
-    np.save("constrained_ckpt_file_names.npy", ckpt_file_names)
-    np.save("constrained_ckpt_success_rates.npy", success_rates)
+    ckpt_files = sorted(list(constrained_ckpt_dir.glob("ckpt_*")))
+    logging.info(f"Mean success rate: {np.mean(srates)}")
+    logging.info(f"Std success rate: {np.std(srates)}")
+    logging.info(f"Max success rate: {np.max(srates)}")
+    logging.info(f"Argmax success rate: {np.argmax(srates)}, {ckpt_files[np.argmax(srates)]}")
+    logging.info(f"Min success rate: {np.min(srates)}")
+    logging.info(f"Argmin success rate: {np.argmin(srates)}, {ckpt_files[np.argmin(srates)]}")
+
+    logging.info("Top 10 ckpts")
+    top_10 = np.argsort(srates)[-10:]
+    for idx in top_10[::-1]:
+        logging.info(f"{idx + 1}: {srates[idx]}, {ckpt_files[idx]}")
+
+    # np.save("constrained_ckpt_file_names.npy", ckpt_file_names)
+    # np.save("constrained_ckpt_success_rates.npy", success_rates)

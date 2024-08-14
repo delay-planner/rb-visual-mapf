@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import numpy as np
 from pud.collector import Collector
 from typing import Union, List, Tuple
@@ -388,7 +389,7 @@ class ConstrainedCollector(Collector):
 
             ep_waypoint_list.append(state["goal"])
 
-            state, reward, done, info = eval_env.step(np.copy(action))
+            state, reward, done, info = eval_env.step(np.copy(action), num_agents=1)
 
             ep_record["steps"] += 1
             ep_record["rewards"] += reward
@@ -495,7 +496,7 @@ class ConstrainedCollector(Collector):
             # Immutable objects - Should not change ever!
             state["composite_goals"] = goals.copy()
             state["composite_starts"] = starts.copy()
-            print("Sampled the required starts and goals")
+            logging.debug("Sampled the required starts and goals")
 
         all_done = False
         agent_done = [False for _ in range(num_agents)]
@@ -576,7 +577,7 @@ class ConstrainedCollector(Collector):
                     other_agent_state = np.array(state["agent_observations"][other_agent_id])
 
                     if (np.linalg.norm(agent_state - other_agent_state) < threshold):
-                        print(f"Agent {agent_id} is within threhsold of another agent {other_agent_id}")
+                        logging.info(f"Agent {agent_id} is within threhsold of another agent {other_agent_id}")
 
             all_done = all(agent_done)
 

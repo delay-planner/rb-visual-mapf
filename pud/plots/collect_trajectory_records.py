@@ -1,8 +1,12 @@
+import sys
 import yaml
 import torch
+import logging
 import argparse
+import traceback
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 from dotmap import DotMap
 
 from pud.ddpg import GoalConditionedCritic
@@ -70,11 +74,11 @@ def setup(args):
     state_dim = obs_dim + goal_dim
     action_dim = eval_env.action_space.shape[0]
     max_action = float(eval_env.action_space.high[0])
-    print(f'Obs dim: {obs_dim},\n'
-          f'Goal dim: {goal_dim},\n'
-          f'State dim: {state_dim},\n'
-          f'Action dim: {action_dim},\n'
-          f'Max action: {max_action}')
+    logging.debug(f'Obs dim: {obs_dim},\n'
+                  f'Goal dim: {goal_dim},\n'
+                  f'State dim: {state_dim},\n'
+                  f'Action dim: {action_dim},\n'
+                  'Max action: {max_action}')
 
     agent = DRLDDPGLag(
             state_dim,  # Concatenating obs and goal
@@ -118,6 +122,7 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
     else:
         problems = sample_cost_pbs_by_agent(
             K=config.num_samples * 100,
+            non_grid=True,
             min_dist=0,
             agent=agent,  # type: ignore
             env=eval_env,  # type: ignore
@@ -170,146 +175,228 @@ def argument_parser():
 def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
-    problems = problem_setup[3]
+    unconstrained_records = []
+    save_path = "pud/plots/data/single_agent/unconstrained_records.npy"
+    if save and Path(save_path).exists():
+        unconstrained_records = np.load(save_path, allow_pickle=True)
+        unconstrained_records = unconstrained_records.tolist()
+
+    start_idx = len(unconstrained_records)
+    logging.info(f"Starting from index: {start_idx}")
+
+    problems = problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    unconstrained_records = []
-    for _ in range(config.num_samples):
+    for _ in range(start_idx, config.num_samples):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env)
         unconstrained_records.append(records)
 
+        if save:
+            np.save(save_path, unconstrained_records)
+
     if save:
-        np.save("pud/plots/data/single_agent/unconstrained_records.npy", unconstrained_records)
+        np.save(save_path, unconstrained_records)
     return unconstrained_records
 
 
 def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
-    problems = problem_setup[3]
+    unconstrained_records = []
+    save_path = f"pud/plots/data/multi_agent/unconstrained_records_{args.num_agents}.npy"
+    if save and Path(save_path).exists():
+        unconstrained_records = np.load(save_path, allow_pickle=True)
+        unconstrained_records = unconstrained_records.tolist()
+
+    start_idx = len(unconstrained_records) * args.num_agents
+    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+
+    problems = problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    unconstrained_records = []
-    for _ in range(config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents)
+    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents, threshold=0.0)
         unconstrained_records.append(records)
 
+        if save:
+            np.save(save_path, unconstrained_records)
+
     if save:
-        np.save(f"pud/plots/data/multi_agent/unconstrained_records_{args.num_agents}.npy", unconstrained_records)
+        np.save(save_path, unconstrained_records)
     return unconstrained_records
 
 
 def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
-    rb_vec, pdist, problems = problem_setup[0], problem_setup[1], problem_setup[3]
+    unconstrained_search_records = []
+    save_path = "pud/plots/data/single_agent/unconstrained_search_records.npy"
+    if save and Path(save_path).exists():
+        unconstrained_search_records = np.load(save_path, allow_pickle=True)
+        unconstrained_search_records = unconstrained_search_records.tolist()
+
+    start_idx = len(unconstrained_search_records)
+    logging.info(f"Starting from index: {start_idx}")
+
+    rb_vec, pdist, problems = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    pbar = tqdm(total=config.num_samples)
-    unconstrained_search_records = []
-    for _ in range(config.num_samples):
-        search_policy = SearchPolicy(agent, rb_vec.copy(), pdist=pdist.copy(), open_loop=True, no_waypoint_hopping=True)
+    search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
+
+    for _ in tqdm(range(start_idx, config.num_samples)):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env)
         unconstrained_search_records.append(records)
-        pbar.update(1)
-    pbar.close()
+
+        if save:
+            np.save(save_path, unconstrained_search_records)
 
     if save:
-        np.save("pud/plots/data/single_agent/unconstrained_search_records.npy", unconstrained_search_records)
+        np.save(save_path, unconstrained_search_records)
     return unconstrained_search_records
 
 
 def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
-    rb_vec, pdist, problems = problem_setup[0], problem_setup[1], problem_setup[3]
+    unconstrained_search_records = []
+    save_path = f"pud/plots/data/multi_agent/unconstrained_search_records_{args.num_agents}.npy"
+    if save and Path(save_path).exists():
+        unconstrained_search_records = np.load(save_path, allow_pickle=True)
+        unconstrained_search_records = unconstrained_search_records.tolist()
+
+    start_idx = len(unconstrained_search_records) * args.num_agents
+    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+
+    rb_vec, pdist, problems = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    pbar = tqdm(total=config.num_samples)
-    unconstrained_search_records = []
-    for _ in range(config.num_samples):
-        ma_search_policy = MultiAgentSearchPolicy(
-            agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True
+    ma_search_policy = MultiAgentSearchPolicy(
+        agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True, radius=0
+    )
+
+    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+            ma_search_policy, eval_env, args.num_agents, threshold=0.0
         )
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(ma_search_policy, eval_env, args.num_agents)
         unconstrained_search_records.append(records)
-        pbar.update(1)
-    pbar.close()
+
+        if save:
+            np.save(save_path, unconstrained_search_records)
 
     if save:
-        np.save(
-            f"pud/plots/data/multi_agent/unconstrained_search_records_{args.num_agents}.npy",
-            unconstrained_search_records
-        )
+        np.save(save_path, unconstrained_search_records)
     return unconstrained_search_records
 
 
 def single_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    problems = problem_setup[3]
+    constrained_records = []
+    save_path = "pud/plots/data/single_agent/constrained_records.npy"
+    if save and Path(save_path).exists():
+        constrained_records = np.load(save_path, allow_pickle=True)
+        constrained_records = constrained_records.tolist()
+
+    start_idx = len(constrained_records)
+    logging.info(f"Starting from index: {start_idx}")
+
+    problems = problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    constrained_records = []
-    for _ in range(config.num_samples):
+    for _ in range(start_idx, config.num_samples):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env)
         constrained_records.append(records)
 
+        if save:
+            np.save(save_path, constrained_records)
+
     if save:
-        np.save("pud/plots/data/single_agent/constrained_records.npy", constrained_records)
+        np.save(save_path, constrained_records)
     return constrained_records
 
 
 def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    problems = problem_setup[3]
+    constrained_records = []
+    save_path = f"pud/plots/data/multi_agent/constrained_records_{args.num_agents}.npy"
+    if save and Path(save_path).exists():
+        constrained_records = np.load(save_path, allow_pickle=True)
+        constrained_records = constrained_records.tolist()
+
+    start_idx = len(constrained_records) * args.num_agents
+    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+
+    problems = problem_setup[3].copy()
+    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    constrained_records = []
-    for _ in range(config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents)
+    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents, threshold=0.0)
         constrained_records.append(records)
 
+        if save:
+            np.save(save_path, constrained_records)
+
     if save:
-        np.save(f"pud/plots/data/multi_agent/constrained_records_{args.num_agents}.npy", constrained_records)
+        np.save(save_path, constrained_records)
     return constrained_records
 
 
 def single_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    rb_vec, pdist, pcost, problems = problem_setup
+    rb_vec = problem_setup[0].copy()
+    pdist = problem_setup[1].copy()
+    pcost = problem_setup[2].copy()
+    problems = problem_setup[3].copy()
+
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
     constrained_search_factored_records = []
-    edge_cost_limit_factors = [0.1, 0.5, 1.0]
+    edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
     for factor in edge_cost_limit_factors:
-        print(f"Factor: {factor}")
+        logging.info(f"Factor: {factor}")
 
+        constrained_search_records = []
+        save_path = f"pud/plots/data/single_agent/constrained_search_records_{factor}.npy"
+        if save and Path(save_path).exists():
+            constrained_search_records = np.load(save_path, allow_pickle=True)
+            constrained_search_records = constrained_search_records.tolist()
+
+        start_idx = len(constrained_search_records)
+        logging.info(f"Starting from index: {start_idx}")
+
+        problems = problem_setup[3].copy()
+        problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        pbar = tqdm(total=config.num_samples)
-        constrained_search_records = []
         edge_cost_limit = trained_cost_limit * factor
 
-        for _ in range(config.num_samples):
-            constrained_search_policy = ConstrainedSearchPolicy(
-                agent,
-                rb_vec,
-                pdist=pdist,
-                pcost=pcost,
-                open_loop=True,
-                no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit
-            )
+        constrained_search_policy = ConstrainedSearchPolicy(
+            agent,
+            rb_vec,
+            pdist=pdist,
+            pcost=pcost,
+            open_loop=True,
+            no_waypoint_hopping=True,
+            max_cost_limit=edge_cost_limit
+        )
+
+        for _ in tqdm(range(start_idx, config.num_samples)):
             _, _, _, _, _, records = ConstrainedCollector.get_trajectory(constrained_search_policy, eval_env)
             constrained_search_records.append(records)
-            pbar.update(1)
-        pbar.close()
+
+            if save:
+                np.save(save_path, constrained_search_records)
 
         if save:
-            np.save(f"pud/plots/data/single_agent/constrained_search_records_{factor}.npy", constrained_search_records)
+            np.save(save_path, constrained_search_records)
 
         constrained_search_factored_records.append(constrained_search_records)
 
@@ -321,43 +408,56 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
 
 
 def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
-    rb_vec, pdist, pcost, problems = problem_setup
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    constrained_search_factored_records = []
-    edge_cost_limit_factors = [0.1, 0.5, 1.0]
-    for factor in edge_cost_limit_factors:
-        print(f"Factor: {factor}")
+    rb_vec = problem_setup[0].copy()
+    pdist = problem_setup[1].copy()
+    pcost = problem_setup[2].copy()
+    problems = problem_setup[3].copy()
 
+    constrained_search_factored_records = []
+    edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
+    for factor in edge_cost_limit_factors:
+        logging.info(f"Factor: {factor}")
+
+        constrained_search_records = []
+        save_path = f"pud/plots/data/multi_agent/constrained_search_records_{args.num_agents}_{factor}.npy"
+        if save and Path(save_path).exists():
+            constrained_search_records = np.load(save_path, allow_pickle=True)
+            constrained_search_records = constrained_search_records.tolist()
+
+        start_idx = len(constrained_search_records) * args.num_agents
+        logging.info(f"Starting from index: {start_idx // args.num_agents}")
+
+        problems = problem_setup[3].copy()
+        problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        pbar = tqdm(total=config.num_samples)
-        constrained_search_records = []
         edge_cost_limit = trained_cost_limit * factor
 
-        for _ in range(config.num_samples):
-            constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
-                agent,
-                rb_vec,
-                args.num_agents,
-                pdist=pdist,
-                pcost=pcost,
-                open_loop=True,
-                no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit
-            )
+        constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
+            agent,
+            rb_vec.copy(),
+            args.num_agents,
+            radius=0.0,
+            open_loop=True,
+            pdist=pdist.copy(),
+            pcost=pcost.copy(),
+            no_waypoint_hopping=True,
+            max_cost_limit=edge_cost_limit
+        )
+
+        for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                constrained_ma_search_policy, eval_env, args.num_agents
+                constrained_ma_search_policy, eval_env, args.num_agents, threshold=0.0
             )
             constrained_search_records.append(records)
-            pbar.update(1)
-        pbar.close()
+
+            if save:
+                np.save(save_path, constrained_search_records)
 
         if save:
-            np.save(
-                f"pud/plots/data/multi_agent/constrained_search_records_{args.num_agents}_{factor}.npy",
-                constrained_search_records
-            )
+            np.save(save_path, constrained_search_records)
 
         constrained_search_factored_records.append(constrained_search_records)
 
@@ -369,8 +469,7 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
     return constrained_search_factored_records
 
 
-if __name__ == "__main__":
-
+def main():
     args = argument_parser()
     config, eval_env, agent, trained_cost_limit = setup(args)
     if args.load_problem_set:
@@ -403,3 +502,13 @@ if __name__ == "__main__":
             multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True)
     else:
         raise ValueError("Invalid method type")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print("Error: ", e)
+        traceback.print_exc()
+        sys.exit(1)
+    sys.exit(0)
