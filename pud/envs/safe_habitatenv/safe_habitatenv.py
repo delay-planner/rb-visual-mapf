@@ -60,17 +60,45 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 raise Exception("Unsupported cost function")
 
             # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
-            self._cost_map = self._build_cost_map()
+            self._cost_map = self.build_cost_map()
 
-        self._safe_empty_states = self._gather_safe_empty_states(self.cost_limit)
+        self._safe_empty_states = self.gather_safe_empty_states(self.cost_limit)
         self.reset()
         print("[INFO] SafeHabitatNavigationEnv Setup: {} s".format(time.time() - t0))
+    
+    def get_map(self):
+        return self._walls
+    
+    def get_cost_map(self):
+        return self._cost_map
 
+    def get_map_width(self):
+        return self._width
+    
+    def get_map_height(self):
+        return self._height
+
+    def get_internal_state(self):
+        return self.state_grid.copy()
+    
+    def set_cost_limit(self, cost_limit:float):
+        self.cost_limit = cost_limit
+    
     @property
     def cost_map(self):
         return self._cost_map
 
-    def _gather_safe_empty_states(self, cost_limit: float) -> NDArray:
+    def build_cost_map(self):
+        (height, width) = self._walls.shape
+        cost_map = np.ones([height+1, width+1], dtype=float) * np.inf
+        
+        for i in range(cost_map.shape[0]):
+            for j in range(cost_map.shape[1]):
+                min_d, _  = self.dist_2_blocks([i,j])
+                cost_map[i,j]= self.cost_function(min_d)
+        return cost_map
+
+    def gather_safe_empty_states(self, cost_limit: float) -> NDArray:
         """
         Due to the increased cost in reset, precompile a list of initial states here
         """
@@ -86,68 +114,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         safe_empty_states = np.column_stack(safe_empty_states)  # Nxd
         return safe_empty_states
 
-    def _dist_two_blocks(self, xy: NDArray) -> Tuple[float, int]:
-        """
-        Calculate the distance between a float state xy and a blocked states i.e obstacles that are ints
-        (from array indices)
-
-        A block covers an square area of
-            block_x -- block_x + 1
-            block_y -- block_y + 1
-
-        Args:
-            xy (NDarray): [x, y]
-
-        Returns:
-            float: Calculated distance
-            int: Index of the nearest block
-
-        Example:
-            xy = np.array([0.5, 0.6])
-            block_xys = np.array([[0,1],[2,5]])
-
-        Reference:
-            https://stackoverflow.com/questions/5254838/calculating-distance-between-a-point-and-a-rectangular-box-nearest-point
-        """
-
-        bxs_min = self.obstacles[:, 0]
-        bys_min = self.obstacles[:, 1]
-        x, y = xy
-
-        dxs = np.maximum(bxs_min - x, x - (bxs_min + 1))
-        dxs = np.maximum(dxs, 0.0)
-
-        dys = np.maximum(bys_min - y, y - (bys_min + 1))
-        dys = np.maximum(dys, 0)
-
-        d2 = dxs**2.0 + dys**2.0
-        ind_min = np.argmin(d2)
-        d_min = np.sqrt(d2[ind_min])
-
-        return d_min, ind_min  # type: ignore
-
-    def _build_cost_map(self) -> NDArray:
-        height, width = self._walls.shape
-        cost_map = np.ones([height, width], dtype=float) * np.inf
-
-        assert self.cost_function is not None
-
-        for i in range(height):
-            for j in range(width):
-                min_distance, _ = self._dist_two_blocks(np.array([i, j]))
-                cost_map[i, j] = self.cost_function(min_distance)
-
-        return cost_map
-
-    def get_state_cost(self, xy: NDArray) -> float:
-        """
-        Assumes that the xy argument is the grid position and not the continuous position
-        """
-        assert self.cost_function is not None
-        min_distance, _ = self._dist_two_blocks(xy)
-        return self.cost_function(min_distance)  # type: ignore
-
-    def _sample_safe_empty_state(self, cost_limit: float):
+    def sample_safe_empty_state(self, cost_limit: float):
         """
         Must take the intersection with the empty states because state cost is computed from the center of the block
         """
@@ -159,9 +126,57 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         # NOTE: Don't remove the checks below
         assert not self._is_blocked(new_state)
-        assert self.get_state_cost(new_state) < self.cost_limit
+        assert self.get_state_cost(new_state) <= self.cost_limit
         return new_state
 
+    def dist_2_blocks(self, xy:np.ndarray):
+        """
+        calculate the distance between a float state xy and a block state that are ints (from array indices)
+
+        a block covers an square area of 
+        block_x -- block_x+1
+        block_y -- block_y+1
+
+        Args:
+            xy (np.ndarray): [x,y]
+            block_xys (np.ndarray): [[block_x, block_y], ... ]
+
+        Returns:
+            float: calculated distance
+            int: index of the nearest block
+        
+        Example:
+            xy = np.array([0.5, 0.6])
+            
+            block_xys = np.array([[0,1],[2,5]])
+
+        Reference: https://stackoverflow.com/questions/5254838/calculating-distance-between-a-point-and-a-rectangular-box-nearest-point
+        """
+        
+        bxs_min = self.obstacles[:,0]
+        bys_min = self.obstacles[:,1]
+        x, y = xy
+
+        dxs = np.maximum(bxs_min-x, x-(bxs_min+1))
+        dxs = np.maximum(dxs, 0.0)
+        
+        dys = np.maximum(bys_min-y, y-(bys_min+1))
+        dys = np.maximum(dys, 0)
+
+        d2 = dxs**2.0 + dys**2.0
+        ind_min = np.argmin(d2)
+        d_min = np.sqrt(d2[ind_min]) 
+
+        return d_min, ind_min
+
+    def get_state_cost(self, xy: NDArray) -> float:
+        """
+        Assumes that the xy argument is the grid position and not the continuous position
+        """
+        assert self.cost_function is not None
+        min_distance, _ = self.dist_2_blocks(xy)
+        return self.cost_function(min_distance)  # type: ignore
+    
     def seed(self, seed: int) -> None:
         self._simulator.seed(seed)
 
@@ -171,10 +186,17 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 "[INFO] Skipping the reset in HabitatNavigationEnv.__init__ because setup is not ready yet"
             )
             return
-        safe_agent_position = self._sample_safe_empty_state(cost_limit=self.cost_limit)
-        agent_cost = self.get_state_cost(xy=safe_agent_position)
+        self.state_grid = self.sample_safe_empty_state(cost_limit=self.cost_limit)
+        agent_cost = self.get_state_cost(xy=self.state_grid)
         info = {"cost": agent_cost}
-        return self.state.copy(), info
+        return self.state_grid.copy(), info
+
+    def reset_manual(self, start_state:np.ndarray):
+        "manually set the start state"
+        self.state_grid = start_state
+        new_state_cost = self.get_state_cost(xy=self.state_grid)
+        info = {"cost": new_state_cost}
+        return self.state_grid.copy(), info
 
     def step(self, action: NDArray) -> Tuple[NDArray, float, bool, Dict]:
         if self._action_noise > 0:
