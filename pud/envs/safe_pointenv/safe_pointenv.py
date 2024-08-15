@@ -212,66 +212,49 @@ class SafePointEnv (PointEnv):
             for j in range(cost_map.shape[1]):
                 min_d, _  = self.dist_2_blocks([i,j])
                 cost_map[i,j]= self.cost_function(min_d)
-        
-        # todo: there seems exist a bug below, but not sure where
-        # ! NOTE: stop writing fancy but buggy code!!
-        # ! seems wrongly flipped/transposed
-        # NOTE: the h,w order is (height, width) = self._walls.shape
-        #mesh_x, mesh_y = np.meshgrid(np.arange(height), np.arange(width))
-        #p_x = mesh_x.ravel()
-        #p_y = mesh_y.ravel()
-        #pnts = np.column_stack([p_x, p_y])
-        #pnts_cost = np.ones((len(p_x),), dtype=float) * np.inf
-        #for ii in range(len(pnts)):
-        #    pt = pnts[ii]
-        #    min_d, _  = self.dist_2_blocks(pt)
-        #    pt_cost= self.cost_function(min_d)
-        #    pnts_cost[ii] = pt_cost
-        #cost_map = pnts_cost.reshape(mesh_x.shape)
-
         return cost_map
     
-    def _compute_safe_apsp(self, walls:np.ndarray, cost_map:np.ndarray, cost_limit:float):
-        """
-        cost equivalent of _compute_asps
-        take advantage of the knowledge that edges are bi-directional, so simply removing unsafe nodes/edges
-        """
-        (height, width) = walls.shape
-        g = nx.Graph()
-        # Add all the nodes
-        for i in range(height):
-            for j in range(width):
-                if walls[i, j] == 0:
-                    g.add_node((i, j))
+    #def _compute_safe_apsp(self, walls:np.ndarray, cost_map:np.ndarray, cost_limit:float):
+    #    """
+    #    cost equivalent of _compute_asps
+    #    take advantage of the knowledge that edges are bi-directional, so simply removing unsafe nodes/edges
+    #    """
+    #    (height, width) = walls.shape
+    #    g = nx.Graph()
+    #    # Add all the nodes
+    #    for i in range(height):
+    #        for j in range(width):
+    #            if walls[i, j] == 0:
+    #                g.add_node((i, j))
 
-        # Add all the edges
-        for i in range(height):
-            for j in range(width):
-                for di in [-1, 0, 1]:
-                    for dj in [-1, 0, 1]:
-                        if di == dj == 0:
-                            continue  # Don't add self loops
-                        if i + di < 0 or i + di > height - 1:
-                            continue  # No cell here
-                        if j + dj < 0 or j + dj > width - 1:
-                            continue  # No cell here
-                        if walls[i, j] == 1:
-                            continue  # Don't add edges to walls
-                        if walls[i + di, j + dj] == 1:
-                            continue  # Don't add edges to walls
-                        ## filtering by cost map
-                        if cost_map[i,j] > cost_limit:
-                            continue
-                        if cost_map[i + di,j + dj] > cost_limit:
-                            continue
-                        g.add_edge((i, j), (i + di, j + dj))
+    #    # Add all the edges
+    #    for i in range(height):
+    #        for j in range(width):
+    #            for di in [-1, 0, 1]:
+    #                for dj in [-1, 0, 1]:
+    #                    if di == dj == 0:
+    #                        continue  # Don't add self loops
+    #                    if i + di < 0 or i + di > height - 1:
+    #                        continue  # No cell here
+    #                    if j + dj < 0 or j + dj > width - 1:
+    #                        continue  # No cell here
+    #                    if walls[i, j] == 1:
+    #                        continue  # Don't add edges to walls
+    #                    if walls[i + di, j + dj] == 1:
+    #                        continue  # Don't add edges to walls
+    #                    ## filtering by cost map
+    #                    if cost_map[i,j] > cost_limit:
+    #                        continue
+    #                    if cost_map[i + di,j + dj] > cost_limit:
+    #                        continue
+    #                    g.add_edge((i, j), (i + di, j + dj))
 
-        # dist[i, j, k, l] is path from (i, j) -> (k, l)
-        dist = np.full((height, width, height, width), np.float32('inf'))
-        for ((i1, j1), dist_dict) in nx.shortest_path_length(g):
-            for ((i2, j2), d) in dist_dict.items():
-                dist[i1, j1, i2, j2] = d
-        return dist
+    #    # dist[i, j, k, l] is path from (i, j) -> (k, l)
+    #    dist = np.full((height, width, height, width), np.float32('inf'))
+    #    for ((i1, j1), dist_dict) in nx.shortest_path_length(g):
+    #        for ((i2, j2), d) in dist_dict.items():
+    #            dist[i1, j1, i2, j2] = d
+    #    return dist
     
     def reset(self):
         if (not hasattr(self, "cost_limit")) or (not hasattr(self, "_cost_map")):
@@ -370,17 +353,6 @@ class SafePointEnv (PointEnv):
         min_d, _ = self.dist_2_blocks(xy)
         return self.cost_function(min_d)
     
-    def _get_safe_distance(self, obs, goal):
-        """Compute the shortest path distance.
-
-        Note: This distance is *not* used for training."""
-        (i1, j1) = self._discretize_state(obs)
-        (i2, j2) = self._discretize_state(goal)
-        return {
-            "ub": self._safe_apsp["ub"][i1, j1, i2, j2],
-            "lb": self._safe_apsp["lb"][i1, j1, i2, j2],
-        }
-    
     def step(self, action):
         if self._action_noise > 0:
             action += np.random.normal(0, self._action_noise)
@@ -403,5 +375,6 @@ class SafePointEnv (PointEnv):
 
         assert not self._is_blocked(self.state), "new state is in collision, might be a bug"
         done = False
-        rew = -1.0 * np.linalg.norm(self.state)
+        #rew = -1.0 * np.linalg.norm(self.state)
+        rew = -1.0
         return self.state.copy(), rew, done, {"cost": cost}

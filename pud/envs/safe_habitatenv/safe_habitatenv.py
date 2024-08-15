@@ -10,6 +10,68 @@ from pathlib import Path
 from pud.envs.habitat_navigation_env import HabitatNavigationEnv
 
 
+
+def display_map(
+    topdown_map: NDArray,
+    scene_name: str,
+    cost_map: NDArray,
+    cost_limit: float,
+    ax: Axes,
+    key_points: Union[NDArray, None] = None,
+) -> Axes:
+    ax.set_title(scene_name)
+    ax.axis("off")
+
+    height, width = topdown_map.shape
+    for i, j in zip(*np.where(topdown_map == 1)):
+        x = np.array([i, i + 1]) / float(height)
+        y0 = np.array([j, j]) / float(width)
+        y1 = np.array([j+1, j+1]) / float(width)
+        ax.fill_between(x, y0, y1, color="grey")
+
+    unsafe_points = np.where(cost_map > cost_limit)
+    unsafe_points = np.column_stack(unsafe_points)
+    ax.scatter(
+        unsafe_points[:, 0] / float(height),
+        unsafe_points[:, 1] / float(width),
+        s=2,
+        marker="o",
+        c="red",
+    )
+
+    if key_points is not None:
+        ax.plot(
+            key_points[:, 0] / float(height),
+            key_points[:, 1] / float(width),
+            "b-o",
+            markersize=0.5,
+            alpha=0.8,
+        )
+        ax.scatter(
+            key_points[0][0] / float(height),
+            key_points[0][1] / float(width),
+            marker="+",
+            color="cyan",
+            s=10,
+            label="start",
+        )
+        ax.scatter(
+            key_points[-1][0] / float(height),
+            key_points[-1][1] / float(width),
+            marker="*",
+            color="green",
+            s=10,
+            label="goal",
+        )
+
+    ax.set_xlim((0, 1))
+    ax.set_ylim((0, 1))
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect("equal", adjustable="box")
+
+    return ax
+
 class SafeHabitatNavigationEnv(HabitatNavigationEnv):
     def __init__(
         self,
@@ -173,9 +235,8 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         """
         Assumes that the xy argument is the grid position and not the continuous position
         """
-        assert self.cost_function is not None
-        min_distance, _ = self.dist_2_blocks(xy)
-        return self.cost_function(min_distance)  # type: ignore
+        min_d, _ = self.dist_2_blocks(xy)
+        return self.cost_function(min_d)
     
     def seed(self, seed: int) -> None:
         self._simulator.seed(seed)
@@ -222,69 +283,8 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 break
 
         done = False
-        return  self.state_grid.copy(), -1., done, {"cost": cost}
-
-
-def display_map(
-    topdown_map: NDArray,
-    scene_name: str,
-    cost_map: NDArray,
-    cost_limit: float,
-    ax: Axes,
-    key_points: Union[NDArray, None] = None,
-) -> Axes:
-    ax.set_title(scene_name)
-    ax.axis("off")
-
-    height, width = topdown_map.shape
-    for i, j in zip(*np.where(topdown_map == 0)):
-        x = np.array([i, i + 1]) / float(height)
-        y0 = np.array([j, j]) / float(width)
-        y1 = np.array([j+1, j+1]) / float(width)
-        ax.fill_between(x, y0, y1, color="grey")
-
-    unsafe_points = np.where(cost_map > cost_limit)
-    unsafe_points = np.column_stack(unsafe_points)
-    ax.scatter(
-        unsafe_points[:, 0] / float(height),
-        unsafe_points[:, 1] / float(width),
-        s=2,
-        marker="o",
-        c="red",
-    )
-
-    if key_points is not None:
-        ax.plot(
-            key_points[:, 0] / float(height),
-            key_points[:, 1] / float(width),
-            "b-o",
-            markersize=0.5,
-            alpha=0.8,
-        )
-        ax.scatter(
-            key_points[0][0] / float(height),
-            key_points[0][1] / float(width),
-            marker="+",
-            color="cyan",
-            s=10,
-            label="start",
-        )
-        ax.scatter(
-            key_points[-1][0] / float(height),
-            key_points[-1][1] / float(width),
-            marker="*",
-            color="green",
-            s=10,
-            label="goal",
-        )
-
-    ax.set_xlim((0, 1))
-    ax.set_ylim((0, 1))
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect("equal", adjustable="box")
-
-    return ax
+        rew = -1.0
+        return  self.state_grid.copy(), rew, done, {"cost": cost}
 
 
 if __name__ == "__main__":

@@ -319,28 +319,9 @@ class HabitatNavigationEnv(gym.Env):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action)
 
-        # debug and visualize setp
-        #fig, ax = plt.subplots()
-        #ax = plot_wall(self.walls, ax=ax)
-        #h, w = self.walls.shape
-        #ax.plot(start_state[0]/h, start_state[1]/w, "ro")
-        
-        #next_state = np.stack([
-        #    start_state,
-        #    start_state + action,
-        #], axis=0)
-
-        #state = next_state[-1]
-        #self._is_blocked(next_state[-1])
-        #ax.plot(next_state[:,0]/h, next_state[:,1]/w, "g-", label="traj")
-
-
-        #fig.savefig("temp/start_state.jpg", dpi=300)
-        #plt.close(fig)
-
         num_substeps = 10
         start_state = self.state_grid.copy()
-        self._is_blocked(start_state)
+        assert not self._is_blocked(start_state)
         for dt in np.linspace(0, 1, num_substeps):
             new_state = start_state + dt * action
             if not self._is_blocked(new_state):

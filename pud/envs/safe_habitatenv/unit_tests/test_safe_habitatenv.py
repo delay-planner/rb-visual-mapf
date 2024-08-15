@@ -17,29 +17,24 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
 
 """
 python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabitatEnv.test_reset
+
+python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabitatEnv.test_plot_safe_environment
+
+
 """
 
 
 class TestSafeHabitatEnv(unittest.TestCase):
     def setUp(self):
-        self.env_kwargs = {
-            "scene": "scene_datasets/habitat-test-scenes/skokloster-castle.glb",
-            "height": 0.0,
-            "apsp_path": "pud/envs/safe_habitatenv/unit_tests/outputs/apsps.pickle",
-        }
-        self.cost_fn_kwargs = {
-            "name": "cosine",
-            "radius": 2.0,
-        }
-        self.precompilation_kwargs = {
-            "cost_limit": 1,
-        }
-
-        self.habitat_env = SafeHabitatNavigationEnv(
-            **self.env_kwargs,  # type: ignore
-            **self.precompilation_kwargs,
-            cost_f_args=self.cost_fn_kwargs
+        self.env_kwargs = dict(
+            env_type="ReplicaCAD",
+            sensor_type="rgb",
+            device="cuda:1",
+            cost_f_args={"name": "cosine", "radius": 2.0},
+            cost_limit=1.0,
         )
+
+        self.habitat_env = SafeHabitatNavigationEnv(**self.env_kwargs)
 
     def test_safe_habitat_env_load_fn(self):
         """
@@ -76,7 +71,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
         output_dir = Path("pud/envs/safe_habitatenv/unit_tests/outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        title = "Skokloster Castle"
+        title = "Safe Habitat Test Visual"
         for cost_ub in [0, 1, 2]:
             fig, ax = plt.subplots()
             _ = display_map(
@@ -204,7 +199,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
             state, info = self.habitat_env.reset()  # type: ignore
             agent_position = self.habitat_env.get_xy_in_habitat()
             cx, cy = self.habitat_env.get_grid_xy_from_habitat_xy(agent_position)
-            sample_cost = self.habitat_env._get_state_cost(np.array([cx, cy]))
+            sample_cost = self.habitat_env.get_state_cost(np.array([cx, cy]))
             self.assertTrue(
                 sample_cost < self.habitat_env.cost_limit,
                 msg="Sample = {}, Sample Cost = {}, Cost Map = {}, Cost Limit = {}".format(
