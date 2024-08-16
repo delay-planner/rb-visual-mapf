@@ -225,6 +225,14 @@ class HabitatNavigationEnv(gym.Env):
         init flips the values"""
         return self._walls
 
+    @property
+    def wall_height(self):
+        return self._wall_height
+
+    @property
+    def wall_width(self):
+        return self._wall_width
+
     ##----------- Point Env equivalent internal functions ------------------------
     def compute_apsp(self, walls: NDArray):
         """
