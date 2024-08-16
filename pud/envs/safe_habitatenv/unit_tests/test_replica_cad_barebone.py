@@ -12,11 +12,7 @@ habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
 """
 
 """
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_replica_cad_in_habitat_env
-
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints
-
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.test_plot_map
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
 
@@ -88,69 +84,6 @@ class TestReplicaCADBarebone(unittest.TestCase):
         cfg = make_cfg(settings)
         sim = habitat_sim.Simulator(cfg)
 
-    def test_plot_map(self):
-        from pud.envs.habitat_navigation_env import HabitatNavigationEnv
-        env = HabitatNavigationEnv(
-            env_type="ReplicaCAD",
-        )
-        print("walls shape: {}".format(env._walls.shape))
-
-        walls = env._walls.copy()
-        fig, ax = plt.subplots()
-        # 1 is navigatbale, 0 is obstacle
-        # convert to the convention of pointenv
-        walls = 1 - walls
-        (height, width) = walls.shape
-
-        # below is for sketching and understanding
-        rand_map = np.random.rand(5,5) < 0.5
-        rand_map = (1 - rand_map)
-        rand_walls = np.where(rand_map)
-        ## NOTE: in numpy, x axis is actually along the vertical axis (1st dim), but matplotlib plots it along the horizontal axis. There is an implicit transpose in between. It does NOT mess up the point selection from plotted images as long as x axis in the image is read back as 1st dim in numpy array (e.g., do NOT swap x and y, use data as is). 
-        # only plot walls
-        for (i, j) in zip(*np.where(walls)):
-            x = np.array([i, i+1]) / float(height)
-            y0 = np.array([j, j]) / float(width)
-            y1 = np.array([j+1, j+1]) / float(width)
-            ax.fill_between(x, y0, y1, color='grey')
-
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_aspect('equal', adjustable='box')
-
-        fig.savefig("runs/tmp_plots/replicad_cad_3d_2.jpg", dpi=300)
-
-    def test_replica_cad_in_habitat_env(self):
-        from pud.envs.habitat_navigation_env import HabitatNavigationEnv
-        env = HabitatNavigationEnv(
-            env_type="ReplicaCAD",
-        )
-        print("walls shape: {}".format(env._walls.shape))
-
-        walls = env._walls.copy()
-        fig, ax = plt.subplots()
-        # 1 is navigatbale, 0 is obstacle
-        # convert to the convention of pointenv
-        walls = 1 - walls
-        walls = walls.T
-        (height, width) = walls.shape
-        # only plot walls
-        for (i, j) in zip(*np.where(walls)):
-            x = np.array([j, j+1]) / float(width)
-            y0 = np.array([i, i]) / float(height)
-            y1 = np.array([i+1, i+1]) / float(height)
-            ax.fill_between(x, y0, y1, color='grey')
-
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_aspect('equal', adjustable='box')
-
-        fig.savefig("runs/tmp_plots/replicad_cad_3d.jpg", dpi=300)
-
     def vis_handed_crafted_waypoints(self):
         from pud.envs.habitat_navigation_env import HabitatNavigationEnv
         env = HabitatNavigationEnv(
@@ -207,7 +140,6 @@ class TestReplicaCADBarebone(unittest.TestCase):
             
             ax_wall = fig.add_subplot(gs[:,-1])
             walls = env._walls.copy()
-            walls = 1 - walls
             for (i, j) in zip(*np.where(walls)):
                 x = np.array([i, i+1]) / float(height)
                 y0 = np.array([j, j]) / float(width)
