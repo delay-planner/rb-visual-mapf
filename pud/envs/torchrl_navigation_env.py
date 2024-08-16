@@ -244,7 +244,8 @@ def _step(self, tensordict):
         agent_dones.append(agent_done)
 
         normalized_state = self._normalize_obs(denormalized_state)
-        reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
+        # reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
+        reward = -np.ones((batch_size, 1))
 
         td_state = TensorDict(
             {
@@ -337,7 +338,8 @@ def _set_seed(self, seed):
 
 def _render(self, tensordict, mode="human"):
     if mode == "human":
-        plot_walls(self._walls)
+        fig, ax = plt.subplots()
+        ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
             agent_state = tensordict["agents", "observation", "state"][agent_id].cpu().numpy()
@@ -346,7 +348,8 @@ def _render(self, tensordict, mode="human"):
             plt.plot(agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x")
             plt.show(block=False)
     elif mode == "rgb_array":
-        plot_walls(self._walls)
+        fig, ax = plt.subplots()
+        ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
             agent_state = tensordict["agents", "observation", "state"][0][agent_id].cpu().numpy()

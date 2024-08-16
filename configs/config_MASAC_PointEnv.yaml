@@ -8,7 +8,7 @@ env:
   action_noise: 0.0
   # walls: CentralObstacle
   walls: CenterDot
-  # apsp_path: pud/envs/precompiles/CentralObstacle_5_apsp.pkl
+  apsp_path: #pud/envs/precompiles/CentralObstacle_5_apsp.pkl
   device: ??? # These values will be populated dynamically
 
 model:
