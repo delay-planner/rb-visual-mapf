@@ -19,7 +19,7 @@ project_root=/home/gridsan/vparimi/cc-sorb-rev
 export PYTHONPATH=$project_root:$PYTHONPATH
 
 baseline=$1
-baseline_options=("iddpg", "ippo", "isac", "maddpg", "mappo", "masac")
+baseline_options=("iddpg" "ippo" "isac" "maddpg" "mappo" "masac")
 if [[ " ${baseline_options[@]} " =~ " ${baseline} " ]]; then
     # Call the corresponding Python file based on the argument
     case $baseline in
@@ -44,5 +44,6 @@ if [[ " ${baseline_options[@]} " =~ " ${baseline} " ]]; then
     esac
 else
     # Print an error message if the argument is not valid
+    echo $baseline
     echo "Error: Invalid argument. Please choose from: ${baseline_options[*]}"
 fi
