@@ -125,19 +125,16 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         min_cost=None,
         max_cost=None,
     ):
-        assert prob_constraint is not None
-        assert min_dist is not None
-        assert max_dist is not None
-        assert min_cost is not None
-        assert max_cost is not None
-        assert min_dist >= 0
-        assert max_dist >= min_dist
-        assert max_cost >= min_cost
-        self._prob_constraint = prob_constraint
-        self._min_dist = min_dist
-        self._max_dist = max_dist
-        self._min_cost = min_cost
-        self._max_cost = max_cost
+        if prob_constraint is not None:
+            self._prob_constraint = prob_constraint
+        if min_dist is not None:
+            self._min_dist = min_dist
+        if max_dist is not None:
+            self._max_dist = max_dist
+        if min_cost is not None:
+            self._min_cost = min_cost
+        if max_cost is not None:
+            self._max_cost = max_cost
     
     def _is_done(self, obs, goal):
         """
