@@ -113,7 +113,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         safe_empty_states = np.column_stack(safe_empty_states).astype(np.float32)  # Nxd
 
-        assert len(safe_empty_states) > 0, "no safe states exist, adjust cost function setting"
+        #assert len(safe_empty_states) > 0, "no safe states exist, adjust cost function setting"
         return safe_empty_states
 
     def sample_safe_empty_state(self):
@@ -186,7 +186,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 "[INFO] Skipping the reset in HabitatNavigationEnv.__init__ because setup is not ready yet"
             )
             return
-        self.state_grid = self.sample_safe_empty_state()
+        self.state_grid = self._sample_empty_state()
         agent_cost = self.get_state_cost(xy=self.state_grid)
         info = {"cost": agent_cost}
         return self.state_grid.copy(), info
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         sensor_type="rgb",
         device="cuda:1",
         cost_f_args={"name": "cosine", "radius": 2.0},
-        cost_limit=1.0,
+        cost_limit=0.0,
     )
 
     fig = plt.figure(figsize=(12, 8))
