@@ -141,7 +141,7 @@ def train(cfg):
         action_noise=cfg.env.action_noise,
         apsp_path=cfg.env.apsp_path,
         device=cfg.env.device,
-        reward_type=cfg.env.reward_typeyy,
+        reward_type=cfg.env.reward_typey,
     )
 
     eval_env = MultiAgentPointEnv(
