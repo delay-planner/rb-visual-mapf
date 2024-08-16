@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import numpy as np
 from pud.collector import Collector
 from typing import Union, List, Tuple
@@ -354,15 +355,16 @@ class ConstrainedCollector(Collector):
                     break
 
     @classmethod
-    def get_grid_trajectory(cls, policy, eval_env, start=None, goal=None):
+    def get_grid_trajectory(cls, policy, eval_env, start=None, goal=None, start_cost=None):
         ep_reward_list = []
         ep_waypoint_list = []
         ep_observation_list = []
 
         state, info = eval_env.reset()
+        start_cost_value = info["cost"] if start_cost is None else start_cost
         denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
 
-        if start is not None and goal is not None:
+        if start is not None and goal is not None and start_cost is not None:
             state["goal"] = goal.copy()
             state["observation"] = start.copy()
             if "goalconditioned" in type(eval_env.env).__name__.lower():
@@ -371,6 +373,14 @@ class ConstrainedCollector(Collector):
 
         ep_goal = state["goal"]
         ep_start = state["observation"]
+        ep_record = {
+            "steps": 0,
+            "rewards": 0.0,
+            "max_step_cost": 0.0,
+            "first_step_cost": start_cost_value,
+            "cumulative_costs": start_cost_value,
+        }
+
         while True:
             ep_observation_list.append(state["observation"])
 
@@ -379,27 +389,36 @@ class ConstrainedCollector(Collector):
 
             ep_waypoint_list.append(state["goal"])
 
-            state, reward, done, info = eval_env.step(np.copy(action))
+            state, reward, done, info = eval_env.step(np.copy(action), num_agents=1)
+
+            ep_record["steps"] += 1
+            ep_record["rewards"] += reward
+
+            cost = info.get("cost", 0.0)
+            if cost > ep_record["max_step_cost"]:
+                ep_record["max_step_cost"] = cost
+            ep_record["cumulative_costs"] += cost
 
             ep_reward_list.append(reward)
             if done:
+                ep_record["success"] = info["success"]
                 ep_observation_list.append(info["terminal_observation"]["observation"])
                 break
 
-        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list
+        return ep_start, ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list, ep_record
 
     @classmethod
-    def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None):
+    def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None, start_cost=None):
         raise NotImplementedError
 
     @classmethod
-    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, habitat=False):
+    def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, start_cost=None, habitat=False):
         if habitat:
-            if input_start is not None and input_goal is not None:
+            if input_start is not None and input_goal is not None and start_cost is not None:
                 assert len(input_start) == 2 and len(input_goal) == 2
-            return cls.get_visual_trajectory(policy, eval_env, input_start, input_goal)
+            return cls.get_visual_trajectory(policy, eval_env, input_start, input_goal, start_cost)
         else:
-            return cls.get_grid_trajectory(policy, eval_env, input_start, input_goal)
+            return cls.get_grid_trajectory(policy, eval_env, input_start, input_goal, start_cost)
 
     @classmethod
     def get_grid_trajectories(
@@ -409,17 +428,30 @@ class ConstrainedCollector(Collector):
         num_agents,
         starts=None,
         goals=None,
+        start_costs=None,
         threshold=0.05,
     ):
-        augmented_ep_reward_list: List[List[int]] = [[] for _ in range(num_agents)]
-        augmented_ep_waypoint_list = [[] for _ in range(num_agents)]
-        augmented_ep_observation_list = [[] for _ in range(num_agents)]
+        augmented_ep_reward_list = []
+        augmented_ep_record_list = []
+        augmented_ep_waypoint_list = []
+        augmented_ep_observation_list = []
+        for _ in range(num_agents):
+            augmented_ep_reward_list.append([])
+            augmented_ep_waypoint_list.append([])
+            augmented_ep_observation_list.append([])
+            augmented_ep_record_list.append({
+                "steps": 0,
+                "rewards": 0.0,
+                "max_step_cost": 0.0,
+                "first_step_cost": 0.0,
+                "cumulative_costs": 0.0,
+            })
 
         denormalize_factor = np.array([eval_env.unwrapped._height, eval_env.unwrapped._width], dtype=np.float32)
 
         state, info = eval_env.reset()
 
-        if starts is not None and goals is not None:
+        if starts is not None and goals is not None and start_costs is not None:
 
             state["goal"] = goals.copy()
             state["observation"] = starts.copy()
@@ -429,11 +461,16 @@ class ConstrainedCollector(Collector):
 
             state["composite_starts"] = starts.copy()
             state["agent_observations"] = starts.copy()
+
+            for agent_id in range(num_agents):
+                augmented_ep_record_list[agent_id]["first_step_cost"] = start_costs[agent_id]
+                augmented_ep_record_list[agent_id]["cumulative_costs"] = start_costs[agent_id]
         else:
 
             # Use the sampled start and goal for the first agent
             agent_goal = [state["goal"]]
             agent_start = [state["observation"]]
+            augmented_ep_record_list[0]["first_step_cost"] = info["cost"]
 
             # Mutable objects
             state["agent_waypoints"] = agent_goal.copy()
@@ -448,6 +485,7 @@ class ConstrainedCollector(Collector):
                 agent_state, info = eval_env.reset()
                 agent_goal = [agent_state["goal"]]
                 agent_start = [agent_state["observation"]]
+                augmented_ep_record_list[_ + 1]["first_step_cost"] = info.get("cost", 0.0)
 
                 # Add the new observations and goals to the state
                 goals.extend(agent_goal.copy())
@@ -458,7 +496,7 @@ class ConstrainedCollector(Collector):
             # Immutable objects - Should not change ever!
             state["composite_goals"] = goals.copy()
             state["composite_starts"] = starts.copy()
-            print("Sampled the required starts and goals")
+            logging.debug("Sampled the required starts and goals")
 
         all_done = False
         agent_done = [False for _ in range(num_agents)]
@@ -503,6 +541,14 @@ class ConstrainedCollector(Collector):
 
                 state, reward, done, info = eval_env.step(np.copy(action), num_agents=num_agents)
 
+                augmented_ep_record_list[agent_id]["steps"] += 1
+                augmented_ep_record_list[agent_id]["rewards"] += reward
+
+                agent_cost = info.get("cost", 0.0)
+                if agent_cost > augmented_ep_record_list[agent_id]["max_step_cost"]:
+                    augmented_ep_record_list[agent_id]["max_step_cost"] = agent_cost
+                augmented_ep_record_list[agent_id]["cumulative_costs"] += agent_cost
+
                 # At this point the state is changed and does not have the extra attributes so add them back
                 state["composite_goals"] = state_copy["composite_goals"]
                 state["composite_starts"] = state_copy["composite_starts"]
@@ -516,6 +562,7 @@ class ConstrainedCollector(Collector):
                 augmented_ep_reward_list[agent_id].append(reward)
 
                 if done:
+                    augmented_ep_record_list[agent_id]["success"] = info["success"]
                     terminal_agent_observation = info["terminal_observation"]["observation"]
                     augmented_ep_observation_list[agent_id].append(terminal_agent_observation)
                     agent_done[agent_id] = True
@@ -530,7 +577,7 @@ class ConstrainedCollector(Collector):
                     other_agent_state = np.array(state["agent_observations"][other_agent_id])
 
                     if (np.linalg.norm(agent_state - other_agent_state) < threshold):
-                        print(f"Agent {agent_id} is within threhsold of another agent {other_agent_id}")
+                        logging.info(f"Agent {agent_id} is within threhsold of another agent {other_agent_id}")
 
             all_done = all(agent_done)
 
@@ -540,10 +587,13 @@ class ConstrainedCollector(Collector):
             augmented_ep_observation_list,
             augmented_ep_waypoint_list,
             augmented_ep_reward_list,
+            augmented_ep_record_list,
         )
 
     @classmethod
-    def get_visual_trajectories(cls, policy, eval_env, num_agents, starts=None, goals=None, threshold=0.05):
+    def get_visual_trajectories(
+        cls, policy, eval_env, num_agents, starts=None, goals=None, start_costs=None, threshold=0.05
+    ):
         raise NotImplementedError
 
     @classmethod
@@ -554,18 +604,19 @@ class ConstrainedCollector(Collector):
         num_agents,
         input_starts=None,
         input_goals=None,
+        start_costs=None,
         threshold=0.05,
         habitat=False,
     ):
         if habitat:
-            if input_starts is not None and input_goals is not None:
+            if input_starts is not None and input_goals is not None and start_costs is not None:
                 assert isinstance(input_starts, list) and isinstance(input_goals, list)
                 assert len(input_starts[0]) == 2 and len(input_goals[0]) == 2
 
             return cls.get_visual_trajectories(
-                policy, eval_env, num_agents, starts=input_starts, goals=input_goals, threshold=threshold
+                policy, eval_env, num_agents, input_starts, input_goals, start_costs, threshold
             )
         else:
             return cls.get_grid_trajectories(
-                policy, eval_env, num_agents, starts=input_starts, goals=input_goals, threshold=threshold
+                policy, eval_env, num_agents, input_starts, input_goals, start_costs, threshold
             )

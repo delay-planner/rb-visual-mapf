@@ -1,5 +1,6 @@
 import time
 import scipy
+import logging
 import numpy as np
 import networkx as nx
 from pud.algos.cbs import CBSSolver
@@ -154,8 +155,6 @@ class SearchPolicy(BasePolicy):
             for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
-                    g.add_node(i, position=s_i)
-                    g.add_node(j, position=s_j)
                     g.add_edge(i, j, weight=length)
         self.g = g
 
@@ -385,8 +384,6 @@ class ConstrainedSearchPolicy(SearchPolicy):
                 cost = pcost_combined[i, j]
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps and cost < self.max_cost_limit:
-                    g.add_node(i, position=s_i)
-                    g.add_node(j, position=s_j)
                     g.add_edge(i, j, weight=length)
         self.g = g
 
@@ -641,7 +638,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
 
     def construct_augmented_planning_graph(self, starts, goals):
         planning_graph = self.g.copy()
-        print("Initial graph size = ", self.g.number_of_nodes())
+        logging.debug("Initial graph size = ", self.g.number_of_nodes())
 
         num_nodes = self.rb_vec.shape[0] - 1
 
@@ -662,7 +659,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             assert planning_graph.has_node(goal_id)
             num_nodes += 2
 
-        print("Final graph size = ", planning_graph.number_of_nodes())
+        logging.debug("Final graph size = ", planning_graph.number_of_nodes())
         return planning_graph, nodes_to_agent_maps
 
     def initialize_paths(self, rb_vec, starts, goals):
@@ -685,15 +682,16 @@ class MultiAgentSearchPolicy(SearchPolicy):
         )
         paths = cbs_solver.find_paths()
 
-        print("Printing the paths")
-        for agent_id, path in enumerate(paths):
-            print("--" * 10)
-            print("Path for agent ", agent_id)
-            for vertex in path:
-                if vertex in start_ids or vertex in goal_ids:
-                    print("Start: ", starts[agent_id]) if vertex in start_ids else print("Goal: ", goals[agent_id])
-                else:
-                    print("Vertex: ", rb_vec[vertex])
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            print("Printing the paths")
+            for agent_id, path in enumerate(paths):
+                print("--" * 10)
+                print("Path for agent ", agent_id)
+                for vertex in path:
+                    if vertex in start_ids or vertex in goal_ids:
+                        print("Start: ", starts[agent_id]) if vertex in start_ids else print("Goal: ", goals[agent_id])
+                    else:
+                        print("Vertex: ", rb_vec[vertex])
 
         self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = [], []
         for path in paths:
@@ -763,8 +761,8 @@ class MultiAgentSearchPolicy(SearchPolicy):
 
             if state.get("first_step", False):
 
-                print("Composite starts: ", state["composite_starts"])
-                print("Composite goals: ", state["composite_goals"])
+                logging.debug("Composite starts: ", state["composite_starts"])
+                logging.debug("Composite goals: ", state["composite_goals"])
                 self.initialize_paths(self.rb_vec, state["composite_starts"], state["composite_goals"])
 
             if self.cleanup:
@@ -1005,15 +1003,19 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         )
         paths = cbs_solver.find_paths()
 
-        print("Printing the paths")
-        for a_id, path in enumerate(paths):
-            print("--" * 10)
-            print("Path for agent ", a_id)
-            for vertex in path:
-                if vertex in start_ids or vertex in goal_ids:
-                    print("Start: ", starts_grid[a_id]) if vertex in start_ids else print("Goal: ", goals_grid[a_id])
-                else:
-                    print("Vertex: ", rb_vec[vertex])
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            print("Printing the paths")
+            for a_id, path in enumerate(paths):
+                print("--" * 10)
+                print("Path for agent ", a_id)
+                for vertex in path:
+                    if vertex in start_ids or vertex in goal_ids:
+                        if vertex in start_ids:
+                            print("Start: ", starts_grid[a_id])
+                        else:
+                            print("Goal: ", goals_grid[a_id])
+                    else:
+                        print("Vertex: ", rb_vec[vertex])
 
         self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = [], []
 
@@ -1097,8 +1099,8 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
 
             if state.get("first_step", False):
 
-                print("Composite starts: ", composite_starts_grid)
-                print("Composite goals: ", composite_goals_grid)
+                logging.debug("Composite starts: ", composite_starts_grid)
+                logging.debug("Composite goals: ", composite_goals_grid)
                 self.initialize_paths(self.rb_vec_grid, state["composite_starts"], state["composite_goals"])
 
             if self.cleanup:

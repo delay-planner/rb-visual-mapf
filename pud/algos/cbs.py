@@ -1,5 +1,6 @@
 import heapq
 import random
+import logging
 import numpy as np
 import networkx as nx
 from networkx import Graph
@@ -10,6 +11,43 @@ from pud.algos.single_agent_planner import (
     compute_heuristics,
     compute_sum_of_costs,
 )
+
+
+def location_collision(path1: List[int], path2: List[int], timestep: int):
+
+    if (path1[timestep] == path2[timestep]):
+        return [path1[timestep]], timestep, "vertex"
+    if timestep < len(path1) - 1:
+        if (path1[timestep] == path2[timestep + 1] and path1[timestep + 1] == path2[timestep]):
+            return ([path1[timestep], path1[timestep + 1]], timestep + 1, "edge")
+        
+
+def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray, radius: float = 0.1):
+    if (
+        np.linalg.norm(
+            graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
+        )
+        <= radius
+    ):
+        return [path1[timestep]], timestep, "vertex"
+    if timestep < len(path1) - 1:
+        if (
+            np.linalg.norm(
+                graph_waypoints[path1[timestep]]
+                - graph_waypoints[path2[timestep + 1]]
+            )
+            <= radius
+            and np.linalg.norm(
+                graph_waypoints[path1[timestep + 1]]
+                - graph_waypoints[path2[timestep]]
+            )
+            <= radius
+        ):
+            return (
+                [path1[timestep], path1[timestep + 1]],
+                timestep + 1,
+                "edge",
+            )
 
 
 def detect_collision(
@@ -29,31 +67,12 @@ def detect_collision(
         short_path.append(short_path[-1])
 
     for timestep in range(len(path1)):
-        if (
-            np.linalg.norm(
-                graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
+        if collision_radius > 0:
+            return radius_collision(
+                path1, path2, timestep, graph_waypoints, collision_radius
             )
-            <= collision_radius
-        ):
-            return [path1[timestep]], timestep, "vertex"
-        if timestep < len(path1) - 1:
-            if (
-                np.linalg.norm(
-                    graph_waypoints[path1[timestep]]
-                    - graph_waypoints[path2[timestep + 1]]
-                )
-                <= collision_radius
-                and np.linalg.norm(
-                    graph_waypoints[path1[timestep + 1]]
-                    - graph_waypoints[path2[timestep]]
-                )
-                <= collision_radius
-            ):
-                return (
-                    [path1[timestep], path1[timestep + 1]],
-                    timestep + 1,
-                    "edge",
-                )
+        else:
+            return location_collision(path1, path2, timestep)
 
     return None
 
@@ -212,7 +231,7 @@ class CBSSolver(object):
         self.num_generated = 0
 
     def find_paths(self) -> List[List[int]]:
-        print("Finding paths using CBS Solver")
+        logging.debug("Finding paths using CBS Solver")
         root = {
             "cost": 0,
             "paths": [],
@@ -240,20 +259,20 @@ class CBSSolver(object):
             root["paths"], self.graph_waypoints, self.collision_radius
         )
 
-        print(root["collisions"])
+        logging.debug(root["collisions"])
         for collision in root["collisions"]:
-            print(standard_split(collision))
+            logging.debug(standard_split(collision))
 
         heapq.heappush(
             self.open_list,
             (root["cost"], len(root["collisions"]), self.num_generated, root),
         )
-        print("Generated: ", self.num_generated)
+        logging.debug("Generated: ", self.num_generated)
         self.num_generated += 1
 
         while len(self.open_list) > 0:
             id, current_node = heapq.heappop(self.open_list)[2:]
-            print("Expanded: ", id)
+            logging.debug("Expanded: ", id)
             self.num_expanded += 1
 
             if len(current_node["collisions"]) == 0:
@@ -306,7 +325,7 @@ class CBSSolver(object):
                         "No path found for agent {}".format(constraint["agent_id"])
                     )
                 else:
-                    print(agent_path)
+                    logging.debug(agent_path)
                     successor["paths"][constraint["agent_id"]] = agent_path
                     if constraint["positive"]:
                         violating_agents = []
@@ -357,7 +376,7 @@ class CBSSolver(object):
                                 skip = True
                                 break
                             else:
-                                print(agent_path)
+                                logging.debug(agent_path)
                                 successor["paths"][agent] = agent_path
 
                     if not skip:
@@ -376,7 +395,7 @@ class CBSSolver(object):
                                 successor,
                             ),
                         )
-                        print("Generated: ", self.num_generated)
+                        logging.debug("Generated: ", self.num_generated)
                         self.num_generated += 1
 
         raise BaseException("No solution found")

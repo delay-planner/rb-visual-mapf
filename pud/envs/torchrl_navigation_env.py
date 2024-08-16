@@ -103,7 +103,7 @@ def _sample_empty_state(self, agent_id):
     num_candidate_states = len(candidate_states[0])
     state_index = np.random.choice(num_candidate_states, size=self.batch_size[0])
     state = np.array([candidate_states[0][state_index], candidate_states[1][state_index]], dtype=np.float32).T
-    state += np.random.uniform(size=2)
+    # state += np.random.uniform(size=2)
     assert not self._is_blocked(agent_id, state)
     return state
 
@@ -147,14 +147,16 @@ def _sample_goal_constrained(self, agent_id, obs, min_dist, max_dist):
             return (obs, None)
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array([candidate_states[0][goal_index], candidate_states[1][goal_index]], dtype=np.float32).T
-        goal += np.random.uniform(size=2)
+        # goal += np.random.uniform(size=2)
         goals.append(goal)
     goals = np.array(goals)
     dist_to_goal = self._get_distance(obs, goals)
     if not (np.all(min_dist <= dist_to_goal) and np.all(dist_to_goal <= max_dist)):
         # Find the index of the goals that are not within the constraints
         bad_goal_index = np.where(np.logical_or(dist_to_goal < min_dist, dist_to_goal > max_dist))[0][0]
-        assert False, f"Goals {goals[bad_goal_index]} are not within constraints."
+        statement = f"Goals {goals[bad_goal_index]} are not within constraints."
+        debug = f"Dist: {dist_to_goal[bad_goal_index]}. Min: {min_dist}. Max: {max_dist}"
+        assert False, statement + debug
     if self._is_blocked(agent_id, goals):
         assert False, "Goals are blocked."
     return (obs, goals)
@@ -244,7 +246,10 @@ def _step(self, tensordict):
         agent_dones.append(agent_done)
 
         normalized_state = self._normalize_obs(denormalized_state)
-        reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
+        if self._reward_type == "dense":
+            reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
+        else:
+            reward = -np.ones((batch_size, 1))
 
         td_state = TensorDict(
             {
@@ -337,7 +342,8 @@ def _set_seed(self, seed):
 
 def _render(self, tensordict, mode="human"):
     if mode == "human":
-        plot_walls(self._walls)
+        fig, ax = plt.subplots()
+        ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
             agent_state = tensordict["agents", "observation", "state"][agent_id].cpu().numpy()
@@ -346,7 +352,8 @@ def _render(self, tensordict, mode="human"):
             plt.plot(agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x")
             plt.show(block=False)
     elif mode == "rgb_array":
-        plot_walls(self._walls)
+        fig, ax = plt.subplots()
+        ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
             agent_state = tensordict["agents", "observation", "state"][0][agent_id].cpu().numpy()
@@ -380,6 +387,7 @@ class MultiAgentPointEnv(EnvBase):
                  thin=False,
                  action_noise=1.0,
                  apsp_path=None,
+                 reward_type="dense",
                  device="cpu"):
         super().__init__(device=device, batch_size=torch.Size([batch_size]))
 
@@ -398,6 +406,7 @@ class MultiAgentPointEnv(EnvBase):
         self._difficulty = 0.5
         self._prob_constraint = 0.8
         self._threshold_distance = 1.0
+        self._reward_type = reward_type
         self._apsp_path = apsp_path
 
         print("Computing all-pairs shortest paths.")
@@ -417,7 +426,7 @@ class MultiAgentPointEnv(EnvBase):
 
         (self._height, self._width) = self._walls.shape
 
-        self._set_sample_goal_args(prob_constraint=1.0,
+        self._set_sample_goal_args(prob_constraint=self._prob_constraint,
                                    min_dist=max(0, self.max_goal_dist * (self._difficulty - 0.05)),
                                    max_dist=self.max_goal_dist * (self._difficulty + 0.05))
 

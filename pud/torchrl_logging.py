@@ -1,15 +1,12 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
 import os
-
 import torch
 import numpy as np
+from pathlib import Path
+
 from tensordict import TensorDictBase
 from torchrl.envs.libs.vmas import VmasEnv
-from torchrl.record.loggers import generate_exp_name, get_logger, Logger
 from torchrl.record.loggers.wandb import WandbLogger
+from torchrl.record.loggers import generate_exp_name, get_logger, Logger
 
 
 def init_logging(cfg, model_name: str):
@@ -106,7 +103,7 @@ def log_evaluation(
     rollouts: TensorDictBase,
     env_test: VmasEnv,
     evaluation_time: float,
-    step: int,
+    step: int = 0,
 ):
     rollouts = list(rollouts.unbind(0))  # type: ignore
     for k, r in enumerate(rollouts):
@@ -148,3 +145,39 @@ def log_evaluation(
         for key, value in to_log.items():
             logger.log_scalar(key.replace("/", "_"), value, step=step)
         logger.log_video("eval_video", vid, step=step)
+
+
+def extract_episodic_records(
+    logger: WandbLogger,
+    rollouts: TensorDictBase,
+    env_test: VmasEnv,
+    evaluation_time: float,
+    step: int = 0,
+):
+    rollouts = list(rollouts.unbind(0))  # type: ignore
+    for k, r in enumerate(rollouts):
+        next_done = r.get(("next", "done")).sum(
+            tuple(range(r.batch_dims, r.get(("next", "done")).ndim)),
+            dtype=torch.bool,
+        )
+        done_index = next_done.nonzero(as_tuple=True)[0][
+            0
+        ]  # First done index for this traj
+        rollouts[k] = r[: done_index + 1]
+
+    records = []
+    for rollout in rollouts:
+        goal = rollout.get(("next", "agents", "observation", "goal")).cpu().numpy()
+        states = rollout.get(("next", "agents", "observation", "state")).cpu().numpy()
+        mean_reward = rollout.get(("next", "agents", "reward")).sum(0).mean().item()
+        success = (rollout.get(("next", "done"))[-1] == 1 and rollout.get(("next", "truncated"))[-1] == 0).item()
+        records.append({
+            "goal": goal,
+            "states": states,
+            "success": success,
+            "mean_reward": mean_reward,
+        })
+
+    save_path = Path(__file__).parent / "plots/data/baselines" / logger.exp_name
+    save_path = save_path.with_suffix(".npy")
+    np.save(save_path, records)
