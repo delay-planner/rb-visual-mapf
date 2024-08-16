@@ -104,7 +104,7 @@ class DoneTransform(Transform):
 
 @hydra.main(
     version_base="1.1",
-    config_path="../../../configs",
+    config_path="../../../configs/baseline_configs",
     config_name="config_MASAC_PointEnv",
 )
 def train(cfg):
@@ -128,6 +128,7 @@ def train(cfg):
         action_noise=cfg.env.action_noise,
         apsp_path=cfg.env.apsp_path,
         device=cfg.env.device,
+        reward_type=cfg.env.reward_type,
     )
 
     eval_env = MultiAgentPointEnv(
@@ -140,6 +141,7 @@ def train(cfg):
         action_noise=cfg.env.action_noise,
         apsp_path=cfg.env.apsp_path,
         device=cfg.env.device,
+        reward_type=cfg.env.reward_type,
     )
 
     transformedEnv = TransformedEnv(env, StepCounter(max_steps=cfg.env.max_steps))
