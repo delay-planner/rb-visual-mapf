@@ -103,7 +103,7 @@ def _sample_empty_state(self, agent_id):
     num_candidate_states = len(candidate_states[0])
     state_index = np.random.choice(num_candidate_states, size=self.batch_size[0])
     state = np.array([candidate_states[0][state_index], candidate_states[1][state_index]], dtype=np.float32).T
-    state += np.random.uniform(size=2)
+    # state += np.random.uniform(size=2)
     assert not self._is_blocked(agent_id, state)
     return state
 
@@ -147,14 +147,16 @@ def _sample_goal_constrained(self, agent_id, obs, min_dist, max_dist):
             return (obs, None)
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array([candidate_states[0][goal_index], candidate_states[1][goal_index]], dtype=np.float32).T
-        goal += np.random.uniform(size=2)
+        # goal += np.random.uniform(size=2)
         goals.append(goal)
     goals = np.array(goals)
     dist_to_goal = self._get_distance(obs, goals)
     if not (np.all(min_dist <= dist_to_goal) and np.all(dist_to_goal <= max_dist)):
         # Find the index of the goals that are not within the constraints
         bad_goal_index = np.where(np.logical_or(dist_to_goal < min_dist, dist_to_goal > max_dist))[0][0]
-        assert False, f"Goals {goals[bad_goal_index]} are not within constraints."
+        statement = f"Goals {goals[bad_goal_index]} are not within constraints."
+        debug = f"Dist: {dist_to_goal[bad_goal_index]}. Min: {min_dist}. Max: {max_dist}"
+        assert False, statement + debug
     if self._is_blocked(agent_id, goals):
         assert False, "Goals are blocked."
     return (obs, goals)
@@ -424,7 +426,7 @@ class MultiAgentPointEnv(EnvBase):
 
         (self._height, self._width) = self._walls.shape
 
-        self._set_sample_goal_args(prob_constraint=1.0,
+        self._set_sample_goal_args(prob_constraint=self._prob_constraint,
                                    min_dist=max(0, self.max_goal_dist * (self._difficulty - 0.05)),
                                    max_dist=self.max_goal_dist * (self._difficulty + 0.05))
 
