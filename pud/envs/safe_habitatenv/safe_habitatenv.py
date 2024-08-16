@@ -11,67 +11,6 @@ from pud.envs.habitat_navigation_env import HabitatNavigationEnv
 
 
 
-def display_map(
-    topdown_map: NDArray,
-    scene_name: str,
-    cost_map: NDArray,
-    cost_limit: float,
-    ax: Axes,
-    key_points: Union[NDArray, None] = None,
-) -> Axes:
-    ax.set_title(scene_name)
-    ax.axis("off")
-
-    height, width = topdown_map.shape
-    for i, j in zip(*np.where(topdown_map == 1)):
-        x = np.array([i, i + 1]) / float(height)
-        y0 = np.array([j, j]) / float(width)
-        y1 = np.array([j+1, j+1]) / float(width)
-        ax.fill_between(x, y0, y1, color="grey")
-
-    unsafe_points = np.where(cost_map > cost_limit)
-    unsafe_points = np.column_stack(unsafe_points)
-    ax.scatter(
-        unsafe_points[:, 0] / float(height),
-        unsafe_points[:, 1] / float(width),
-        s=2,
-        marker="o",
-        c="red",
-    )
-
-    if key_points is not None:
-        ax.plot(
-            key_points[:, 0] / float(height),
-            key_points[:, 1] / float(width),
-            "b-o",
-            markersize=0.5,
-            alpha=0.8,
-        )
-        ax.scatter(
-            key_points[0][0] / float(height),
-            key_points[0][1] / float(width),
-            marker="+",
-            color="cyan",
-            s=10,
-            label="start",
-        )
-        ax.scatter(
-            key_points[-1][0] / float(height),
-            key_points[-1][1] / float(width),
-            marker="*",
-            color="green",
-            s=10,
-            label="goal",
-        )
-
-    ax.set_xlim((0, 1))
-    ax.set_ylim((0, 1))
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect("equal", adjustable="box")
-
-    return ax
-
 class SafeHabitatNavigationEnv(HabitatNavigationEnv):
     def __init__(
         self,
@@ -164,7 +103,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         """
         Due to the increased cost in reset, precompile a list of initial states here
         """
-        empty_states = np.where(self._walls == 1)
+        empty_states = np.where(self._walls == 0)
         safe_empty_states = [[], []]
 
         for cx, cy in zip(*empty_states):
@@ -173,7 +112,9 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
 
-        safe_empty_states = np.column_stack(safe_empty_states)  # Nxd
+        safe_empty_states = np.column_stack(safe_empty_states).astype(np.float32)  # Nxd
+
+        assert len(safe_empty_states) > 0, "no safe states exist, adjust cost function setting"
         return safe_empty_states
 
     def sample_safe_empty_state(self, cost_limit: float):
@@ -183,8 +124,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         num_candidate_states = len(self._safe_empty_states)
 
         idx = np.random.randint(0, num_candidate_states)
-        new_state = self._safe_empty_states[idx].astype(np.float32)
-        
+        new_state = self._safe_empty_states[idx]
 
         # NOTE: Don't remove the checks below
         assert not self._is_blocked(new_state)
