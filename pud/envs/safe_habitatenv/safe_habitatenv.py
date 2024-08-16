@@ -10,7 +10,6 @@ from pathlib import Path
 from pud.envs.habitat_navigation_env import HabitatNavigationEnv
 
 
-
 class SafeHabitatNavigationEnv(HabitatNavigationEnv):
     def __init__(
         self,
@@ -63,7 +62,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
             # NOTE: cost map is computed based on states, not trajectories/accumulated costs 
             self._cost_map = self.build_cost_map()
 
-        self._safe_empty_states = self.gather_safe_empty_states(self.cost_limit)
+        self._safe_empty_states = self.gather_safe_empty_states()
         self.reset()
         print("[INFO] SafeHabitatNavigationEnv Setup: {} s".format(time.time() - t0))
     
@@ -99,7 +98,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 cost_map[i,j]= self.cost_function(min_d)
         return cost_map
 
-    def gather_safe_empty_states(self, cost_limit: float) -> NDArray:
+    def gather_safe_empty_states(self) -> NDArray:
         """
         Due to the increased cost in reset, precompile a list of initial states here
         """
@@ -108,7 +107,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         for cx, cy in zip(*empty_states):
             # Only sample states whose costs are lower than an upper bound
-            if self._cost_map[cx, cy] <= cost_limit:
+            if self._cost_map[cx, cy] <= self.cost_limit:
                 safe_empty_states[0].append(cx)
                 safe_empty_states[1].append(cy)
 
@@ -117,7 +116,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         assert len(safe_empty_states) > 0, "no safe states exist, adjust cost function setting"
         return safe_empty_states
 
-    def sample_safe_empty_state(self, cost_limit: float):
+    def sample_safe_empty_state(self):
         """
         Must take the intersection with the empty states because state cost is computed from the center of the block
         """
@@ -187,7 +186,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 "[INFO] Skipping the reset in HabitatNavigationEnv.__init__ because setup is not ready yet"
             )
             return
-        self.state_grid = self.sample_safe_empty_state(cost_limit=self.cost_limit)
+        self.state_grid = self.sample_safe_empty_state()
         agent_cost = self.get_state_cost(xy=self.state_grid)
         info = {"cost": agent_cost}
         return self.state_grid.copy(), info

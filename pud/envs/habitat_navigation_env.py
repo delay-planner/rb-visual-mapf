@@ -185,7 +185,8 @@ class HabitatNavigationEnv(gym.Env):
             self._vertical_slice = self._simulator.pathfinder.get_bounds()[0][1]
         self._walls = self._simulator.pathfinder.get_topdown_view(
             self._meters_per_pixel, self._vertical_slice
-        ).astype(np.uint8)
+        ).astype(np.uint8).copy()
+        self._walls = 1 - self._walls
         # the original map before uint8 is True/False binary map
         # after conversion, it is 1/0 map
         
@@ -220,7 +221,8 @@ class HabitatNavigationEnv(gym.Env):
 
     @property
     def walls(self):
-        """0 is obstacle, 1 is empty"""
+        """1 is obstacle, 0 is empty, 
+        init flips the values"""
         return self._walls
 
     ##----------- Point Env equivalent internal functions ------------------------
@@ -277,11 +279,10 @@ class HabitatNavigationEnv(gym.Env):
         if not self.grid_observation_space.contains(state):
             return True
         (i, j) = self._discretize_state(state)
-        return (self._walls[i, j] == 0)
+        return self._walls[i, j]==1
 
     def _sample_empty_state(self, max_attempts=100):
-        # 1 is empty, 0 is block
-        candidate_states = np.where(self._walls == 1)
+        candidate_states = np.where(self._walls == 0)
         num_candidate_states = len(candidate_states[0])
         for _ in range(max_attempts):
             state_index = np.random.choice(num_candidate_states)
@@ -610,7 +611,6 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
 
 def plot_wall(walls:np.ndarray, ax:plt.axes):
     height, width = walls.shape
-    walls = 1 - walls
     for (i, j) in zip(*np.where(walls)):
         x = np.array([i, i+1]) / float(height)
         y0 = np.array([j, j]) / float(width)
@@ -625,9 +625,9 @@ def plot_wall(walls:np.ndarray, ax:plt.axes):
     ax.set_aspect('equal', adjustable='box')
     return ax
 
-def plot_traj(trajs:np.ndarray, walls:np.ndarray, ax:plt.axes, kwargs:dict={}):
+def plot_traj(traj:np.ndarray, walls:np.ndarray, ax:plt.axes, **kwargs):
     height, width = walls.shape
-    ax.plot(trajs[:,0]/height, trajs[:,1]/width, **kwargs)
+    ax.plot(traj[:,0]/height, traj[:,1]/width, **kwargs)
     return ax
 
 def plot_start_n_goals(goals, walls:np.ndarray, ax:plt.axes):
@@ -738,20 +738,6 @@ def habitat_env_load_fn(
     return env
 
 
-def display_map(
-    topdown_map: NDArray, scene_name: str, key_points: Union[NDArray, None] = None
-):
-    plt.figure(figsize=(12, 8))
-    plt.title(scene_name)
-    ax = plt.subplot(1, 1, 1)
-    ax.axis("off")
-    plt.imshow(topdown_map)
-    if key_points is not None:
-        for point in key_points:
-            plt.plot(point[0], point[1], marker="o", markersize=10, alpha=0.8)
-    plt.show()
-
-
 def set_habitat_env_difficulty(eval_env: gym.Env, difficulty: float):
     assert 0 <= difficulty <= 1
     max_goal_dist = eval_env.max_goal_dist  # type: ignore
@@ -782,4 +768,3 @@ if __name__ == "__main__":
         habitat_data_root = habitat_data_f["HATBITAT_DATA_DIR"]
 
     env = habitat_env_load_fn(scene=(args.scene), height=0, device=args.device)
-    #display_map(env.walls, "Skokloster Castle")  # type: ignore
