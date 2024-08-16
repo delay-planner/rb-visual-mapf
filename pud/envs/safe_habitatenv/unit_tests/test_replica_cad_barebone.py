@@ -17,6 +17,11 @@ python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestRepl
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
 
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints_w_topdown_maps
+
+
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.plot_map
+
+
 """
 
 
@@ -94,7 +99,6 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
         height, width = env._walls.shape
         waypoints = np.loadtxt("pud/envs/safe_habitatenv/unit_tests/waypoints.txt", delimiter=",")
-        #waypoints = np.fliplr(waypoints)
         # waypoints in 2d grid
         waypoints = waypoints * np.array([height,width], dtype=float)
         obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints]
@@ -164,6 +168,25 @@ class TestReplicaCADBarebone(unittest.TestCase):
             plt.close(fig)
 
             pbar.update()
+
+    def plot_map(self):
+        """plot the walls and trajectory"""
+        from pud.envs.habitat_navigation_env import HabitatNavigationEnv, plot_wall, plot_traj
+        env = HabitatNavigationEnv(
+            env_type="ReplicaCAD",
+            sensor_type="rgb",
+            device="cuda:1",
+        )
+        height, width = env._walls.shape
+        waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
+
+        fig, ax = plt.subplots()
+        plot_wall(env.walls, ax=ax)
+        # waypoints in 2d grid
+        waypoints_map = waypoints * np.array([height,width], dtype=float)
+        plot_traj(waypoints_map, walls=env.walls, ax=ax, color="y", linestyle="--", linewidth=2)
+        ax.set_title("Test Case: Plot Map")
+        fig.savefig("runs/tmp_plots/test_plot_traj.jpg", dpi=300)
 
     def load_hatbitat_cad(self):
         import yaml
