@@ -2,10 +2,11 @@ import gym
 import gym.spaces
 import numpy as np
 from numpy.typing import NDArray
-from typing import Dict, Tuple, Union, List
+from typing import Dict, Tuple, Union, List, Optional
 
 from pud.envs.safe_pointenv.safe_wrappers import SafeTimeLimit
 from pud.envs.safe_habitatenv.safe_habitatenv import SafeHabitatNavigationEnv
+from pud.envs.habitat_navigation_env import TypeGridXY
 
 
 class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
@@ -48,6 +49,58 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
             }
         )
 
+    def get_prob_constraint(self):
+        return self._prob_constraint
+
+    def set_prob_constraint(self, other_pc:float):
+        self._prob_constraint = other_pc
+
+    def _normalize_obs(self, obs:TypeGridXY):
+        """get visual obs"""
+        return self.get_sensor_obs_at_grid_xy(obs)
+
+    def step(self, action):
+        """
+        The safe_pointenv does NOT use normalized observations, the goal-conditioned env does
+        Make sure the cost is computed from the safe_pointenv using the un-normalized observations
+
+        NOTE: The step is still computed by safe_pointenv, so the internal variables are all un-normalized
+        """
+        obs, _, _, info = self.env.step(action)
+        rew = -1.0
+        done = self._is_done(obs, self._goal)
+        info["success"] = done
+        return (
+            {
+                "observation": self._normalize_obs(obs),
+                "goal": self._normalize_obs(self._goal),
+            },
+            rew,
+            done,
+            info,
+        )
+
+    def reset_orig(self):
+        goal, info = None, {"cost": 0.0}
+        count = 0
+        while goal is None:
+            obs, info = self.env.reset()  # type: ignore
+            (obs, goal) = self._sample_goal(obs)
+            count += 1
+            if count > 1000:
+                print("WARNING: Unable to find goal within constraints.")
+        self._goal = goal
+        return {'observation': self._normalize_obs(obs),
+                'goal': self._normalize_obs(self._goal),
+                "grid": {
+                    "observation": np.copy(obs), 
+                    "goal": np.copy(self._goal),
+                    },
+                }, info
+
+    def reset(self) -> Tuple[Dict, Dict]:
+        return self.reset_orig()
+    
     def _is_done(self, agent_position: NDArray, goal: NDArray) -> bool:
         """Determines whether observation equals goal.
         NOTE: Both the agent position and goal arguments are the 2D coordinates ([x, y])
@@ -56,169 +109,90 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
 
     def _set_sample_goal_args(
         self,
-        prob_constraint: Union[float, None] = None,
-        min_dist: Union[float, None] = None,
-        max_dist: Union[float, None] = None,
-        min_cost: Union[float, None] = None,
-        max_cost: Union[float, None] = None,
+        prob_constraint: Optional[float] = None,
+        min_dist: Optional[float] = None,
+        max_dist: Optional[float] = None,
+        min_cost: Optional[float] = None,
+        max_cost: Optional[float] = None,
     ):
-        assert min_dist is not None
-        assert min_dist >= 0
+        if prob_constraint is not None:
+            self._prob_constraint = prob_constraint
+        if min_dist is not None:
+            self._min_dist = min_dist
+        if max_dist is not None:
+            self._max_dist = max_dist
+        if min_cost is not None:
+            self._min_cost = min_cost
+        if max_cost is not None:
+            self._max_cost = max_cost
 
-        assert max_dist is not None
-        assert max_dist >= min_dist
+    def _sample_goal(self, obs):
+        """Sampled a goal observation. 
+        use only unconstrained samples"""
+        #if np.random.random() < self._prob_constraint:
+        #    return self._sample_goal_constrained(obs, self._min_dist, self._max_dist)
+        #else:
+        return self._sample_goal_unconstrained(obs)
 
-        assert min_cost is not None
-        assert min_cost >= 0
-
-        assert max_cost is not None
-        assert max_cost >= min_cost
-
-        assert prob_constraint is not None
-
-        self._min_dist = min_dist
-        self._max_dist = max_dist
-        self._min_cost = min_cost
-        self._max_cost = max_cost
-        self._prob_constraint = prob_constraint
-
-    def _sample_goal(
-        self, agent_position: NDArray
-    ) -> Tuple[NDArray, Union[NDArray, None]]:
-        """Sampled a goal observation."""
-        if np.random.random() < self._prob_constraint:
-            return self._sample_goal_constrained(
-                agent_position, self._min_dist, self._max_dist
-            )
-        else:
-            return self._sample_goal_unconstrained(agent_position)
-
-    def _sample_goal_constrained(
-        self, agent_position: NDArray, min_dist: float, max_dist: float
-    ) -> Tuple[NDArray, Union[NDArray, None]]:
-        """Samples a goal with dist min_dist <= d(observation, goal) <= max_dist.
+    def _sample_goal_unconstrained(self, obs):
+        """
+        Samples a goal without any constraints.
 
         Args:
-          agent_position: The current position of the agent (without goal).
+          obs: Observation (without goal).
+        Returns:
+          observation: Observation (without goal).
+          goal: A goal observation.
+        """
+        return (obs, self.env._sample_empty_state())
+
+    def _sample_goal_constrained(self, obs, min_dist, max_dist):
+        """
+        Samples a goal with distance min_dist <= d(observation, goal) <= max_dist.
+
+        Args:
+          obs: Observation (without goal).
           min_dist: (int) Minimum distance to goal.
           max_dist: (int) Maximum distance to goal.
+
         Returns:
-          agent_position: The current position of the agent (without goal).
-          goal: A goal observation that satifies the constraints.
+          observation: Observation (without goal).
+          goal: A goal observation.
         """
-        (i, j) = self.env.get_grid_xy_from_habitat_xy(agent_position)
+
+        (i, j) = self.env._discretize_state(obs)
         mask = np.logical_and(
             self.env._apsp[i, j] >= min_dist, self.env._apsp[i, j] <= max_dist
         )
-        mask = np.logical_and(mask, self.env._walls)
+        mask = np.logical_and(mask, self.env._walls == 0)
         candidate_states = np.where(mask)
         num_candidate_states = len(candidate_states[0])
+
         if num_candidate_states == 0:
-            return (agent_position, None)
+            return (obs, None)
+
         goal_index = np.random.choice(num_candidate_states)
         goal = np.array(
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
             dtype=np.float32,
         )
-        # goal += np.random.uniform(size=2)
 
-        undiscretized_goal_x, undiscretized_goal_y = self.env.get_habitat_xy_from_grid_xy(
-            (goal[0], goal[1])
-        )
-        undiscretized_goal = np.array([undiscretized_goal_x, undiscretized_goal_y])
-        dist_to_goal = self.env.get_distance_from_habitat_xy(agent_position, undiscretized_goal)
+        goal += np.random.uniform(size=2)
+        dist_to_goal = self.env._get_distance(obs, goal)
 
         assert min_dist <= dist_to_goal <= max_dist
-        assert not self.env._is_blocked(undiscretized_goal)
-
-        return (agent_position, undiscretized_goal)
-
-    def _sample_goal_unconstrained(
-        self, agent_position: NDArray
-    ) -> Tuple[NDArray, NDArray]:
-        """Samples a goal without any constraints.
-
-        Args:
-          agent_position: The current position of the agent (without goal)
-        Returns:
-          observation: observation (without goal).
-          goal: a goal observation.
-        """
-
-        agent_position = self.env.get_xy_in_habitat()
-        agent_sim_position = self.env.convert_xy_to_xyz_in_habitat(agent_position)
-        current_island = self.env._simulator.pathfinder.get_island(agent_sim_position)
-
-        tries = 1
-        sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
-        is_navigable = self.env._simulator.pathfinder.is_navigable(sampled_goal)
-        sampled_island = self.env._simulator.pathfinder.get_island(sampled_goal)
-        valid = is_navigable and sampled_island == current_island
-        while not valid:
-            sampled_goal = self.env._simulator.pathfinder.get_random_navigable_point()
-            is_navigable = self.env._simulator.pathfinder.is_navigable(sampled_goal)
-            sampled_island = self.env._simulator.pathfinder.get_island(sampled_goal)
-            valid = is_navigable and sampled_island == current_island
-            tries += 1
-            if tries > 1000:
-                print("WARNING: Unable to find goal without constraints.")
-        sampled_goal = np.array([sampled_goal[2], sampled_goal[0]], dtype=np.float32)
-        return (
-            agent_position,
-            sampled_goal,
-        )
-
-    def _reset_original(self) -> Tuple[Dict, Dict]:
-
-        count = 0
-        goal = None
-        info = {"cost": 0.0}
-        while goal is None:
-            obs, info = self.env.reset()  # type: ignore
-            agent_position = self.env.get_xy_in_habitat()
-            (agent_position, goal) = self._sample_goal(agent_position)
-            count += 1
-            if count > 1000:
-                print("WARNING: Unable to find goal within constraints.")
-
-        # Set the agent's position to the sampled goal's position and extract the observations.
-        # Remember to reset the agent's position to the original position after extracting the goal observations.
-        self._goal_observation = np.zeros(
-            (4, self.env._height, self.env._width, 4), dtype=np.uint8
-        )
-        agent_current_position = self.env.get_xy_in_habitat()
-        self.env.set_agent_pos_w_habitatxy(goal)
-        goal_observations = self.env._simulator.get_sensor_observations()
-        for idx, (key, value) in enumerate(goal_observations.items()):
-            assert value.shape == (self.env._height, self.env._width, 4)  # type: ignore
-            self._goal_observation[idx] = value
-        self._goal_position = goal
-
-        self.env.set_agent_pos_w_habitatxy(agent_current_position)
-
-        return {
-            "observation": obs,
-            "goal": self._goal_observation,
-        }, info
-
-    def reset(self) -> Tuple[Dict, Dict]:
-        return self._reset_original()
+        assert not self.env._is_blocked(goal)
+        return (obs, goal)
 
     def step(self, action: NDArray) -> Tuple[Dict, float, bool, Dict]:
         obs, _, _, info = self.env.step(action)
         rew = -1.0
+        done = self._is_done(obs, self._goal)
 
-        agent_position = self.env.get_xy_in_habitat()
-        done = self._is_done(agent_position, self._goal_position)
-        return (
-            {
-                "observation": obs,
-                "goal": self._goal_observation,
-            },
-            rew,
-            done,
-            info,
-        )
+        return {"observation": self._normalize_obs(obs),
+                "goal": self._normalize_obs(self._goal),
+                "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
+                }, rew, done, info
 
     @property
     def max_goal_dist(self):
@@ -279,7 +253,7 @@ class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPoin
                 return self.reset_alt(**new_pb)
             if self.verbose:
                 print("[WARN]: queue from goal conditioned env is empty")
-        return self._reset_original()
+        return self.reset_orig()
 
     def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
         """reset using alternative source, start and goal are assumed to be de-normalized"""
@@ -290,7 +264,7 @@ class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPoin
             "observation": self._normalize_obs(obs),
             "goal": self._normalize_obs(self._goal),
         }, new_info
-
+    
 
 def set_safe_habitat_env_difficulty(
     eval_env: SafeGoalConditionedHabitatPointWrapper,
@@ -340,7 +314,7 @@ def safe_habitat_env_load_fn(
       An environment instance.
     """
 
-    env = SafeHabitatNavigationEnv(**env_kwargs, cost_f_args=cost_fn_kwargs)
+    env = SafeHabitatNavigationEnv(**env_kwargs, **cost_fn_kwargs)
 
     for idx, wrapper in enumerate(gym_env_wrappers):
         if idx < len(wrapper_kwargs):
