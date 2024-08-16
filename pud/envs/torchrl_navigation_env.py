@@ -244,8 +244,10 @@ def _step(self, tensordict):
         agent_dones.append(agent_done)
 
         normalized_state = self._normalize_obs(denormalized_state)
-        # reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
-        reward = -np.ones((batch_size, 1))
+        if self._reward_type == "dense":
+            reward = -np.linalg.norm(goal_np - normalized_state, axis=-1).reshape(-1, 1)
+        else:
+            reward = -np.ones((batch_size, 1))
 
         td_state = TensorDict(
             {
@@ -383,6 +385,7 @@ class MultiAgentPointEnv(EnvBase):
                  thin=False,
                  action_noise=1.0,
                  apsp_path=None,
+                 reward_type="dense",
                  device="cpu"):
         super().__init__(device=device, batch_size=torch.Size([batch_size]))
 
@@ -401,6 +404,7 @@ class MultiAgentPointEnv(EnvBase):
         self._difficulty = 0.5
         self._prob_constraint = 0.8
         self._threshold_distance = 1.0
+        self._reward_type = reward_type
         self._apsp_path = apsp_path
 
         print("Computing all-pairs shortest paths.")

@@ -7,12 +7,13 @@ env:
   resize_factor: 3
   action_noise: 0.0
   walls: CenterDot
+  reward_type: dense
   apsp_path: #pud/envs/precompiles/CentralObstacle_5_apsp.pkl
   device: ??? # These values will be populated dynamically
 
 model:
   shared_parameters: True
-  centralised_critic: True # MAPPO if True, IPPO if False
+  centralised_critic: False # MAPPO if True, IPPO if False
 
 collector:
   frames_per_batch: 61_440 # Frames sampled each sampling iteration
@@ -44,4 +45,4 @@ logger:
   backend: tensorboard # Delete to remove logging
   project_name: null
   group_name: null
-  logdir: /train_MAPPO_CenterDot/
+  logdir: /train_IPPO_CenterDot/
