@@ -22,7 +22,7 @@ def cost_from_linear_distance(d:Union[float, np.ndarray], r:float) -> Union[floa
     Jc[d > r] = 0.0
 
     if len(Jc) == 1:
-        Jc = float(Jc)
+        Jc = float(np.squeeze(Jc))
     return Jc
 
 

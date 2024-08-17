@@ -25,7 +25,7 @@ for scene_id in range(0,5):
     for stage_id in range(0,21):
         scenes.append( "sc{}_staging_{:0>2d}".format(scene_id, stage_id))
 
-def cost_contour(scene_name:str):
+def cost_contour(scene_name:str, normalize=True):
     sim_settings = get_default_habitat_sim_settings("ReplicaCAD")
     sim_settings["scene"] = scene_name
     env = SafeHabitatNavigationEnv(
@@ -51,15 +51,19 @@ def cost_contour(scene_name:str):
     pbar.close()
 
     fig, ax = plt.subplots()
-    CS = ax.contour(X/float(env.wall_height), Y/float(env.wall_width), Z,
-                levels=[0,0.25,0.5, 1, 2])
+    if normalize:
+        CS = ax.contour(X/float(env.wall_height), Y/float(env.wall_width), Z,
+                    levels=[0,0.25,0.5, 1, 2])
+    else:
+        CS = ax.contour(X, Y, Z,
+                    levels=[0,0.25,0.5, 1, 2])   
     labels = ax.clabel(CS, inline=False, fontsize=8)
 
     # Position labels outside the plot
     for label in labels:
         label_pos = label.get_position()
 
-    ax = plot_wall(walls=env.walls, ax=ax)
+    ax = plot_wall(walls=env.walls, ax=ax, normalize=normalize)
     ax.set_title("Test Safe HabitatEnv Cost Contour: {}".format(scene_name))
     fig.savefig("runs/tmp_plots/test_cost_contour_{}.jpg".format(scene_name), dpi=300)
     plt.close(fig=fig)
@@ -117,7 +121,8 @@ class TestSafeHabitatEnv(unittest.TestCase):
         plt.close(fig)
 
     def one_cost_contour(self):
-        cost_contour(scenes[2])
+        print(scenes[2])
+        cost_contour(scenes[2], normalize=False)
 
     def all_cost_contour(self):
         pbar = tqdm(total=len(scenes))

@@ -620,8 +620,10 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         return np.max(apsp[np.isfinite(apsp)])
 
 
-def plot_wall(walls:np.ndarray, ax:plt.axes):
+def plot_wall(walls:np.ndarray, ax:plt.axes, normalize=True):
     height, width = walls.shape
+    if not normalize:
+        height, width = 1., 1.
     for (i, j) in zip(*np.where(walls)):
         x = np.array([i, i+1]) / float(height)
         y0 = np.array([j, j]) / float(width)
@@ -629,11 +631,12 @@ def plot_wall(walls:np.ndarray, ax:plt.axes):
         ax.fill_between(x, y0, y1, color='grey')
         ax.set_aspect("equal", adjustable="box")
 
-    ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect('equal', adjustable='box')
+    if normalize:
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect('equal', adjustable='box')
     return ax
 
 def plot_traj(traj:np.ndarray, walls:np.ndarray, ax:plt.axes, **kwargs):
