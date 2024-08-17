@@ -56,7 +56,13 @@ class TestHabitatEnv(unittest.TestCase):
 
     def plot_wall(self):
         sim_settings = get_default_habitat_sim_settings("ReplicaCAD")
-        sim_settings["scene"] = "sc0_staging_20"
+        
+        #sim_settings["scene"] = "sc0_staging_20"
+        sim_settings["scene"] = "sc2_staging_08"
+        sim_settings["scene"] = "sc3_staging_05"
+        sim_settings["scene"] = "sc3_staging_11"
+        sim_settings["scene"] = "sc3_staging_15"
+
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
             sensor_type="rgb",

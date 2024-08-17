@@ -33,7 +33,7 @@ def cost_contour(scene_name:str, normalize=True):
         sensor_type="rgb",
         simulator_settings=sim_settings,
         device="cuda:1",
-        cost_f_args={"name": "linear", "radius": 0.5},
+        cost_f_args={"name": "linear", "radius": 1},
         cost_limit=1,
     )
 
@@ -53,10 +53,10 @@ def cost_contour(scene_name:str, normalize=True):
     fig, ax = plt.subplots()
     if normalize:
         CS = ax.contour(X/float(env.wall_height), Y/float(env.wall_width), Z,
-                    levels=[0,0.25,0.5, 1, 2])
+                    levels=[0, 0.25, 0.5, 1, 2])
     else:
         CS = ax.contour(X, Y, Z,
-                    levels=[0,0.25,0.5, 1, 2])   
+                    levels=[0, 0.25, 0.5, 1, 2])   
     labels = ax.clabel(CS, inline=False, fontsize=8)
 
     # Position labels outside the plot
@@ -121,8 +121,14 @@ class TestSafeHabitatEnv(unittest.TestCase):
         plt.close(fig)
 
     def one_cost_contour(self):
-        print(scenes[2])
-        cost_contour(scenes[2], normalize=False)
+        scene_name = "sc0_staging_20"
+        #scene_name = "sc2_staging_08"
+        scene_name = "sc3_staging_05"
+        scene_name = "sc3_staging_11"
+        scene_name = "sc3_staging_15"
+
+        print(scene_name)
+        cost_contour(scene_name, normalize=False)
 
     def all_cost_contour(self):
         pbar = tqdm(total=len(scenes))
