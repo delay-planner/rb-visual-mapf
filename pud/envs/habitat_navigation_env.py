@@ -114,6 +114,11 @@ def make_habitat_configuration(
 
     return habitat_sim.Configuration(simulator_cfg, [agent_cfg])
 
+def get_default_habitat_sim_settings(env_type: Literal["HabitatSim", "ReplicaCAD"]):
+    with open("configs/habitat_data.yaml", "r") as f:
+        habitat_data_f = yaml.safe_load(f)
+        return habitat_data_f[env_type]["default_settings"]
+
 
 class HabitatNavigationEnv(gym.Env):
     def __init__(
@@ -135,9 +140,7 @@ class HabitatNavigationEnv(gym.Env):
 
         if not simulator_settings:
             print("[{}]: using default setting for {}".format(colored("INFO", "green"), colored(env_type, "red")))
-            with open("configs/habitat_data.yaml", "r") as f:
-                habitat_data_f = yaml.safe_load(f)
-                self._simulator_settings = habitat_data_f[env_type]["default_settings"]
+            self._simulator_settings = get_default_habitat_sim_settings(env_type=env_type)
         else:
             self._simulator_settings = simulator_settings
             assert "scene" in self._simulator_settings
