@@ -1,7 +1,9 @@
 import unittest
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 from pud.envs.habitat_navigation_env import plot_wall
 from pud.envs.safe_habitatenv.safe_habitatenv import (
@@ -16,6 +18,7 @@ python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabit
 
 python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabitatEnv.cost_map
 
+python pud/envs/safe_habitatenv/unit_tests/test_safe_habitatenv.py TestSafeHabitatEnv.cost_contour
 """
 
 
@@ -56,7 +59,7 @@ class TestSafeHabitatEnv(unittest.TestCase):
             env_type="ReplicaCAD",
             sensor_type="rgb",
             device="cuda:1",
-            cost_f_args={"name": "linear", "radius": 3.0},
+            cost_f_args={"name": "linear", "radius": 0.5},
             cost_limit=0.0,
         )
         fig, ax = plt.subplots()
@@ -70,6 +73,36 @@ class TestSafeHabitatEnv(unittest.TestCase):
         fig.savefig(fname="runs/tmp_plots/test_plot_cost_map.jpg", dpi=300)
         plt.close(fig)
 
+    def cost_contour(self):
+        env = SafeHabitatNavigationEnv(
+            env_type="ReplicaCAD",
+            sensor_type="rgb",
+            device="cuda:1",
+            cost_f_args={"name": "linear", "radius": 0.5},
+            cost_limit=1,
+        )
+
+        x = np.linspace(0, env.wall_height+1, int(2*(env.wall_height+1)), dtype=float)
+        y = np.linspace(0, env.wall_width+1, int(2*(env.wall_width+1)), dtype=float)
+        X, Y = np.meshgrid(x, y)
+        Z = np.ones_like(X) * np.inf
+
+        pbar = tqdm(total=X.shape[0], desc="outer loop")
+        for i in range(X.shape[0]):
+            for j in range(X.shape[1]):
+                min_d, _  = env.dist_2_blocks([X[i,j],Y[i,j]])
+                Z[i,j]= env.cost_function(min_d)
+            pbar.update()
+        pbar.close()
+
+        fig, ax = plt.subplots()
+        CS = ax.contour(X/float(env.wall_height), Y/float(env.wall_width), Z)
+        ax.clabel(CS, inline=True, fontsize=10)
+
+        ax = plot_wall(walls=env.walls, ax=ax)
+        ax.set_title("Test Safe HabitatEnv Cost Contour")
+        fig.savefig("runs/tmp_plots/test_cost_contour.jpg", dpi=300)
+        plt.close(fig=fig)
 
 if __name__ == "__main__":
     unittest.main()
