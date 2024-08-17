@@ -39,7 +39,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         self.cost_limit = cost_limit
         self.cost_f_cfg = cost_f_args
 
-        obstacles_x, obstacles_y = np.where(self._walls == 0)
+        obstacles_x, obstacles_y = np.where(self._walls == 1)
         self.obstacles = np.stack([obstacles_x, obstacles_y], axis=-1).astype(float)
 
         t0 = time.time()
