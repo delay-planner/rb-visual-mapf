@@ -55,24 +55,22 @@ class TestHabitatEnv(unittest.TestCase):
         #plt.close(fig)
 
     def plot_wall(self):
-        sim_settings = get_default_habitat_sim_settings("ReplicaCAD")
-        
-        #sim_settings["scene"] = "sc0_staging_20"
-        sim_settings["scene"] = "sc2_staging_08"
-        sim_settings["scene"] = "sc3_staging_05"
-        sim_settings["scene"] = "sc3_staging_11"
-        sim_settings["scene"] = "sc3_staging_15"
+        scene = "sc0_staging_20"
+        scene = "sc2_staging_08"
+        scene = "sc3_staging_05"
+        scene = "sc3_staging_11"
+        scene = "sc3_staging_15"
 
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
+            scene=scene,
             sensor_type="rgb",
-            simulator_settings=sim_settings,
             device="cuda:1",
         )
         fig, ax = plt.subplots()
         plot_wall(walls=env.walls, ax=ax, normalize=False)
-        ax.set_title("{}, h={}, w={}".format(sim_settings["scene"], env.wall_height, env.wall_width))
-        fig.savefig("runs/tmp_plots/{}.jpg".format(sim_settings["scene"]), dpi=300)
+        ax.set_title("{}, h={}, w={}".format(scene, env.wall_height, env.wall_width))
+        fig.savefig("runs/tmp_plots/{}.jpg".format(scene), dpi=300)
 
     def compare_occupancy(self):
         """compare the occupancy from the 2D maze matrix and habitat"""

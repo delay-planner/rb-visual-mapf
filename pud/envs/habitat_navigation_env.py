@@ -11,7 +11,7 @@ from typing import Literal
 
 import habitat_sim
 from numpy.typing import NDArray
-from typing import Tuple, Dict, Union, List
+from typing import Tuple, Dict, Union, List, Optional
 import yaml
 from pathlib import Path
 from termcolor import colored
@@ -124,7 +124,8 @@ class HabitatNavigationEnv(gym.Env):
     def __init__(
         self,
         env_type: Literal["HabitatSim", "ReplicaCAD"],
-        height: Union[float, None] = None,
+        scene: Optional[str] = None,
+        height: Optional[float] = None,
         action_noise: float = 1.0,
         simulator_settings: dict = {},
         sensor_type:Literal["rgb", "depth"] ="depth",
@@ -147,7 +148,11 @@ class HabitatNavigationEnv(gym.Env):
             assert "width" in self._simulator_settings
             assert "height" in self._simulator_settings
             assert "default_agent" in self._simulator_settings
-            assert "sensor_height" in self._simulator_settings
+            assert "sensor_height" in self._simulator_settingsaction_space
+        
+        if scene:
+            # override the scene
+            self._simulator_settings["scene"] = scene
 
         self._action_noise = action_noise
 
