@@ -148,7 +148,7 @@ class HabitatNavigationEnv(gym.Env):
             assert "width" in self._simulator_settings
             assert "height" in self._simulator_settings
             assert "default_agent" in self._simulator_settings
-            assert "sensor_height" in self._simulator_settingsaction_space
+            assert "sensor_height" in self._simulator_settings
         
         if scene:
             # override the scene

@@ -177,7 +177,7 @@ if __name__ == "__main__":
     if len(args.apsp_path) > 0:
         cfg.env.apsp_path = args.apsp_path
     if len(args.scene) > 0:
-        cfg.env.scene = args.scene
+        cfg.env.simulator_settings.scene = args.scene
     if args.embedding_size > 0:
         cfg.agent.embedding_size = args.embedding_size
     cfg.runner.verbose = args.verbose
