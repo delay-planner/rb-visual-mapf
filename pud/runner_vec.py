@@ -151,7 +151,8 @@ def eval_pointenv_dists(
         
         if eval_img_dir:
             fig, ax = plt.subplots()
-            ax = plot_wall(eval_env.walls.copy(), ax)
+            normalize_map = False
+            ax = plot_wall(eval_env.walls.copy(), ax, normalize=normalize_map)
             goals = []
             for ii in range(len(outs["trajs"])):
                 goals.append(outs["trajs"][ii][0]["grid"]["goal"])
@@ -160,15 +161,19 @@ def eval_pointenv_dists(
             get_traj = lambda inp_traj: [inp_traj[ii]["grid"]["observation"] for ii in range(len(inp_traj))]
             for ii, tt in enumerate(outs["trajs"]):
                 cur_traj = np.stack(get_traj(tt), axis=0)
-                ax = plot_traj(traj=cur_traj, walls=eval_env.walls.copy(), ax=ax,
+                ax = plot_traj(traj=cur_traj, walls=eval_env.walls.copy(), 
+                                normalize=normalize_map,
+                                ax=ax,
                                 color=distinct_colors[ii],
                                 label="traj{:0>2d}".format(ii),
                                 marker="o",
                                 markersize=4,
                             )
                 ax.scatter(
-                    goals[ii:ii+1,0]/float(height),
-                    goals[ii:ii+1,1]/float(width), 
+                    goals[ii:ii+1,0],
+                    goals[ii:ii+1,1], 
+                    #goals[ii:ii+1,0]/float(height),
+                    #goals[ii:ii+1,1]/float(width), 
                     marker="*", s=12, color=distinct_colors[ii],
                     )
             fig.savefig(eval_img_dir.joinpath("dist={}".format(dist)), dpi=300)

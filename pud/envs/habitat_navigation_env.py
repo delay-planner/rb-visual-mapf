@@ -644,9 +644,12 @@ def plot_wall(walls:np.ndarray, ax:plt.axes, normalize=True):
         ax.set_aspect('equal', adjustable='box')
     return ax
 
-def plot_traj(traj:np.ndarray, walls:np.ndarray, ax:plt.axes, **kwargs):
+def plot_traj(traj:np.ndarray, walls:np.ndarray, normalize:bool, ax:plt.axes, **kwargs,):
     height, width = walls.shape
-    ax.plot(traj[:,0]/height, traj[:,1]/width, **kwargs)
+    if normalize:
+        ax.plot(traj[:,0]/height, traj[:,1]/width, **kwargs)
+    else:
+        ax.plot(traj[:,0], traj[:,1], **kwargs)
     return ax
 
 def plot_start_n_goals(goals, walls:np.ndarray, ax:plt.axes):
