@@ -41,8 +41,8 @@ class Encoder (nn.Module):
                         assert torch.allclose(obs_cat[ii*4:ii*4+4], inp["observation"][ii].squeeze())
                 inp["observation"] = obs_cat
                 inp["goal"] = goal_cat
-            latent_obs = self.forward(inp["observation"].float())
-            latent_goal = self.forward(inp["goal"].float())
+            latent_obs = self.forward(inp["observation"].float()) # float32
+            latent_goal = self.forward(inp["goal"].float()) # float32
             latent_state = {}
             for key in inp:
                 if key == "observation":

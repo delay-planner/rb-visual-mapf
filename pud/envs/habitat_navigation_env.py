@@ -332,7 +332,7 @@ class HabitatNavigationEnv(gym.Env):
         a step function in 2d grid similar to simple navigation env
         """
         if self._action_noise > 0:
-            action += np.random.normal(0, self._action_noise, 2)
+            action += np.random.normal(0, self._action_noise, 2).astype(action.dtype)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action)
 
