@@ -251,7 +251,7 @@ class HabitatNavigationEnv(gym.Env):
         # Add all the nodes
         for i in range(height):
             for j in range(width):
-                if walls[i, j]:
+                if walls[i, j] == 0:
                     g.add_node((i, j))
 
         # Add all the edges
@@ -265,9 +265,9 @@ class HabitatNavigationEnv(gym.Env):
                             continue  # No cell here
                         if j + dj < 0 or j + dj > width - 1:
                             continue  # No cell here
-                        if not walls[i, j]:
+                        if walls[i, j] == 1:
                             continue  # Don't add edges to walls
-                        if not walls[i + di, j + dj]:
+                        if walls[i + di, j + dj] == 1:
                             continue  # Don't add edges to walls
                         g.add_edge((i, j), (i + di, j + dj))
 
@@ -554,7 +554,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         (i, j) = self.env._discretize_state(obs)
         mask = np.logical_and(self.env._apsp[i, j] >= min_dist, 
                               self.env._apsp[i, j] <= max_dist)
-        mask = np.logical_and(mask, self.env._walls==1)
+        mask = np.logical_and(mask, self.env._walls==0)
         candidate_states = np.where(mask)
         num_candidate_states = len(candidate_states[0])
         if num_candidate_states == 0:

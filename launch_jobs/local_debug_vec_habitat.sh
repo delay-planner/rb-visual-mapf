@@ -18,11 +18,11 @@ device="cuda:0"
 
 cd "${project_root}"
 
-#debugger_port=5678
+debugger_port=5678
 
 cost_name="linear"
-cost_radius=10.0
-num_envs=8
+cost_radius=2
+num_envs=1
 embedding_size=256
 encoder=VisualEncoder # VisualRGBEncoder | VisualEncoder
 eval_interval=5000  # 5000 | 10
@@ -38,17 +38,17 @@ if [[ -n ${debugger_port} ]]; then
         --wait-for-client \
         pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
         --cfg $config \
+        --scene "sc2_staging_08" \
         --actor_lr 1e-6 \
         --critic_lr 1e-5 \
         --replay_buffer_size 10000 \
-        --eval_interval $eval_interval \
+        --eval_interval 10 \
         --encoder $encoder \
         --cost_name $cost_name \
         --cost_radius $cost_radius \
         --logdir ${log_dir} \
         --device ${device} \
         --visual \
-        --resume $resume \
         --num_envs ${num_envs} \
         --embedding_size $embedding_size \
         --pbar
@@ -56,6 +56,7 @@ else
     echo "[INFO] running in normal mode"
     python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
         --cfg $config \
+        --scene "sc2_staging_08" \
         --actor_lr 1e-6 \
         --critic_lr 1e-5 \
         --replay_buffer_size 10000 \
@@ -70,5 +71,3 @@ else
         --embedding_size $embedding_size \
         --pbar
 fi
-
-        #--resume $resume \

@@ -155,12 +155,11 @@ def eval_pointenv_dists(
             get_traj = lambda inp_traj: [inp_traj[ii]["grid"]["observation"] for ii in range(len(inp_traj))]
             for ii, tt in enumerate(outs["trajs"]):
                 cur_traj = np.stack(get_traj(tt), axis=0)
-                ax = plot_traj(traj=cur_traj, walls=eval_env.walls.copy(), ax=ax, kwargs=dict(
+                ax = plot_traj(traj=cur_traj, walls=eval_env.walls.copy(), ax=ax,
                                 color=distinct_colors[ii],
                                 label="traj{:0>2d}".format(ii),
                                 marker="o",
                                 markersize=4,
-                                ),
                             )
                 ax.scatter(
                     goals[ii:ii+1,0]/float(height),
