@@ -135,6 +135,11 @@ def eval_pointenv_dists(
     if "eval_distances" in logger:
         eval_distances = logger["eval_distances"]
     
+    eval_img_dir: Path = None
+    if "imgs" in logger:
+        eval_img_dir = logger["imgs"].joinpath("eval_{:0>5d}".format(logger["i"]))
+        eval_img_dir.mkdir(exist_ok=True, parents=True)
+    
     for dist in eval_distances:
         eval_env.set_sample_goal_args(
             prob_constraint=1, min_dist=dist, max_dist=dist
@@ -144,7 +149,7 @@ def eval_pointenv_dists(
 
         height, width = eval_env.walls.shape
         
-        if "imgs" in logger:
+        if eval_img_dir:
             fig, ax = plt.subplots()
             ax = plot_wall(eval_env.walls.copy(), ax)
             goals = []
@@ -166,7 +171,7 @@ def eval_pointenv_dists(
                     goals[ii:ii+1,1]/float(width), 
                     marker="*", s=12, color=distinct_colors[ii],
                     )
-            fig.savefig(logger["imgs"].joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+            fig.savefig(eval_img_dir.joinpath("dist={}".format(dist)), dpi=300)
             #fig.savefig(Path("temp").joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
 
             plt.close(fig=fig)
