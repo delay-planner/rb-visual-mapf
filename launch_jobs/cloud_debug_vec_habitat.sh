@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --exclusive --gres=gpu:volta:1
-#SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs_debug/logs/job.log-%j
+#SBATCH -o /home/gridsan/mfeng1/git_repos/cc-sorb/runs/logs/job.log-%j
 
 source /etc/profile 
 module load anaconda/2023a-pytorch
@@ -33,7 +33,7 @@ export PYTHONPATH=$project_root:$PYTHONPATH
 env=hatbitat
 comment="venv=1"
 #SLURM_JOB_ID=local_vec
-experiment_dir="runs_debug"
+experiment_dir="runs"
 log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
 echo "project root directory: ${project_root}"
@@ -53,13 +53,19 @@ device="cuda:0" # must use GPU cluster
 
 cd "${project_root}"
 
+scene="sc0_staging_20"
+scene="sc2_staging_08"
+scene="sc3_staging_05"
+scene="sc3_staging_11"
+#scene="sc3_staging_15"
 cost_name="linear"
-cost_radius=10.0
+cost_radius=1
 num_envs=1
 embedding_size=256
 
 python pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py \
     --cfg $config \
+    --scene $scene \
     --actor_lr 1e-5 \
     --critic_lr 1e-4 \
     --replay_buffer_size 100000 \
