@@ -20,17 +20,8 @@ class ConstrainedReplayBuffer (ReplayBuffer):
         self.cost = np.zeros((max_size, 1))
 
     def add(self, state:dict, action:np.ndarray, next_state:dict, reward:float, cost:float, done:float):
-        self.observation[self.ptr] = state['observation']
-        self.goal[self.ptr] = state['goal']
-        self.next_observation[self.ptr] = next_state['observation']
-        self.next_goal[self.ptr] = next_state['goal']
-        self.action[self.ptr] = action
-        self.reward[self.ptr] = reward
         self.cost[self.ptr] = cost
-        self.done[self.ptr] = done
-
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
+        super().add(state, action, next_state, reward, done)
 
     def sample_w_cost(self, batch_size):
         """a separate method to sample with cost, leave the original sample method for compat reason"""
