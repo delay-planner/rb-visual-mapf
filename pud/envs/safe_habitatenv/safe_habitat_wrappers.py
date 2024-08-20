@@ -177,7 +177,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
             dtype=np.float32,
         )
 
-        goal += np.random.uniform(size=2)
+        goal += np.random.uniform(size=2).astype(goal.dtype)
         dist_to_goal = self.env._get_distance(obs, goal)
 
         assert min_dist <= dist_to_goal <= max_dist
@@ -287,7 +287,8 @@ def set_safe_habitat_env_difficulty(
 
 def safe_habitat_env_load_fn(
     env_kwargs: dict,
-    cost_fn_kwargs: dict,
+    cost_f_args: dict,
+    cost_limit:float,
     max_episode_steps: int = 0,
     gym_env_wrappers: Tuple[gym.Wrapper] = (
         SafeGoalConditionedHabitatPointWrapper,
@@ -314,7 +315,11 @@ def safe_habitat_env_load_fn(
       An environment instance.
     """
 
-    env = SafeHabitatNavigationEnv(**env_kwargs, **cost_fn_kwargs)
+    env = SafeHabitatNavigationEnv(
+        **env_kwargs, 
+        cost_f_args=cost_f_args,
+        cost_limit=cost_limit,
+        )
 
     for idx, wrapper in enumerate(gym_env_wrappers):
         if idx < len(wrapper_kwargs):

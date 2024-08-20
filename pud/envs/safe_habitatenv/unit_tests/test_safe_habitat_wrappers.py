@@ -22,21 +22,21 @@ class TestSafeHabitatWrapper(unittest.TestCase):
             device="cuda:1",
         )
         self.cost_kwargs = dict(
-            cost_f_args={"name": "cosine", "radius": 2.0},
+            cost_f_args={"name": "linear", "radius": 2.0},
             cost_limit=10.0,
         )
 
     def safe_habitat_env_load_fn(self):
         env = safe_habitat_env_load_fn(
             env_kwargs=self.env_kwargs,
-            cost_fn_kwargs=self.cost_kwargs,
+            **self.cost_kwargs,
             gym_env_wrappers=[SafeGoalConditionedHabitatPointWrapper],
             )
         obs, info = env.reset()
         for _ in range(100):
             action = env.action_space.sample()
             next_state, reward, done, info = env.step(action)
-        
+    
 
 if __name__ == "__main__":
     unittest.main()
