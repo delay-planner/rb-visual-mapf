@@ -11,7 +11,6 @@ from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.ddpg import UVFDDPG
 from pud.algos.lagrange.lagrange import Lagrange
 from pud.algos.data_struct import inp_to_torch_device
-from pud.visual_models import VisualEncoder
 
 nn = torch.nn
 F = nn.functional
