@@ -212,14 +212,28 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
 
         num_substeps = 10
         dt = 1.0 / num_substeps
-        for dt in np.linspace(0, 1, num_substeps):
-            new_state = start_state + dt * action
-            if not self._is_blocked(new_state):
-                self.state_grid = new_state
-                new_cost = self.get_state_cost(new_state)
-                cost = max(new_cost, cost)
-            else:
-                break
+
+        ## same as the point env, check each axis individually to allow more movement
+        num_axis = len(action)
+        dt = 1.0 / num_substeps
+        for _ in np.linspace(0, 1, num_substeps):
+            for axis in range(num_axis):
+                new_state = self.state_grid.copy()
+                new_state[axis] += dt * action[axis]
+                if not self._is_blocked(new_state):
+                    self.state_grid = new_state
+                    new_cost = self.get_state_cost(new_state)
+                    cost = max(new_cost, cost)
+
+        ## linear step function, more restrictive 
+        #for dt in np.linspace(0, 1, num_substeps):
+        #    new_state = start_state + dt * action
+        #    if not self._is_blocked(new_state):
+        #        self.state_grid = new_state
+        #        new_cost = self.get_state_cost(new_state)
+        #        cost = max(new_cost, cost)
+        #    else:
+        #        break
 
         done = False
         rew = -1.0
