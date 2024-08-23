@@ -8,30 +8,30 @@ from pud.policies import BasePolicy, GaussianPolicy, SearchPolicy
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 
 
-def calc_cost_class_inds(
-    cost: Union[float, List[float], np.ndarray], cost_classes: np.ndarray
-) -> Union[int, np.ndarray]:
-    """Class-independent method to discretize the float cost into classes"""
-    ret_scalar = False
-    if isinstance(cost, float):
-        ret_scalar = True
+#def calc_cost_class_inds(
+#    cost: Union[float, List[float], np.ndarray], cost_classes: np.ndarray
+#) -> Union[int, np.ndarray]:
+#    """Class-independent method to discretize the float cost into classes"""
+#    ret_scalar = False
+#    if isinstance(cost, float):
+#        ret_scalar = True
 
-        cost = np.array([cost])
-    elif isinstance(cost, list):
-        cost = np.array(cost)
+#        cost = np.array([cost])
+#    elif isinstance(cost, list):
+#        cost = np.array(cost)
 
-    # Clip the cost range, otherwise the argmin trick will not work
-    cost = np.clip(cost, cost_classes[0], cost_classes[-1])
+#    # Clip the cost range, otherwise the argmin trick will not work
+#    cost = np.clip(cost, cost_classes[0], cost_classes[-1])
 
-    num_bins = int(len(cost_classes))
-    cost = np.expand_dims(cost, -1)
-    class_mat = (cost_classes >= cost).astype(float)  # batch_size, num_bins
-    class_mat = class_mat * np.arange(-num_bins, 0)
-    class_inds = np.argmin(class_mat, axis=-1)
+#    num_bins = int(len(cost_classes))
+#    cost = np.expand_dims(cost, -1)
+#    class_mat = (cost_classes >= cost).astype(float)  # batch_size, num_bins
+#    class_mat = class_mat * np.arange(-num_bins, 0)
+#    class_inds = np.argmin(class_mat, axis=-1)
 
-    if ret_scalar:
-        return int(class_inds)
-    return class_inds
+#    if ret_scalar:
+#        return int(class_inds)
+#    return class_inds
 
 def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     """
