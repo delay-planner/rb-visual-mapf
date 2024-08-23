@@ -339,12 +339,24 @@ class HabitatNavigationEnv(gym.Env):
         num_substeps = 10
         start_state = self.state_grid.copy()
         assert not self._is_blocked(start_state)
-        for dt in np.linspace(0, 1, num_substeps):
-            new_state = start_state + dt * action
-            if not self._is_blocked(new_state):
-                self.state_grid = new_state
-            else:
-                break
+        
+        ## same as the point env, check each axis individually to allow more movement
+        num_axis = len(action)
+        dt = 1.0 / num_substeps
+        for _ in np.linspace(0, 1, num_substeps):
+            for axis in range(num_axis):
+                new_state = self.state_grid.copy()
+                new_state[axis] += dt * action[axis]
+                if not self._is_blocked(new_state):
+                    self.state_grid = new_state
+
+        ## walk along a linear line, a bit more restrictive
+        #for dt in np.linspace(0, 1, num_substeps):
+        #    new_state = start_state + dt * action
+        #    if not self._is_blocked(new_state):
+        #        self.state_grid = new_state
+        #    else:
+        #        break
 
         done = False
         rew = -1.0
@@ -564,7 +576,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             [candidate_states[0][goal_index], candidate_states[1][goal_index]],
             dtype=np.float32,
         )
-        goal += np.random.uniform(size=2)
+        goal += np.random.uniform(size=2).astype(goal.dtype)
         dist_to_goal = self.get_distance(obs, goal)
         assert min_dist <= dist_to_goal <= max_dist
         assert not self.env._is_blocked(goal)
