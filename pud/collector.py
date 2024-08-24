@@ -20,7 +20,7 @@ class Collector:
             else:
                 action = self.policy.select_action(self.state)
 
-            next_state, reward, done, info = self.env.step(np.copy(action))
+            next_state, reward, done, info = self.env.step(action)
             if info.get('last_timestep', False):
                 self.buffer.add(self.state, action, info['terminal_observation'], reward, done)
                 self.state = next_state
