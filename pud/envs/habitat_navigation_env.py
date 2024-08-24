@@ -600,7 +600,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
     #        obs[1] / float(self.env._width)
     #    ])
 
-    def _normalize_obs(self, obs:TypeGridXY):
+    def normalize_obs(self, obs:TypeGridXY):
         """get visual obs"""
         return self.get_sensor_obs_at_grid_xy(obs)
 
@@ -614,8 +614,8 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
             if count > 1000:
                 print('WARNING: Unable to find goal within constraints.')
         self._goal = goal
-        return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal),
+        return {'observation': self.normalize_obs(obs),
+                'goal': self.normalize_obs(self._goal),
                 "grid": {
                     "observation": np.copy(obs), 
                     "goal": np.copy(self._goal),
@@ -627,8 +627,8 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, _ = self.env.step(action)
         rew = -1.0
         done = self._is_done(obs, self._goal)
-        return {"observation": self._normalize_obs(obs),
-                "goal": self._normalize_obs(self._goal),
+        return {"observation": self.normalize_obs(obs),
+                "goal": self.normalize_obs(self._goal),
                 "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
                 }, rew, done, {}
     @property
