@@ -17,7 +17,7 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-from pud.runner_visual import train_eval, eval_pointenv_dists
+from pud.algos.crl_runner_visual import train_eval, eval_pointenv_dists
 from tqdm.auto import tqdm
 import shutil
 from typing import List
