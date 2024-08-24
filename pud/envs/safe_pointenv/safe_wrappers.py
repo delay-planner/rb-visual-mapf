@@ -68,15 +68,11 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
     def set_prob_constraint(self, other_pc:float):
         self._prob_constraint = other_pc
 
-    def _normalize_obs(self, obs):
+    def normalize_obs(self, obs):
         return np.array(
             [obs[0] / float(self.env._height), obs[1] / float(self.env._width)],
             dtype=self.observation_space["observation"].dtype,
         )
-
-    def normalize_obs(self, obs):
-        """publicly accessible hook"""
-        return self._normalize_obs(obs)
 
     def de_normalize_obs(self, obs:np.ndarray):
         """reverse of _normalize_obs"""
@@ -109,8 +105,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         info["success"] = done
         return (
             {
-                "observation": self._normalize_obs(obs),
-                "goal": self._normalize_obs(self._goal),
+                "observation": self.normalize_obs(obs),
+                "goal": self.normalize_obs(self._goal),
             },
             rew,
             done,
@@ -159,8 +155,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
                 print("WARNING: Unable to find goal within constraints.")
         self._goal = goal
         return {
-            "observation": self._normalize_obs(obs),
-            "goal": self._normalize_obs(self._goal),
+            "observation": self.normalize_obs(obs),
+            "goal": self.normalize_obs(self._goal),
         }, info
 
     def _sample_goal(self, obs):
@@ -287,8 +283,8 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
         obs, new_info = self.env.reset_manual(start_state=start)
         new_info.update(info)
         return {
-            "observation": self._normalize_obs(obs),
-            "goal": self._normalize_obs(self._goal),
+            "observation": self.normalize_obs(obs),
+            "goal": self.normalize_obs(self._goal),
         }, new_info
 
 
@@ -392,8 +388,8 @@ class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
         cost = self.env.get_state_cost(self._goal)
 
         new_state = {
-            "observation": self._normalize_obs(obs),
-            "goal": self._normalize_obs(self._goal),
+            "observation": self.normalize_obs(obs),
+            "goal": self.normalize_obs(self._goal),
         }
         info = {"cost": cost}
         return new_state, info
