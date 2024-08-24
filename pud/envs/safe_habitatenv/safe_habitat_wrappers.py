@@ -55,7 +55,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
     def set_prob_constraint(self, other_pc:float):
         self._prob_constraint = other_pc
 
-    def _normalize_obs(self, obs:TypeGridXY):
+    def normalize_obs(self, obs:TypeGridXY):
         """get visual obs"""
         return self.get_sensor_obs_at_grid_xy(obs)
 
@@ -72,8 +72,8 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         info["success"] = done
         return (
             {
-                "observation": self._normalize_obs(obs),
-                "goal": self._normalize_obs(self._goal),
+                "observation": self.normalize_obs(obs),
+                "goal": self.normalize_obs(self._goal),
             },
             rew,
             done,
@@ -90,8 +90,8 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
             if count > 1000:
                 print("WARNING: Unable to find goal within constraints.")
         self._goal = goal
-        return {'observation': self._normalize_obs(obs),
-                'goal': self._normalize_obs(self._goal),
+        return {'observation': self.normalize_obs(obs),
+                'goal': self.normalize_obs(self._goal),
                 "grid": {
                     "observation": np.copy(obs), 
                     "goal": np.copy(self._goal),
@@ -189,8 +189,8 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         rew = -1.0
         done = self._is_done(obs, self._goal)
 
-        return {"observation": self._normalize_obs(obs),
-                "goal": self._normalize_obs(self._goal),
+        return {"observation": self.normalize_obs(obs),
+                "goal": self.normalize_obs(self._goal),
                 "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
                 }, rew, done, info
 
@@ -261,8 +261,8 @@ class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPoin
         obs, new_info = self.env.reset_manual(start_state=start)
         new_info.update(info)
         return {
-            "observation": self._normalize_obs(obs),
-            "goal": self._normalize_obs(self._goal),
+            "observation": self.normalize_obs(obs),
+            "goal": self.normalize_obs(self._goal),
         }, new_info
     
 
