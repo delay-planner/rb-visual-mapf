@@ -188,7 +188,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
         obs, _, _, info = self.env.step(action)
         rew = -1.0
         done = self._is_done(obs, self._goal)
-
+        info["success"] = done
         return {"observation": self.normalize_obs(obs),
                 "goal": self.normalize_obs(self._goal),
                 "grid": {"observation": np.copy(obs), "goal": np.copy(self._goal),},
@@ -263,6 +263,10 @@ class SafeGoalConditionedHabitatPointQueueWrapper(SafeGoalConditionedHabitatPoin
         return {
             "observation": self.normalize_obs(obs),
             "goal": self.normalize_obs(self._goal),
+            "grid": {
+                "observation": np.copy(obs), 
+                "goal": np.copy(self._goal),
+                },
         }, new_info
     
 
