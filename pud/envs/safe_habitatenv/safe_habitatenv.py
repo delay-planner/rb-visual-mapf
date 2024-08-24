@@ -186,7 +186,7 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
                 "[INFO] Skipping the reset in HabitatNavigationEnv.__init__ because setup is not ready yet"
             )
             return
-        self.state_grid = self._sample_empty_state()
+        self.state_grid = self.sample_empty_state()
         agent_cost = self.get_state_cost(xy=self.state_grid)
         info = {"cost": agent_cost}
         return self.state_grid.copy(), info

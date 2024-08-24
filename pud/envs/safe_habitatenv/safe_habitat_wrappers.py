@@ -144,7 +144,7 @@ class SafeGoalConditionedHabitatPointWrapper(gym.Wrapper):
           observation: Observation (without goal).
           goal: A goal observation.
         """
-        return (obs, self.env._sample_empty_state())
+        return (obs, self.env.sample_empty_state())
 
     def _sample_goal_constrained(self, obs, min_dist, max_dist):
         """

@@ -297,7 +297,7 @@ class HabitatNavigationEnv(gym.Env):
         (i, j) = self._discretize_state(state)
         return self._walls[i, j]==1
 
-    def _sample_empty_state(self, max_attempts=100):
+    def sample_empty_state(self, max_attempts=100):
         candidate_states = np.where(self._walls == 0)
         num_candidate_states = len(candidate_states[0])
         for _ in range(max_attempts):
@@ -313,7 +313,7 @@ class HabitatNavigationEnv(gym.Env):
 
     def reset_in_grid(self):
         """reset in grid maze"""
-        self.state_grid = self._sample_empty_state()
+        self.state_grid = self.sample_empty_state()
         return self.state_grid.copy()
 
     def get_distance(self, obs:TypeGridXY, goal:TypeGridXY):
@@ -592,7 +592,7 @@ class GoalConditionedHabitatPointWrapper(gym.Wrapper):
           observation: observation (without goal).
           goal: a goal observation.
         """
-        return (obs, self.env._sample_empty_state())
+        return (obs, self.env.sample_empty_state())
 
     #def _normalize_obs(self, obs: TypeGridXY):
     #    return np.array([
