@@ -190,8 +190,90 @@ def sample_pbs_by_agent_deprecated(
                     }
     return nearest_pbs
 
-
 def sample_cost_pbs_by_agent(
+        env:Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper], 
+        agent:DRLDDPGLag, 
+        num_states:int=100,
+        target_val:float=None,
+        min_dist: float = 0,
+        max_dist: float = 10,
+        ensemble_agg:str="mean",
+        K:int=5, # num of samples nearest to the target metric
+        use_uncertainty:bool=True, # boost samples of high uncertainty 
+        uncertainty_lb:float=0.0, 
+        uncertainty_ub:float=1.0,
+        non_grid:bool=False, 
+    ):
+    """
+    filter based on distance constraints
+    problems whose start and goals are seperated too far away is 
+    meaningless as they are handled by the HRL
+    if failed, return an empty list, because the test results would not be informative
+    """
+
+    rb_vec = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
+    rb_vec_goal = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
+
+    ## predict the pairwise costs
+    pdist = agent.get_pairwise_dist(
+            obs_vec=np.stack([env.normalize_obs(s) for s in rb_vec]), 
+            goal_vec=np.stack([env.normalize_obs(s) for s in rb_vec_goal]),
+            aggregate=None,
+            )
+    
+    pdist_agg = None
+    if ensemble_agg == "max":
+        pdist_agg = np.max(pdist, axis=0)
+    elif ensemble_agg == "mean":
+        pdist_agg = np.mean(pdist, axis=0)
+
+    pdist_std = 0.0
+    if use_uncertainty:
+        pdist_std = np.std(pdist, axis=0)
+
+    lb_mask = pdist_agg + pdist_std >= min_dist
+    ub_mask = pdist_agg - pdist_std <= max_dist
+    prod_mask = lb_mask * ub_mask
+    
+    gInds = np.where(prod_mask)
+    if len(gInds[0]) == 0:
+        return []
+    else:    
+        pcosts = agent.get_pairwise_cost(
+                    obs_vec=np.stack([env.normalize_obs(s) for s in rb_vec]), 
+                    goal_vec=np.stack([env.normalize_obs(s) for s in rb_vec_goal]),
+                    aggregate=None) # num_ens x num_states x num_states
+        pcosts_agg = np.mean(pcosts, axis=0)
+        pcosts_std = np.std(pcosts, axis=0)
+        pcosts_std_mean = np.mean(pcosts_std)
+        pcosts_gInds = pcosts_agg[gInds]
+        scoring = 0.0
+        if target_val is not None:
+            scoring = scoring + np.abs(pcosts_gInds - target_val)
+        # encourage diverse samples
+        if use_uncertainty: 
+            pcosts_std_gInds = pcosts_std[gInds]
+            scoring = scoring - np.clip(pcosts_std_gInds,
+                        a_min=uncertainty_lb, a_max=uncertainty_ub)
+        K = min(K, len(scoring))
+        mInds = arg_topk(-scoring, topK=K) # find K minimum entries
+        gmInds = (gInds[0][mInds], gInds[1][mInds])
+
+        nearest_pbs = [None] * K
+        for n in range(K):
+            i,j = gmInds[0][n], gmInds[1][n]
+            nearest_pbs[n] = {
+                "start": rb_vec[i],
+                "goal": rb_vec_goal[j],
+                "info": {"prediction": pdist_agg[i,j],
+                        "proj_dist": pdist_agg[i,j],
+                        "ensemble_std_mean": pcosts_std_mean,
+                        },
+                    }
+        return nearest_pbs
+
+
+def sample_cost_pbs_by_agent_deprecated(
         env:SafeGoalConditionedPointWrapper, 
         agent:DRLDDPGLag, 
         num_states:int=100,
