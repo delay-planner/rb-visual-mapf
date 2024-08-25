@@ -22,6 +22,25 @@ def dict_expand(D:dict, keys:list):
 
         d = d[k]
 
+def gather_log(eval_stats:dict, names_n_keys:Dict[str, list]):
+    """
+    eval_stats has the form of eval_stats[order_id][rest of keys]
+    names_n_keys offers the list of keys to read data from eval_stats[id], and
+        defines a convenient name, e.g.,
+        "name", ["init_info","prediction"]
+    """
+    logs = {}
+    for n in names_n_keys.keys():
+        logs[n] = []
+
+    for id in eval_stats.keys():
+        for n in names_n_keys.keys():
+            k = names_n_keys[n]
+            logs[n].append(
+                dict_expand(D=eval_stats[id], keys=names_n_keys[n])
+            )
+    return logs
+
 def inp_to_torch_device(
         inp:Union[np.ndarray, Dict[str, np.ndarray], Dict[str, torch.Tensor]], 
         device:torch.device,

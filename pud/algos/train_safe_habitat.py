@@ -191,6 +191,7 @@ if __name__ == "__main__":
     with open(logger["bk"].joinpath("config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
     logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
+    logger["pbar"] = args.pbar
 
     shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", logger["bk"].as_posix())
@@ -294,7 +295,7 @@ if __name__ == "__main__":
         env=env,
         eval_env=eval_env,
         eval_func=eval_pointenv_dists,
-        #pbar=args.pbar,
+        pbar=args.pbar,
         logger=logger,
         **cfg.runner,
     )

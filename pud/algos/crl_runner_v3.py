@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.data_struct import dict_expand
+from pud.algos.data_struct import gather_log
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
     sample_pbs_by_agent, load_pb_set)
@@ -264,26 +264,6 @@ def eval_agent_by_metric(
     eval_env.append_pbs(pb_list=pbs)
     eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
     return eval_stats
-
-def gather_log(eval_stats:dict, names_n_keys:Dict[str, list]):
-    """
-    eval_stats has the form of eval_stats[order_id][rest of keys]
-    names_n_keys offers the list of keys to read data from eval_stats[id], and
-        defines a convenient name, e.g.,
-        "name", ["init_info","prediction"]
-    """
-    logs = {}
-    for n in names_n_keys.keys():
-        logs[n] = []
-
-    for id in eval_stats.keys():
-        for n in names_n_keys.keys():
-            k = names_n_keys[n]
-            logs[n].append(
-                dict_expand(D=eval_stats[id], keys=names_n_keys[n])
-            )
-    return logs
-        
 
 def eval_pointenv_cost_constrained_dists(
         agent, 

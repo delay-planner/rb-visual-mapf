@@ -16,6 +16,7 @@ from pud.policies import GaussianPolicy
 from pud.envs.habitat_navigation_env import plot_wall, plot_traj, plot_start_n_goals
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
     sample_pbs_by_agent, load_pb_set)
+from pud.algos.data_struct import gather_log
 
 
 # generated according to https://medialab.github.io/iwanthue/
@@ -48,7 +49,7 @@ def log_time(step:int=0, log:dict=None):
     return log
 
 def visualize_visual_eval_records(eval_records, 
-        eval_env, ax:plt.axes, starts=[], goals=[], use_pbar=False, color=None, 
+        eval_env, ax:plt.axes, starts=[], goals=[], 
         normalize_map=False,
         ):
     """
@@ -83,7 +84,6 @@ def visualize_visual_eval_records(eval_records,
 
     return ax
 
-
 def train_eval(
     policy:GaussianPolicy,
     agent:LagVisionUVFDDPG,
@@ -114,7 +114,9 @@ def train_eval(
     )
     collector.step(collector.initial_collect_steps)
 
-    for i in tqdm(range(1, num_iterations + 1), total=num_iterations, disable=not pbar):
+    for i in tqdm(range(1, num_iterations + 1), total=num_iterations, 
+            disable=not pbar, desc="training",
+            ):
 
         logger["i"] = i
         collector.step(collect_steps)
@@ -148,25 +150,44 @@ def train_eval(
                 )
             
             if i > 1 and i % eval_interval == 0:
+                # for dists
                 field_header = "Eval Dist ~ "
-                for d_ref in eval_info:
-                    logger["tb"].add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
+                for ii in eval_info["dists"]:
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/mean".format(eval_info["dists"][ii]["ref"]),
                     tag_scalar_dict={
-                        "pred": np.mean(eval_info[d_ref]["pred_dist"]),
-                        "val": -np.mean(eval_info[d_ref]["returns"]),
+                        "pred": np.mean(eval_info["dists"][ii]["pred"]),
+                        "val": -1.0*np.mean(eval_info["dists"][ii]["vals"]),
                         }, global_step=i)
 
-                    logger["tb"].add_scalars(field_header+"{:0>2d}/std".format(d_ref),
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/std".format(eval_info["dists"][ii]["ref"]),
                     tag_scalar_dict={
-                        "pred": np.std(eval_info[d_ref]["pred_dist"]),
-                        "val": -np.std(eval_info[d_ref]["returns"]),
+                        "pred": np.std(eval_info["dists"][ii]["pred"]),
+                        "val": np.std(eval_info["dists"][ii]["vals"]),
                         }, global_step=i)
 
-                    N_success = np.array(eval_info[d_ref]["success"], dtype=float)
+                    N_success = np.array(eval_info["dists"][ii]["success"], dtype=float)
                     if len(N_success) > 0:
                         success_rate = np.sum(N_success) / len(N_success)
-                        logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(d_ref), 
-                                success_rate, global_step=i)
+                        logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
+                
+                #field_header = "Eval Cost ~ "
+                #for ii in eval_info["costs"]:
+                #    logger["tb"].add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["ref"]), 
+                #        tag_scalar_dict={
+                #            "pred": np.mean(eval_info["costs"][ii]["pred"]),
+                #            "val": np.mean(eval_info["costs"][ii]["vals"]),
+                #        }, global_step=i)
+                #    logger["tb"].add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["ref"]), 
+                #        tag_scalar_dict={
+                #            "pred": np.std(eval_info["costs"][ii]["pred"]),
+                #            "val": np.std(eval_info["costs"][ii]["vals"]),
+                #        }, global_step=i)
+
+                #    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
+                #    if len(N_success) > 0:
+                #        success_rate = np.sum(N_success) / len(N_success)
+                #        logger["tb"].add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
+                #    logger["tb"].add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
 
                 time_logs = log_time(step=i, log=time_logs)
                 logger["tb"].add_scalar(
@@ -181,11 +202,13 @@ def eval_pointenv_dists(
     eval_env:SafeGoalConditionedHabitatPointQueueWrapper, 
     num_evals=10, 
     sample_size:int=100,
-    eval_distances=[1,2,3,4], 
+    eval_distances=[1,2,3,4],
+    cost_intervals=[0., 0.2, 0.5, 1.0],
+    cost_min_dist:float = 0.0,
+    cost_max_dist:float = 10.0,
     verbose=True, 
     logger:dict={},
 ):
-    eval_info = DotMap()
     if "eval_distances" in logger:
         eval_distances = logger["eval_distances"]
     
@@ -193,7 +216,10 @@ def eval_pointenv_dists(
     if "imgs" in logger:
         eval_img_dir = logger["imgs"].joinpath("eval_{:0>5d}".format(logger["i"]))
         eval_img_dir.mkdir(exist_ok=True, parents=True)
+
+    dist_eval_stats = dict()
     
+    pbar = tqdm(total=len(eval_distances), desc="evaluating reward critic", disable=not logger["pbar"])
     for ii_d in range(len(eval_distances)):
         pbs = sample_pbs_by_agent(env=eval_env, 
                 agent=agent, 
@@ -212,7 +238,7 @@ def eval_pointenv_dists(
                             eval_env=eval_env, 
                             collect_trajs=not (eval_img_dir is None),
                             )
-            if eval_img_dir:
+            if eval_img_dir is not None:
                 fig, ax = plt.subplots()
                 start_list = [p["start"].tolist() for p in pbs]
                 goal_list = [p["goal"].tolist() for p in pbs]
@@ -224,133 +250,45 @@ def eval_pointenv_dists(
                     goals=goal_list,
                 )
         
-                fig.savefig(eval_img_dir.joinpath("dist={}".format(eval_distances[ii_d])), dpi=300)
-                #fig.savefig(Path("temp").joinpath("eval_{:0>5d}_dist={}".format(logger["i"], dist)), dpi=300)
+                fig.savefig(eval_img_dir.joinpath("dist={}.jpg".format(eval_distances[ii_d])), dpi=300)
 
                 plt.close(fig=fig)
-    return eval_info
 
+            dist_logs = gather_log(eval_stats=dist_eval_i, 
+                        names_n_keys={
+                            "attr_vals": ["rewards"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            dist_eval_stats[ii_d] = {
+                "vals": dist_logs["attr_vals"],
+                "pred": dist_logs["attr_pred"],
+                "ref": eval_distances[ii_d],
+                "success": dist_logs["success_hist"],
+            }
+        else:
+            print("[WARN] empty set for dist eval problem")
+        
+        pbar.update()
+    pbar.close()
 
-def eval_search_policy(search_policy, eval_env, num_evals=10, constrained=False):
-    eval_start = time.perf_counter()
+    pbar = tqdm(total=len(cost_intervals), desc="evaluating cost critic", disable=not logger["pbar"])
+    cost_eval_stats = dict()
+    for ii in range(len(cost_intervals)):
+        cost_eval_pbs = sample_cost_pbs_by_agent(
+                        env=eval_env,
+                        agent=agent,
+                        num_states=sample_size,
+                        K=num_evals,
+                        target_val=cost_intervals[ii],
+                        min_dist=cost_min_dist,
+                        max_dist=cost_max_dist,
+                        use_uncertainty=False,
+                        ensemble_agg="mean",)
 
-    successes = 0.0
-    for _ in range(num_evals):
-        try:
-            if constrained:
-                _, _, _, _, ep_reward_list, _ = ConstrainedCollector.get_trajectory(
-                    search_policy, eval_env
-                )
-            else:
-                _, _, _, _, ep_reward_list, _ = Collector.get_trajectory(
-                    search_policy, eval_env
-                )
-            successes += int(len(ep_reward_list) < eval_env.duration)
-        except Exception:
-            pass
+    pbar.close()
+    
 
-    eval_end = time.perf_counter()
-    eval_time = eval_end - eval_start
-    success_rate = successes / num_evals
-    return success_rate, eval_time
-
-
-def take_cleanup_steps(
-    search_policy,
-    eval_env,
-    num_cleanup_steps,
-    cost_constraints: dict = {},
-    constrained=False,
-):
-    if isinstance(eval_env, SafeTimeLimit) or isinstance(
-        eval_env, SafeGoalConditionedPointWrapper
-    ):
-        set_safe_env_difficulty(eval_env, 0.95, **cost_constraints)
-    else:
-        set_env_difficulty(eval_env, 0.95)
-
-    search_policy.set_cleanup(True)
-    cleanup_start = time.perf_counter()
-    # Collector.eval_agent(search_policy, eval_env, num_cleanup_steps, by_episode=False) # random goals in env
-    if constrained:
-        ConstrainedCollector.step_cleanup(search_policy, eval_env, num_cleanup_steps)
-    else:
-        Collector.step_cleanup(
-            search_policy, eval_env, num_cleanup_steps
-        )  # samples goals from nodes in state graph
-    cleanup_end = time.perf_counter()
-    search_policy.set_cleanup(False)
-    cleanup_time = cleanup_end - cleanup_start
-    return cleanup_time
-
-
-def cleanup_and_eval_search_policy(
-    search_policy,
-    eval_env,
-    num_evals=10,
-    difficulty=0.5,
-    cost_constraints: dict = {},
-    constrained=False,
-):
-
-    if isinstance(eval_env, SafeTimeLimit) or isinstance(
-        eval_env, SafeGoalConditionedPointWrapper
-    ):
-        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
-    else:
-        set_env_difficulty(eval_env, difficulty)
-
-    search_policy.reset_stats()
-    success_rate, eval_time = eval_search_policy(
-        search_policy, eval_env, num_evals=num_evals, constrained=constrained
-    )
-
-    # Initial sparse graph
-    print(
-        f"Initial {search_policy} has success rate {success_rate:.2f}, evaluated in {eval_time:.2f} seconds"
-    )
-    initial_g, initial_rb = search_policy.g.copy(), search_policy.rb_vec.copy()
-
-    # Filter search policy
-    search_policy.filter_keep_k_nearest()
-
-    if isinstance(eval_env, SafeTimeLimit) or isinstance(
-        eval_env, SafeGoalConditionedPointWrapper
-    ):
-        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
-    else:
-        set_env_difficulty(eval_env, difficulty)
-
-    search_policy.reset_stats()
-    success_rate, eval_time = eval_search_policy(
-        search_policy, eval_env, num_evals=num_evals, constrained=constrained
-    )
-    print(
-        f"Filtered {search_policy} has success rate {success_rate:.2f}, evaluated in {eval_time:.2f} seconds"
-    )
-    filtered_g, filtered_rb = search_policy.g.copy(), search_policy.rb_vec.copy()
-
-    # Cleanup steps
-    num_cleanup_steps = int(1e4)
-    cleanup_time = take_cleanup_steps(
-        search_policy, eval_env, num_cleanup_steps, constrained=constrained
-    )
-    print(f"Took {num_cleanup_steps} cleanup steps in {cleanup_time:.2f} seconds")
-
-    if isinstance(eval_env, SafeTimeLimit) or isinstance(
-        eval_env, SafeGoalConditionedPointWrapper
-    ):
-        set_safe_env_difficulty(eval_env, difficulty, **cost_constraints)
-    else:
-        set_env_difficulty(eval_env, difficulty)
-
-    search_policy.reset_stats()
-    success_rate, eval_time = eval_search_policy(
-        search_policy, eval_env, num_evals=num_evals, constrained=constrained
-    )
-    print(
-        f"Cleaned {search_policy} has success rate {success_rate:.2f}, evaluated in {eval_time:.2f} seconds"
-    )
-    cleaned_g, cleaned_rb = search_policy.g.copy(), search_policy.rb_vec.copy()
-
-    return (initial_g, initial_rb), (filtered_g, filtered_rb), (cleaned_g, cleaned_rb)
+    eval_stats = {}
+    eval_stats["dists"] = dist_eval_stats
+    return eval_stats
