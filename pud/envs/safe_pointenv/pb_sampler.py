@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 
@@ -195,14 +195,13 @@ def sample_cost_pbs_by_agent(
         agent:DRLDDPGLag, 
         num_states:int=100,
         target_val:float=None,
-        min_dist: float = 0,
-        max_dist: float = 10,
+        min_dist: Optional[float] = None,
+        max_dist: Optional[float] = None,
         ensemble_agg:str="mean",
         K:int=5, # num of samples nearest to the target metric
         use_uncertainty:bool=True, # boost samples of high uncertainty 
         uncertainty_lb:float=0.0, 
         uncertainty_ub:float=1.0,
-        non_grid:bool=False, 
     ):
     """
     filter based on distance constraints
@@ -214,27 +213,29 @@ def sample_cost_pbs_by_agent(
     rb_vec = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
     rb_vec_goal = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
 
-    ## predict the pairwise costs
-    pdist = agent.get_pairwise_dist(
-            obs_vec=np.stack([env.normalize_obs(s) for s in rb_vec]), 
-            goal_vec=np.stack([env.normalize_obs(s) for s in rb_vec_goal]),
-            aggregate=None,
-            )
-    
-    pdist_agg = None
-    if ensemble_agg == "max":
-        pdist_agg = np.max(pdist, axis=0)
-    elif ensemble_agg == "mean":
-        pdist_agg = np.mean(pdist, axis=0)
+    prod_mask = np.ones([num_states, num_states], dtype=bool)
+    if min_dist and max_dist:
+        ## predict the pairwise costs
+        pdist = agent.get_pairwise_dist(
+                obs_vec=np.stack([env.normalize_obs(s) for s in rb_vec]), 
+                goal_vec=np.stack([env.normalize_obs(s) for s in rb_vec_goal]),
+                aggregate=None,
+                )
+        
+        pdist_agg = None
+        if ensemble_agg == "max":
+            pdist_agg = np.max(pdist, axis=0)
+        elif ensemble_agg == "mean":
+            pdist_agg = np.mean(pdist, axis=0)
 
-    pdist_std = 0.0
-    if use_uncertainty:
-        pdist_std = np.std(pdist, axis=0)
+        pdist_std = 0.0
+        if use_uncertainty:
+            pdist_std = np.std(pdist, axis=0)
 
-    lb_mask = pdist_agg + pdist_std >= min_dist
-    ub_mask = pdist_agg - pdist_std <= max_dist
-    prod_mask = lb_mask * ub_mask
-    
+        lb_mask = pdist_agg + pdist_std >= min_dist
+        ub_mask = pdist_agg - pdist_std <= max_dist
+        prod_mask = lb_mask * ub_mask
+        
     gInds = np.where(prod_mask)
     if len(gInds[0]) == 0:
         return []
@@ -265,8 +266,8 @@ def sample_cost_pbs_by_agent(
             nearest_pbs[n] = {
                 "start": rb_vec[i],
                 "goal": rb_vec_goal[j],
-                "info": {"prediction": pdist_agg[i,j],
-                        "proj_dist": pdist_agg[i,j],
+                "info": {"prediction": pcosts_agg[i,j],
+                        "proj_dist": None,
                         "ensemble_std_mean": pcosts_std_mean,
                         },
                     }
@@ -278,7 +279,7 @@ def sample_cost_pbs_by_agent_deprecated(
         agent:DRLDDPGLag, 
         num_states:int=100,
         target_val:float=None,
-        min_dist: float = 0,
+        min_dist: Optional[float] = 0,
         max_dist: float = 10,
         ensemble_agg:str="mean",
         K:int=5, # num of samples nearest to the target metric
@@ -370,15 +371,12 @@ def sample_cost_pbs_by_agent_deprecated(
         return nearest_pbs
 
 def load_pb_set(file_path:str, 
-        env:SafeGoalConditionedPointWrapper,
+        env:Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper],
         agent:DRLDDPGLag,):
     pnts = np.loadtxt(fname=file_path,
             dtype=float,
             delimiter=",")
-    # the plotted figure are flipped, 
-    # so coords need to be flipped back
     assert len(pnts) % 2 == 0, "the number of points need to be even"
-    #pnts = np.flip(pnts_vis, axis=1)
     start_list = []
     goal_list = []
 
@@ -389,9 +387,10 @@ def load_pb_set(file_path:str,
             goal_list.append(pnts[i])
 
     gc_states = {
-        "observation": np.array(start_list),
-        "goal": np.array(goal_list),
+        "observation": np.stack([env.normalize_obs(x) for x in start_list]),
+        "goal": np.stack([env.normalize_obs(x) for x in goal_list]),
     }
+
     pcosts = agent.get_cost_to_goal(state=gc_states, aggregate=None)
     pcosts_agg = np.mean(pcosts, axis=0)
     pdists = agent.get_dist_to_goal(state=gc_states, aggregate=None)
@@ -401,8 +400,8 @@ def load_pb_set(file_path:str,
     pbs = [None] * len(start_list)
     for i in range(len(start_list)):
         pbs[i] = {
-            "start": env.de_normalize_obs(start_list[i]),
-            "goal": env.de_normalize_obs(goal_list[i]),
+            "start": start_list[i],
+            "goal": goal_list[i],
             "info": {"prediction": np.mean(pcosts_agg[i]),
                     "proj_dist": pdists_agg[i],
                     "ensemble_std_mean": pcosts_std_mean,
