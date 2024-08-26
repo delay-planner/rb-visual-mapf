@@ -375,7 +375,7 @@ def load_pb_set(file_path:str,
         agent:DRLDDPGLag,):
     pnts = np.loadtxt(fname=file_path,
             dtype=float,
-            delimiter=",")
+            delimiter=",").astype(env.action_space.dtype)
     assert len(pnts) % 2 == 0, "the number of points need to be even"
     start_list = []
     goal_list = []
