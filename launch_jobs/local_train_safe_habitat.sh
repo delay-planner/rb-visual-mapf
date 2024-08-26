@@ -11,7 +11,7 @@ echo "experiment directory: ${log_dir}"
 
 cd "${project_root}"
 
-debugger_port=5678
+#debugger_port=5679
 
 #scene="sc0_staging_20"
 scene="sc2_staging_08"
@@ -28,7 +28,7 @@ num_envs=1
 embedding_size=256
 config=configs/config_SafeHabitatReplicaCAD.yaml
 device="cuda:0" # must use GPU cluster
-
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
 if [[ -n ${debugger_port} ]]; then
@@ -51,8 +51,9 @@ if [[ -n ${debugger_port} ]]; then
         --logdir ${log_dir} \
         --device ${device} \
         --visual \
-        --num_envs ${num_envs} \
-        --embedding_size $embedding_size
+        --illustration_pb_file ${illustration_pbs} \
+        --embedding_size $embedding_size \
+        --pbar
 else
     echo "[INFO] running in normal mode"
     python pud/algos/train_safe_habitat.py \
@@ -69,6 +70,7 @@ else
         --logdir ${log_dir} \
         --device ${device} \
         --visual \
-        --num_envs ${num_envs} \
-        --embedding_size $embedding_size
+        --illustration_pb_file ${illustration_pbs} \
+        --embedding_size $embedding_size \
+        --pbar
 fi

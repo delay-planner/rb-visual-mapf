@@ -63,10 +63,6 @@ if __name__ == "__main__":
         type=int,
         default=0,
         help="override if > 0")
-    parser.add_argument("--num_envs",
-        type=int,
-        default=1,
-        help="number of envs for batch inference")
     parser.add_argument("--embedding_size",
         type=int,
         default=-1,
