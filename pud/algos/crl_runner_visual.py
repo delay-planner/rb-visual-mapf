@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 import matplotlib.pyplot as plt
+from typing import Optional
 
 import numpy as np
 import torch
@@ -76,10 +77,16 @@ def visualize_visual_eval_records(eval_records,
             markersize=4,
                     )
 
+        ax.plot(
+            [starts[i,0], goals[i,0]],
+            [starts[i,1], goals[i,1]],
+            marker="o", color="b", linestyle="--", linewidth=2, markersize=2, label="", alpha=0.3,
+        )
+
         ax.scatter(
             goals[i:i+1,0],
             goals[i:i+1,1], 
-            marker="*", s=12, color=distinct_colors[i],
+            marker="*", s=30, color=distinct_colors[i],
             )
 
     return ax
@@ -170,24 +177,24 @@ def train_eval(
                         success_rate = np.sum(N_success) / len(N_success)
                         logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
                 
-                #field_header = "Eval Cost ~ "
-                #for ii in eval_info["costs"]:
-                #    logger["tb"].add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["ref"]), 
-                #        tag_scalar_dict={
-                #            "pred": np.mean(eval_info["costs"][ii]["pred"]),
-                #            "val": np.mean(eval_info["costs"][ii]["vals"]),
-                #        }, global_step=i)
-                #    logger["tb"].add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["ref"]), 
-                #        tag_scalar_dict={
-                #            "pred": np.std(eval_info["costs"][ii]["pred"]),
-                #            "val": np.std(eval_info["costs"][ii]["vals"]),
-                #        }, global_step=i)
+                field_header = "Eval Cost ~ "
+                for ii in eval_info["costs"]:
+                    logger["tb"].add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info["costs"][ii]["pred"]),
+                            "val": np.mean(eval_info["costs"][ii]["vals"]),
+                        }, global_step=i)
+                    logger["tb"].add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["ref"]), 
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info["costs"][ii]["pred"]),
+                            "val": np.std(eval_info["costs"][ii]["vals"]),
+                        }, global_step=i)
 
-                #    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
-                #    if len(N_success) > 0:
-                #        success_rate = np.sum(N_success) / len(N_success)
-                #        logger["tb"].add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
-                #    logger["tb"].add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
+                    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        logger["tb"].add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
+                    logger["tb"].add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
 
                 time_logs = log_time(step=i, log=time_logs)
                 logger["tb"].add_scalar(
@@ -203,9 +210,9 @@ def eval_pointenv_dists(
     num_evals=10, 
     sample_size:int=100,
     eval_distances=[1,2,3,4],
-    cost_intervals=[0., 0.2, 0.5, 1.0],
-    cost_min_dist:float = 0.0,
-    cost_max_dist:float = 10.0,
+    cost_intervals=[0, 5, 10],
+    cost_min_dist:Optional[float] = None,
+    cost_max_dist:Optional[float] = None,
     verbose=True, 
     logger:dict={},
 ):
@@ -250,7 +257,7 @@ def eval_pointenv_dists(
                     goals=goal_list,
                 )
         
-                fig.savefig(eval_img_dir.joinpath("dist={}.jpg".format(eval_distances[ii_d])), dpi=300)
+                fig.savefig(eval_img_dir.joinpath("dist~{}.jpg".format(eval_distances[ii_d])), dpi=300)
 
                 plt.close(fig=fig)
 
@@ -285,10 +292,97 @@ def eval_pointenv_dists(
                         max_dist=cost_max_dist,
                         use_uncertainty=False,
                         ensemble_agg="mean",)
+        if len(cost_eval_pbs) > 0:
+            eval_env.append_pbs(pb_list=cost_eval_pbs)
+            cost_eval_i = eval_agent_from_Q(
+                            policy=agent, 
+                            eval_env=eval_env, 
+                            collect_trajs=not (eval_img_dir is None),
+                            )
+            if eval_img_dir is not None:
+                fig, ax = plt.subplots()
+                start_list = [p["start"].tolist() for p in cost_eval_pbs]
+                goal_list = [p["goal"].tolist() for p in cost_eval_pbs]
+                visualize_visual_eval_records(
+                    eval_records=cost_eval_i,
+                    eval_env=eval_env,
+                    ax=ax,
+                    starts=start_list,
+                    goals=goal_list,
+                )
+        
+                fig.savefig(eval_img_dir.joinpath("cost~{}.jpg".format(cost_intervals[ii])), dpi=300)
 
+                plt.close(fig=fig)
+
+            cost_logs = gather_log(eval_stats=cost_eval_i, 
+                        names_n_keys={
+                            "attr_vals": ["cum_costs"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            cost_eval_stats[ii] = {
+                "vals": cost_logs["attr_vals"],
+                "pred": cost_logs["attr_pred"],
+                "ref": cost_intervals[ii],
+                "success": cost_logs["success_hist"],
+            }
+        else:
+            print("[WARN] empty set for dist eval problem")
+        
+        pbar.update()
     pbar.close()
+
+    if "illustration_pb_file" in logger:
+        ref_eval_stats = dict()
+        ref_pbs = load_pb_set(file_path=logger["illustration_pb_file"],
+                            env=eval_env,
+                            agent=agent,)
+        if len(ref_pbs) > 0:
+            eval_env.append_pbs(pb_list=ref_pbs)
+            ref_eval_i = eval_agent_from_Q(policy=agent, 
+                            eval_env=eval_env,
+                            collect_trajs=not (eval_img_dir is None))
+            if eval_img_dir is not None:
+                start_list = [p["start"].tolist() for p in ref_pbs]
+                goal_list = [p["goal"].tolist() for p in ref_pbs]
+                fig, ax = plt.subplots()
+                ax = visualize_visual_eval_records(
+                        eval_records=ref_eval_i,
+                        eval_env=eval_env,
+                        ax=ax,
+                        starts=start_list,
+                        goals=goal_list,
+                        )
+                text_offset = eval_env.walls.shape[0]*0.05
+                for jj in range(len(start_list)):
+                    xy_n = start_list[jj]
+                    ax.text(x=xy_n[0]+text_offset, y=xy_n[1], s="{}".format(jj))
+                    ax.text(x=0.0, y=-4.0-text_offset*jj, s="traj {}: cost={:.2f}, predicted cost={:.2f}".format(jj, ref_eval_i[jj]["cum_costs"], ref_pbs[jj]["info"]["prediction"]))
+                ax.set_title("illustration problems")
+                #ax.legend()
+                ax.legend(bbox_to_anchor=(1.01, 1.01))
+                figname = "ref.jpg"
+                fig.savefig(eval_img_dir.joinpath(figname), dpi=300, bbox_inches="tight")
+                plt.close()
+
+            
+            ref_logs = gather_log(eval_stats=ref_eval_i, 
+                        names_n_keys={
+                            "attr_vals": ["cum_costs"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            ref_eval_stats[ii] = {
+                "vals": ref_logs["attr_vals"],
+                "pred": ref_logs["attr_pred"],
+                "success": ref_logs["success_hist"],
+            }
     
 
     eval_stats = {}
     eval_stats["dists"] = dist_eval_stats
+    eval_stats["costs"] = cost_eval_stats
+    eval_stats["ref"] = ref_eval_stats
+    
     return eval_stats
