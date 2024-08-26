@@ -196,6 +196,26 @@ def train_eval(
                         logger["tb"].add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
                     logger["tb"].add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
 
+                field_header = "Eval Ref ~ "
+                if "ref" in eval_info:
+                    for ii in eval_info["ref"]:
+                        logger["tb"].add_scalars(field_header+"{}/mean".format(ii), 
+                            tag_scalar_dict={
+                                "pred": np.mean(eval_info["ref"][ii]["pred"]),
+                                "val": np.mean(eval_info["ref"][ii]["vals"]),
+                            }, global_step=i)
+                        logger["tb"].add_scalars(field_header+"{}/std".format(ii), 
+                            tag_scalar_dict={
+                                "pred": np.std(eval_info["ref"][ii]["pred"]),
+                                "val": np.std(eval_info["ref"][ii]["vals"]),
+                            }, global_step=i)
+
+                        N_success = np.array(eval_info["ref"][ii]["success"], dtype=float)
+                        if len(N_success) > 0:
+                            success_rate = np.sum(N_success) / len(N_success)
+                            logger["tb"].add_scalar(field_header+"{}/success_rate".format(ii), success_rate, global_step=i)
+                        logger["tb"].add_scalar(field_header+"{}/N".format(ii), len(N_success), global_step=i)
+
                 time_logs = log_time(step=i, log=time_logs)
                 logger["tb"].add_scalar(
                     "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
@@ -373,7 +393,7 @@ def eval_pointenv_dists(
                             "attr_pred": ["init_info", "prediction"],
                             "success_hist": ["success"],
                             })
-            ref_eval_stats[ii] = {
+            ref_eval_stats[0] = {
                 "vals": ref_logs["attr_vals"],
                 "pred": ref_logs["attr_pred"],
                 "success": ref_logs["success_hist"],
@@ -384,5 +404,5 @@ def eval_pointenv_dists(
     eval_stats["dists"] = dist_eval_stats
     eval_stats["costs"] = cost_eval_stats
     eval_stats["ref"] = ref_eval_stats
-    
+
     return eval_stats

@@ -382,6 +382,8 @@ def eval_pointenv_cost_constrained_dists(
             }
         else:
             print("[WARN] empty set for cost eval problem")
+    
+    if len(illustration_pb_file) > 0:
         cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
                             env=eval_env,
                             agent=agent,)

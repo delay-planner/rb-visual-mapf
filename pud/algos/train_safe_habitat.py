@@ -125,6 +125,7 @@ if __name__ == "__main__":
         help="VisualRGBEncoder | VisualEncoder")
     parser.add_argument("--illustration_pb_file",
         type=str,
+        default="",
         help="problems that serve as illustration and evaluation set")
     parser.add_argument("--resume",
         type=str,
@@ -192,6 +193,8 @@ if __name__ == "__main__":
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
     logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
     logger["pbar"] = args.pbar
+    if len(args.illustration_pb_file) > 0:
+        logger["illustration_pb_file"] = args.illustration_pb_file
 
     shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", logger["bk"].as_posix())
