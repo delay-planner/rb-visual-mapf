@@ -155,6 +155,9 @@ def train_eval(
                 logger["tb"].add_scalar(
                     "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
                 )
+                logger["tb"].add_scalar(
+                    "Opt/cost_critic_loss", np.mean(opt_info["cost_critic_loss"]), global_step=i
+                )
             
             if i > 1 and i % eval_interval == 0:
                 # for dists
