@@ -24,7 +24,7 @@ echo "Project Root Directory: ${project_root}"
 echo "Experiment Directory: ${log_dir}"
 
 device="cpu"
-config="configs/config_PointEnv_Queue_FourRoomsModified.yaml"
+config="configs/config_PointEnv_Queue_${env}.yaml"
 
 cd "${project_root}"
 
