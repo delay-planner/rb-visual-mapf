@@ -262,7 +262,7 @@ class SafePointEnv (PointEnv):
             return
 
         # todo: perhaps suffer from label inbalance?
-        self.state = self.sample_safe_empty_state(cost_limit=self.cost_limit)
+        self.state = self.sample_safe_empty_state()
         new_state_cost = self.get_state_cost(xy=self.state)
         info = {"cost": new_state_cost}
         return self.state.copy(), info
@@ -291,7 +291,7 @@ class SafePointEnv (PointEnv):
         safe_empty_states = np.column_stack(safe_empty_states) # N,d
         return safe_empty_states
     
-    def sample_safe_empty_state(self, cost_limit:float):
+    def sample_safe_empty_state(self):
         """
         must take intersection with the empty states because state cost is computed from the center of the block?
         """
