@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #SBATCH -c 20
 #SBATCH --exclusive
@@ -10,7 +10,7 @@ source /etc/profile
 module unload anaconda
 module load anaconda/2023a-pytorch
 
-source activate hb
+source activate habitat
 
 project_root=/home/gridsan/vparimi/cc-sorb-rev
 export PYTHONPATH=$project_root:$PYTHONPATH
