@@ -68,7 +68,7 @@ def visualize_visual_eval_records(eval_records,
 
     for i in eval_records.keys():
         ax = plot_traj(
-            traj=np.stack(eval_records[0]["traj"]), walls=eval_env.walls.copy(), 
+            traj=np.stack(eval_records[i]["traj"]), walls=eval_env.walls.copy(), 
             normalize=normalize_map,
             ax=ax,
             color=distinct_colors[i],
