@@ -189,11 +189,11 @@ if __name__ == "__main__":
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
     logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
 
-    shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
-    shutil.copy("pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/local_train_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/cloud_train_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
-    shutil.copy("pud/runner_vec.py", logger["bk"].as_posix())
-    shutil.copy("pud/visual_models.py", logger["bk"].as_posix())
+    shutil.copy("pud/runner_visual.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/visual_collector.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
 
