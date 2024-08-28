@@ -177,7 +177,7 @@ class ConstrainedCollector(Collector):
             next_state, reward, done, info = self.env.step(np.copy(action))
             self._log_metric(reward, cost=info["cost"])
 
-            if info.get("last_timestep", False):
+            if info.get("last_step", False):
                 self.buffer.add(
                     self.state,
                     action,

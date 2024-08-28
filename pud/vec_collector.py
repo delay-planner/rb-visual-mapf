@@ -39,7 +39,7 @@ class VectorCollector:
                 env_ii = self.env[ii]
                 next_state, reward, done, info = env_ii.step(np.copy(act))
                 next_states[ii] = next_state
-                if info.get('last_timestep', False):
+                if info.get('last_step', False):
                     self.buffer.add(self.states[ii], act, info['terminal_observation'], reward, done)
                 else:
                     self.buffer.add(self.states[ii], act, next_state, reward, done)                    
