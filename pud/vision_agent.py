@@ -733,16 +733,19 @@ class LagVisionUVFDDPG (VisionUVFDDPG):
     def load_state_dict(self, state_dict:dict):
         unconstrained_keys = [
             "actor",
+            "actor_target",
             "actor_optimizer",
             "critic",
+            "critic_target",
             "critic_optimizer",
-            "optimize_iterations",
+            #"optimize_iterations",
         ]
         unconstrained_state_dict = {}
         for key in unconstrained_keys:
             unconstrained_state_dict[key] = state_dict[key]
         super().load_state_dict(unconstrained_state_dict)
 
+        self.cost_critic.load_state_dict(state_dict["cost_critic"])
         self.cost_critic.load_state_dict(state_dict["cost_critic"])
         self.cost_critic_optimizer.load_state_dict(state_dict["cost_critic_optimizer"])
         #self.lagrange.load_state_dict(state_dict["lagrange"])
