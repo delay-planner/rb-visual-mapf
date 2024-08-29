@@ -73,10 +73,10 @@ class SafeHabitatNavigationEnv(HabitatNavigationEnv):
         return self._cost_map
 
     def get_map_width(self):
-        return self._width
+        return self._wall_width
     
     def get_map_height(self):
-        return self._height
+        return self._wall_height
 
     def get_internal_state(self):
         return self.state_grid.copy()
