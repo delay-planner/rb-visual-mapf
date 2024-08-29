@@ -265,7 +265,7 @@ def visualize_combined_graph_ensemble(
 
     for col_index in range(ensemble_size):
         ax[col_index] = plot_safe_walls(
-            eval_env.get_map(), eval_env.get_cost_map(), cost_limit=eval_env.cost_limit, ax=ax[col_index]
+            eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax[col_index]
         )
         ax[col_index].set_title("Critic %d" % (col_index + 1))
         ax[col_index].scatter(*rb_vec.T)

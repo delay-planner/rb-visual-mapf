@@ -380,11 +380,14 @@ def load_pb_set(file_path:str,
     start_list = []
     goal_list = []
 
+    # The illustration files are assumed to be normalized
+    denorm_factor = np.array([env.get_map_height(), env.get_map_width()], dtype=np.float32)
+
     for i in range(len(pnts)):
         if i % 2 == 0:
-            start_list.append(pnts[i])
+            start_list.append(pnts[i] * denorm_factor)
         else:
-            goal_list.append(pnts[i])
+            goal_list.append(pnts[i] * denorm_factor)
 
     gc_states = {
         "observation": np.stack([env.normalize_obs(x) for x in start_list]),
