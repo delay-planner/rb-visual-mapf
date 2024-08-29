@@ -746,5 +746,6 @@ class LagVisionUVFDDPG (VisionUVFDDPG):
         super().load_state_dict(unconstrained_state_dict)
 
         self.cost_critic.load_state_dict(state_dict["cost_critic"])
+        self.cost_critic.load_state_dict(state_dict["cost_critic"])
         self.cost_critic_optimizer.load_state_dict(state_dict["cost_critic_optimizer"])
         #self.lagrange.load_state_dict(state_dict["lagrange"])
