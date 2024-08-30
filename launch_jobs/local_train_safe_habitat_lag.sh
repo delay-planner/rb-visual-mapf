@@ -22,6 +22,11 @@ eval_interval=2500  # 5000 | 10
 num_iterations=600000
 cost_limit=10.0
 
+sampler_cost_bounds="5-40"
+sampler_dist_bounds="0-5"
+sampler_K=10
+sampler_std_ub=1
+
 device="cuda:0" # must use GPU cluster
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
 
@@ -43,6 +48,10 @@ if [[ -n ${debugger_port} ]]; then
         --num_iterations $num_iterations \
         --device ${device} \
         --illustration_pb_file ${illustration_pbs} \
+        --sampler_cost_bounds $sampler_cost_bounds \
+        --sampler_dist_bounds $sampler_dist_bounds \
+        --sampler_K $sampler_K \
+        --sampler_std_ub $sampler_std_ub \
         --visual \
         --pbar
 else
@@ -57,6 +66,7 @@ else
         --num_iterations $num_iterations \
         --device ${device} \
         --illustration_pb_file ${illustration_pbs} \
+        --sampler_cost_bounds $sampler_cost_bounds \
         --visual \
         --pbar
 fi
