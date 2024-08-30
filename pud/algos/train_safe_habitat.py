@@ -7,7 +7,7 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from pud.policies import VectorGaussianPolicy
+from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
@@ -285,7 +285,7 @@ if __name__ == "__main__":
         max_size=cfg.replay_buffer.max_size,
         )
 
-    policy = VectorGaussianPolicy(agent, noise_scale=0.2)
+    policy = GaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
         policy,

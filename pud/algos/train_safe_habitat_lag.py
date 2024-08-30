@@ -6,7 +6,7 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from pud.policies import VectorGaussianPolicy
+from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
@@ -16,7 +16,7 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-from pud.algos.crl_runner_visual import train_eval, eval_pointenv_dists
+from pud.algos.runner_habitat_lag import train_eval, eval_pointenv_dists
 from tqdm.auto import tqdm
 import shutil
 from typing import List
@@ -72,6 +72,27 @@ if __name__ == "__main__":
         type=float,
         default=-1,
         help="override cost limit")
+    
+    parser.add_argument("--sampler_cost_bounds",
+        type=str,
+        default="",
+        help="cost bounds for pb sampler, delimited by -")
+    parser.add_argument("--sampler_dist_bounds",
+        type=str,
+        default="",
+        help="dist bounds for pb sampler, delimited by -")
+    parser.add_argument("--sampler_K",
+        type=int,
+        default=-1,
+        help="number of pbs per target, delimited by -")
+    parser.add_argument("--sampler_popsize",
+        type=int,
+        default=-1,
+        help="sampler number of random candidate")
+    parser.add_argument("--sampler_std_ub",
+        type=float,
+        default="",
+        help="bounds in boosting scores of uncertain samples")
     parser.add_argument("--lambda_lr",
         type=float,
         default=-1,
@@ -110,6 +131,23 @@ if __name__ == "__main__":
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
 
+    if len(args.sampler_cost_bounds) > 0:
+        sampler_cost_bounds = [float(x) for x in args.sampler_cost_bounds.split("-")]
+        cfg.sampler_extra.cost_bounds = sampler_cost_bounds
+
+    if len(args.sampler_dist_bounds) > 0:
+        sampler_dist_bounds = [float(x) for x in args.sampler_dist_bounds.split("-")]
+        cfg.sampler.min_dist = sampler_dist_bounds[0]
+        cfg.sampler.max_dist = sampler_dist_bounds[1]
+
+    if args.sampler_K > 0:
+        cfg.sampler.K = args.sampler_K
+    if args.sampler_popsize > 0:
+        cfg.sampler.num_states = args.sampler_popsize
+    if args.sampler_std_ub > 0:
+        cfg.sampler.uncertainty_ub = args.sampler_std_ub
+
+
     # create a lag dir inside the original training dir
     path_ckpt = Path(args.ckpt)
     log_dir = path_ckpt.parent.parent.joinpath("lag")
@@ -130,10 +168,13 @@ if __name__ == "__main__":
     if len(args.illustration_pb_file) > 0:
         logger["illustration_pb_file"] = args.illustration_pb_file
 
+    logger["sampler"] = cfg.sampler
+    logger["sampler_extra"] = cfg.sampler_extra
+
     shutil.copy("launch_jobs/local_train_safe_habitat_lag.sh", logger["bk"].as_posix())
     shutil.copy("launch_jobs/cloud_train_safe_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
-    shutil.copy("pud/algos/crl_runner_visual.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/runner_habitat_lag.py", logger["bk"].as_posix())
     shutil.copy("pud/algos/visual_collector.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
@@ -219,12 +260,13 @@ if __name__ == "__main__":
         max_size=cfg.replay_buffer.max_size,
         )
 
-    policy = VectorGaussianPolicy(agent, noise_scale=0.2)
+    policy = GaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
-        policy,
-        agent,
-        replay_buffer,
+        policy=policy,
+        agent=agent,
+        agent_g=agent_g,
+        replay_buffer=replay_buffer,
         env=env,
         eval_env=eval_env,
         eval_func=eval_pointenv_dists,
