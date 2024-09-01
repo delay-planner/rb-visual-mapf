@@ -11,7 +11,7 @@ from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
-from pud.algos.visual_buffer import ConstrainedVisualReplayBuffer
+from pud.buffer_large import ConstrainedLargeReplayBuffer
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     # Custom Logging
     logger = setup_logger(
         root_dir=cfg.ckpt_dir, 
-        subdir_names=["ckpt", "tfevent", "bk", "imgs"],
+        subdir_names=["ckpt", "tfevent", "bk", "imgs", "buffer"],
         tag_time=True,
         )
     with open(logger["bk"].joinpath("config.yaml"), "w") as f:
@@ -278,11 +278,12 @@ if __name__ == "__main__":
     #    obs = new_obs
 
     # test collector
-    replay_buffer = ConstrainedVisualReplayBuffer(
-        obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        action_dim=env.action_space.shape[0],
+    replay_buffer = ConstrainedLargeReplayBuffer(
+        #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+        #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+        #action_dim=env.action_space.shape[0],
         max_size=cfg.replay_buffer.max_size,
+        scratch_dir=logger["buffer"],
         )
 
     policy = GaussianPolicy(agent, noise_scale=0.2)
