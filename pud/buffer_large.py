@@ -64,10 +64,10 @@ class ConstrainedLargeReplayBuffer (LargeReplayBuffer):
     
     def add(self, state, action, next_state, reward, cost, done):
         new_data = TensorDict({
-            "observation": torch.from_numpy(state['observation']),
-            "goal": torch.from_numpy(state['goal']),
-            "next_observation": torch.from_numpy(next_state['observation']),
-            "next_goal": torch.from_numpy(next_state['goal']),
+            "observation": state['observation'],
+            "goal": state['goal'],
+            "next_observation": next_state['observation'],
+            "next_goal": next_state['goal'],
             "action": torch.from_numpy(action),
             "reward": torch.Tensor([reward]),
             "done": torch.Tensor([done]),
