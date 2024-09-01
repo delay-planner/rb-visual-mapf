@@ -9,11 +9,11 @@ class LargeReplayBuffer:
     def __init__(self, 
                 max_size=int(1e6),
                 batch_size:Optional[int]=None,
+                scratch_dir:str="temp/",
                 **kwargs,
                 ):
 
-        tempdir = tempfile.TemporaryDirectory()
-        storage = LazyMemmapStorage(max_size, scratch_dir=tempdir)
+        storage = LazyMemmapStorage(max_size, scratch_dir=scratch_dir)
         rb_kwargs = dict(storage=storage)
         self.batch_size = None
         if batch_size is not None:
@@ -56,9 +56,10 @@ class LargeReplayBuffer:
         return batch
 
 class ConstrainedLargeReplayBuffer (LargeReplayBuffer):
-    def __init__(self, max_size=int(1e6), batch_size:Optional[int]=None, **kwargs):
+    def __init__(self, max_size=int(1e6), batch_size:Optional[int]=None, scratch_dir:str="temp/",
+                 **kwargs):
         super(ConstrainedLargeReplayBuffer, self).__init__(
-            max_size=max_size, batch_size=batch_size, **kwargs
+            max_size=max_size, batch_size=batch_size, scratch_dir=scratch_dir, **kwargs
         )
     
     def add(self, state, action, next_state, reward, cost, done):
@@ -95,7 +96,7 @@ class ConstrainedLargeReplayBuffer (LargeReplayBuffer):
         return batch
 
 if __name__ == "__main__":
-    rb = LargeReplayBuffer(obs_dim=12, goal_dim=12, action_dim=4, max_size=4)
+    rb = ConstrainedLargeReplayBuffer(max_size=4)
     for _ in range(10):
         rb.add(
             state={"observation":np.random.rand(32,32).astype(np.int8), 
@@ -104,6 +105,7 @@ if __name__ == "__main__":
             next_state={"observation":np.random.rand(12).astype(np.int8), 
                         "goal":np.random.rand(12).astype(np.int8),},
             reward=-1,
+            cost=2,
             done=False,
         )
-    rb.sample(5)
+    rb.sample_w_cost(5)
