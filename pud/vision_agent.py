@@ -749,3 +749,405 @@ class LagVisionUVFDDPG (VisionUVFDDPG):
         self.cost_critic.load_state_dict(state_dict["cost_critic"])
         self.cost_critic_optimizer.load_state_dict(state_dict["cost_critic_optimizer"])
         #self.lagrange.load_state_dict(state_dict["lagrange"])
+
+
+class ConstrainedVisionUVFDDPG (VisionUVFDDPG):
+    """
+    should be the parent class of LagVisionUVFDDPG, but don't want to re-run the experiments again
+    """
+    def __init__(self,
+            # encoder args
+            width:int,
+            height:int,
+            in_channels:int,
+            embedding_size:int,
+            action_dim:int,
+            max_action:float,
+            act_fn,
+            device:str,
+            ActorCls=VisualGoalConditionedActor, 
+            CriticCls=VisualGoalConditionedCritic,
+            actor_lr:float=1e-6,
+            critic_lr:float=1e-5,
+            tau:float=0.05,
+            discount:float=1.0,
+            ensemble_size:int=2,
+            num_bins:int=20,
+            encoder:Literal["VisualEncoder", "VisualRGBEncoder"]="VisualEncoder",
+            targets_update_interval:int=5,
+            actor_update_interval:int=1,
+            use_distributional_rl:bool=True,
+            cost_kwargs:Optional[dict]=None,
+        ):
+        """
+        # cost configs
+        cost_min:float = 0,
+        cost_max:float = 2.0,
+        cost_N=20,
+        cost_critic_lr:float=1e-3,
+        cost_limit:float=1.0,
+        lambda_lr:float=0.001,
+        lambda_optimizer:str="Adam", # lambda optimizer is actually unused
+        """
+        super(ConstrainedVisionUVFDDPG, self).__init__(
+            # encoder args
+            width=width,
+            height=height,
+            in_channels=in_channels,
+            embedding_size=embedding_size,
+            action_dim=action_dim,
+            max_action=max_action,
+            act_fn=act_fn,
+            device=device,
+            ActorCls=ActorCls, 
+            CriticCls=CriticCls,
+            actor_lr=actor_lr,
+            critic_lr=critic_lr,
+            tau=tau,
+            discount=discount,
+            ensemble_size=ensemble_size,
+            num_bins=num_bins,
+            encoder=encoder,
+            targets_update_interval=targets_update_interval,
+            actor_update_interval=actor_update_interval,
+            use_distributional_rl=use_distributional_rl,
+        )
+
+        # for lagrangian
+        if cost_kwargs is not None:
+            self.cost_critic = CriticCls(
+                width=width,
+                height=height,
+                state_dim=embedding_size*2,
+                action_dim=action_dim, 
+                embedding_size=embedding_size,
+                act_fn=act_fn,
+                in_channels=in_channels,
+                encoder=encoder,
+                output_dim=cost_kwargs["cost_N"],
+                device=device, 
+            )
+            self.cost_critic_target = copy.deepcopy(self.cost_critic)
+            self.cost_critic_target.load_state_dict(self.cost_critic.state_dict())
+            self.cost_critic_optimizer = torch.optim.Adam(self.cost_critic.parameters(), lr=cost_kwargs["cost_critic_lr"], eps=1e-07)
+
+            self.F_categorical = CategoricalActivation(
+                vmin=cost_kwargs["cost_min"], 
+                vmax=cost_kwargs["cost_max"], 
+                N=cost_kwargs["cost_N"],
+                )
+
+            if self.ensemble_size > 1:
+                self.cost_critic = EnsembledCritic(self.cost_critic, ensemble_size=ensemble_size)
+                self.cost_critic_target = copy.deepcopy(self.cost_critic)
+                self.cost_critic_target.load_state_dict(self.cost_critic.state_dict())
+                for i in range(1, len(self.cost_critic.critics)): # first copy already added
+                    cost_critic_copy = self.cost_critic.critics[i]
+                    self.cost_critic_optimizer.add_param_group({'params': cost_critic_copy.parameters()})
+
+    def optimize(self, replay_buffer:ConstrainedVisualReplayBuffer, iterations=1, batch_size=128):
+        opt_info = dict(actor_loss=[], critic_loss=[], cost_critic_loss=[])
+        for _ in range(iterations):
+            self.optimize_iterations += 1
+
+            # Each of these are batches 
+            state, next_state, action, reward, cost, done = replay_buffer.sample_w_cost(batch_size)
+
+            state = inp_to_torch_device(state, self.device)
+            next_state = inp_to_torch_device(next_state, self.device)
+            action = inp_to_torch_device(action, self.device)
+            reward = inp_to_torch_device(reward, self.device)
+            cost = inp_to_torch_device(cost, self.device)
+            done = inp_to_torch_device(done, self.device)
+
+            current_q = self.critic(state, action)
+            target_q = self.critic_target(next_state, self.actor_target(next_state))
+            critic_loss = self.critic_loss(current_q, target_q, reward, done)
+
+            # Optimize the critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
+            opt_info['critic_loss'].append(critic_loss.cpu().detach().numpy())
+
+            cost_current_q = self.cost_critic(state, action)
+            cost_target_q = self.cost_critic_target(next_state, self.actor_target(next_state))
+            cost_critic_loss = self.cost_critic_loss(cost_current_q, cost_target_q, cost, done)
+            self.cost_critic_optimizer.zero_grad()
+            cost_critic_loss.backward()
+            self.cost_critic_optimizer.step()
+            opt_info['cost_critic_loss'].append(cost_critic_loss.cpu().detach().numpy())
+
+            if self.optimize_iterations % self.actor_update_interval == 0:
+                # Compute actor loss
+                actor_loss_r = -self.get_q_values(state)
+                actor_loss = actor_loss_r.mean() 
+                # Optimize the actor 
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+                opt_info['actor_loss'].append(actor_loss.cpu().detach().numpy())
+
+            # Update the frozen target models
+            if self.optimize_iterations % self.targets_update_interval == 0:
+                self.update_actor_target()
+                self.update_critic_target()
+                self.update_cost_critic_target()
+
+        return opt_info
+
+    def update_cost_critic_target(self):
+        for param, target_param in zip(self.cost_critic.parameters(), self.cost_critic_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+    def cost_critic_loss(self, 
+            current_q:Union[torch.Tensor, List[torch.Tensor]], 
+            target_q:Union[torch.Tensor, List[torch.Tensor]],
+            cost:torch.Tensor, # (N,1) 
+            done:torch.Tensor, # (N,1)
+            ):
+        """loss on cumulative costs
+        current_q: a torch tensor if the cost critic is not an ensemble, or a list of torch tensors if the cost critic is an ensemble that contains the outputs of all the cost critic, (N, 1)
+
+        """
+        current_q_list = current_q
+        target_q_list = target_q
+        if not isinstance(current_q, list):
+            current_q_list = [current_q]
+            target_q_list = [target_q]
+        
+        critic_loss_list = []
+        for current_q, target_q in zip(current_q_list, target_q_list):
+            # Compute distributional td targets
+            new_target_probs = None
+            with torch.no_grad():
+                target_q_probs = F.softmax(target_q, dim=1)
+                batch_size = target_q_probs.shape[0]
+                zs = self.F_categorical.zs.tile([batch_size, 1]).to(self.device)
+                new_zs = cost + ((1 - done) * self.discount * zs) # batch_size, num_classes
+                new_target_probs = self.F_categorical.forward(probs=target_q_probs, new_zs=new_zs)
+            # cross entry loss: $$-\sum_{i}m_{i}\log p_{i}\left(x_{t},a_{t}\right)$$
+            critic_loss = torch.mean(-torch.sum(new_target_probs * torch.log_softmax(current_q, dim=1), dim=1)) # 
+            critic_loss_list.append(critic_loss)
+        critic_loss = torch.mean(torch.stack(critic_loss_list))
+        return critic_loss
+
+    def _get_cost_q_values(self, state):
+        actions = self.actor(state)
+        q_values = self.cost_critic(state, actions)
+        return q_values
+
+    def get_cost_q_values(self, 
+                    state: Union[torch.Tensor, Dict[str, torch.Tensor]], 
+                    aggregate='mean'):
+        """"""
+        q_values = self._get_cost_q_values(state)
+        q_values_list = []
+        if not isinstance(q_values, list):
+            q_values_list = [q_values]
+        else:
+            q_values_list = q_values
+        
+        expected_q_values_list = []
+        for q_values in q_values_list:
+            q_probs = F.softmax(q_values, dim=1)
+            batch_size = q_probs.shape[0]
+            zs = self.F_categorical.zs.tile([batch_size, 1]).to(self.device)
+            # Take the inner product between these two tensors
+            expected_q_values = torch.sum(q_probs * zs, dim=1, keepdim=True)
+            expected_q_values_list.append(expected_q_values)
+
+        expected_q_values = torch.stack(expected_q_values_list)
+        if aggregate is not None:
+            if aggregate == 'mean':
+                expected_q_values = torch.mean(expected_q_values, dim=0)
+            elif aggregate == 'min':
+                expected_q_values, _ = torch.min(expected_q_values, dim=0)
+            elif aggregate == 'max':
+                expected_q_values, _ = torch.max(expected_q_values, dim=0)
+            else:
+                raise ValueError
+        return expected_q_values
+
+    def get_cost_to_goal(self, state, **kwargs):
+        with torch.no_grad():
+            state = dict(
+                observation=torch.FloatTensor(state['observation']),
+                goal=torch.FloatTensor(state['goal']),
+            )
+            state = inp_to_torch_device(state, self.device)
+            q_values = self.get_cost_q_values(state, **kwargs)
+            return q_values.cpu().detach().numpy().squeeze(-1)
+
+    def get_pairwise_cost(self, obs_vec, goal_vec=None, aggregate='mean'):
+        """Estimates the pairwise costs. Return ensemble_size, obs_vec, goal_vec
+
+          obs_vec: Array containing observations
+          goal_vec: (optional) Array containing a second set of observations. If
+                    not specified, computes the pairwise distances between obs_tensor and
+                    itself.
+          aggregate: (str) How to combine the predictions from the ensemble. Options
+                     are to take the minimum predicted q value (i.e., the maximum distance),
+                     the mean, or to simply return all the predictions.
+          max_search_steps: (int)
+          masked: (bool) Whether to ignore edges that are too long, as defined by
+                  max_search_steps.
+        """
+        if goal_vec is None:
+            goal_vec = obs_vec
+
+        dist_matrix = []
+        for obs_index in range(len(obs_vec)):
+            obs = obs_vec[obs_index]
+            # obs_repeat_tensor = np.ones_like(goal_vec) * np.expand_dims(obs, 0)
+            obs_repeat_tensor = np.repeat([obs], len(goal_vec), axis=0)
+            state = {'observation': obs_repeat_tensor, 'goal': goal_vec}
+            dist = self.get_cost_to_goal(state, aggregate=aggregate)
+            dist_matrix.append(dist)
+
+        pairwise_dist = np.stack(dist_matrix)
+        if aggregate is None:
+            pairwise_dist = np.transpose(pairwise_dist, [1, 0, 2])
+        # else:
+        #     pairwise_dist = np.expand_dims(pairwise_dist, 0)
+
+        return pairwise_dist
+
+    def state_dict(self):
+        out = super().state_dict()
+        out["cost_critic"] = self.cost_critic.state_dict()
+        out["cost_critic_optimizer"] = self.cost_critic_optimizer.state_dict()
+        #out["lagrange"] = self.lagrange.state_dict()
+        return out
+
+    def load_state_dict(self, state_dict:dict):
+        unconstrained_keys = [
+            "actor",
+            "actor_target",
+            "actor_optimizer",
+            "critic",
+            "critic_target",
+            "critic_optimizer",
+            #"optimize_iterations",
+        ]
+        unconstrained_state_dict = {}
+        for key in unconstrained_keys:
+            unconstrained_state_dict[key] = state_dict[key]
+        super().load_state_dict(unconstrained_state_dict)
+
+        self.cost_critic.load_state_dict(state_dict["cost_critic"])
+        self.cost_critic.load_state_dict(state_dict["cost_critic"])
+        self.cost_critic_optimizer.load_state_dict(state_dict["cost_critic_optimizer"])
+
+
+class GCOVisionUVFDDPG (ConstrainedVisionUVFDDPG):
+    def __init__(self,
+            # encoder args
+            width:int,
+            height:int,
+            in_channels:int,
+            embedding_size:int,
+            action_dim:int,
+            max_action:float,
+            act_fn,
+            device:str,
+            ActorCls=VisualGoalConditionedActor, 
+            CriticCls=VisualGoalConditionedCritic,
+            actor_lr:float=1e-6,
+            critic_lr:float=1e-5,
+            tau:float=0.05,
+            discount:float=1.0,
+            ensemble_size:int=2,
+            num_bins:int=20,
+            encoder:Literal["VisualEncoder", "VisualRGBEncoder"]="VisualEncoder",
+            targets_update_interval:int=5,
+            actor_update_interval:int=1,
+            use_distributional_rl:bool=True,
+            cost_kwargs:Optional[dict]=None,   
+            ):
+        super(GCOVisionUVFDDPG, self).__init__(
+            width=width,
+            height=height,
+            in_channels=in_channels,
+            embedding_size=embedding_size,
+            action_dim=action_dim,
+            max_action=max_action,
+            act_fn=act_fn,
+            device=device,
+            ActorCls=ActorCls, 
+            CriticCls=CriticCls,
+            actor_lr=actor_lr,
+            critic_lr=critic_lr,
+            tau=tau,
+            discount=discount,
+            ensemble_size=ensemble_size,
+            num_bins=num_bins,
+            encoder=encoder,
+            targets_update_interval=targets_update_interval,
+            actor_update_interval=actor_update_interval,
+            use_distributional_rl=use_distributional_rl,
+        )
+    
+    def optimize(self, replay_buffer:ConstrainedVisualReplayBuffer, iterations=1, batch_size=128):
+        opt_info = dict(actor_loss=[], critic_loss=[], cost_critic_loss=[])
+        for _ in range(iterations):
+            self.optimize_iterations += 1
+
+            import IPython
+            IPython.embed(colors="Linux")
+
+            # Each of these are batches 
+            state, next_state, action, reward, cost, done = replay_buffer.sample_w_cost(batch_size)
+
+            state = inp_to_torch_device(state, self.device)
+            next_state = inp_to_torch_device(next_state, self.device)
+            action = inp_to_torch_device(action, self.device)
+            reward = inp_to_torch_device(reward, self.device)
+            cost = inp_to_torch_device(cost, self.device)
+            done = inp_to_torch_device(done, self.device)
+
+            current_q = self.critic(state, action)
+            target_q = self.critic_target(next_state, self.actor_target(next_state))
+            critic_loss = self.critic_loss(current_q, target_q, reward, done)
+
+            # Optimize the critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
+            opt_info['critic_loss'].append(critic_loss.cpu().detach().numpy())
+
+            cost_current_q = self.cost_critic(state, action)
+            cost_target_q = self.cost_critic_target(next_state, self.actor_target(next_state))
+            cost_critic_loss = self.cost_critic_loss(cost_current_q, cost_target_q, cost, done)
+            self.cost_critic_optimizer.zero_grad()
+            cost_critic_loss.backward()
+            self.cost_critic_optimizer.step()
+            opt_info['cost_critic_loss'].append(cost_critic_loss.cpu().detach().numpy())
+
+            if self.optimize_iterations % self.actor_update_interval == 0:
+                # Compute actor loss
+                actor_loss_r = -self.get_q_values(state)
+                actor_loss = 0.0 # placeholder
+                if self.lagrange_on:
+                    actor_loss_c = self.get_cost_q_values(state)
+                    # todo: figure out whether the masked version is better, it should enforce a <= constraint?
+                    mask_loss_c = actor_loss_c > self.lagrange.cost_limit
+                    lag = self.lagrange.lagrangian_multiplier.item()
+                    masked_actor_loss_c = (actor_loss_c * mask_loss_c).mean() * lag
+                    actor_loss =  (actor_loss_r.mean() + masked_actor_loss_c) / (1 + lag)
+                else:
+                    actor_loss = actor_loss_r.mean() # debug training, drop lagrange
+                
+                # Optimize the actor 
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+                opt_info['actor_loss'].append(actor_loss.cpu().detach().numpy())
+
+            # Update the frozen target models
+            if self.optimize_iterations % self.targets_update_interval == 0:
+                self.update_actor_target()
+                self.update_critic_target()
+                self.update_cost_critic_target()
+
+        return opt_info
