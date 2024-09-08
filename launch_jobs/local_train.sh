@@ -5,6 +5,7 @@ env="CentralObstacle"
 env="LQuarter"
 env="Line"
 env="CenterDot"
+env="FourRoomsModified"
 
 #comment="cost_limit=10"
 SLURM_JOB_ID="_${STY}"
@@ -20,6 +21,7 @@ config="configs/config_PointEnv_Queue_debug.yaml"
 config="configs/config_PointEnv_Queue_LQuarter.yaml"
 config="configs/config_PointEnv_Queue_Line.yaml"
 config="configs/config_PointEnv_Queue_CenterDot.yaml"
+config="configs/config_PointEnv_Queue_FourRoomsModified.yaml"
 #config="configs/config_PointEnv_Queue_LQuarter_debug.yaml"
 #config="configs/config_SafePointEnv_debug.yaml"
 
@@ -65,6 +67,14 @@ action_noise=0.0
 resize_factor=3
 actor_lr=0.0001
 critic_lr=0.0003
+
+resize_factor=5
+actor_lr=0.0001
+critic_lr=0.0003
+action_noise=0.0
+cost_radius=3.0
+cost_name="linear"
+illustration_pb_file="pud/envs/safe_pointenv/illustration_set/FourRoomsModified_resize_5_linear_r3_4pts.txt"
 
 
 # note: must have empty space between xx: [ xx ]
