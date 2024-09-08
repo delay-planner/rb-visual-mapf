@@ -220,7 +220,7 @@ class ConstrainedCollector(Collector):
     def sample_initial_unconstrained_visual_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
-            state = eval_env.reset()
+            state, info = eval_env.reset()
             rb_vec.append(state)
         rb_vec_grid = np.array([x["grid"]["observation"] for x in rb_vec])
         rb_vec_visual = np.array([x["observation"] for x in rb_vec])
@@ -409,7 +409,68 @@ class ConstrainedCollector(Collector):
 
     @classmethod
     def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None, start_cost=None):
-        raise NotImplementedError
+        ep_reward_list = []
+        ep_waypoint_list = []
+        ep_observation_list = []
+
+        state, info = eval_env.reset()
+        start_cost_value = info["cost"] if start_cost is None else start_cost
+
+        if start is not None and goal is not None:
+            state["goal"] = goal[1].copy()
+            state["grid"]["goal"] = goal[0].copy()
+            state["observation"] = start[1].copy()
+            state["grid"]["observation"] = start[0].copy()
+            if "goalconditioned" in type(eval_env.env).__name__.lower():
+                eval_env.env._goal = goal[0]
+            eval_env.unwrapped.state_grid = state["grid"]["observation"]
+
+        ep_goal = (state["grid"]["goal"], state["goal"])
+        ep_start = (state["grid"]["observation"], state["observation"])
+        ep_record = {
+            "steps": 0,
+            "rewards": 0.0,
+            "max_step_cost": 0.0,
+            "first_step_cost": start_cost_value,
+            "cumulative_costs": start_cost_value
+        }
+        while True:
+            ep_observation = (state["grid"]["observation"], state["observation"])
+            ep_observation_list.append(ep_observation)
+
+            action = policy.select_action(state)  # NOTE: state['goal'] may be modified
+
+            ep_waypoint = (state["grid"]["goal"], state["goal"])
+            ep_waypoint_list.append(ep_waypoint)
+
+            state, reward, done, info = eval_env.step(np.copy(action))
+            ep_record["steps"] += 1
+            ep_record["rewards"] += reward
+
+            cost = info.get("cost", 0.0)
+            if cost > ep_record["max_step_cost"]:
+                ep_record["max_step_cost"] = cost
+            ep_record["cumulative_costs"] += cost
+
+            ep_reward_list.append(reward)
+
+            if done:
+                ep_record["success"] = info["success"]
+                ep_observation = (
+                    info["terminal_observation"]["grid"]["observation"],
+                    info["terminal_observation"]["observation"]
+                )
+                ep_observation_list.append(ep_observation)
+                break
+
+        return (
+            ep_start,
+            ep_goal,
+            ep_observation_list,
+            ep_waypoint_list,
+            ep_reward_list,
+            ep_record,
+        )
 
     @classmethod
     def get_trajectory(cls, policy, eval_env, input_start=None, input_goal=None, start_cost=None, habitat=False):
@@ -470,7 +531,7 @@ class ConstrainedCollector(Collector):
             # Use the sampled start and goal for the first agent
             agent_goal = [state["goal"]]
             agent_start = [state["observation"]]
-            augmented_ep_record_list[0]["first_step_cost"] = info["cost"]
+            augmented_ep_record_list[0]["first_step_cost"] = info.get("cost", 0.0)
 
             # Mutable objects
             state["agent_waypoints"] = agent_goal.copy()
@@ -594,7 +655,176 @@ class ConstrainedCollector(Collector):
     def get_visual_trajectories(
         cls, policy, eval_env, num_agents, starts=None, goals=None, start_costs=None, threshold=0.05
     ):
-        raise NotImplementedError
+        augmented_ep_reward_list = []
+        augmented_ep_record_list = []
+        augmented_ep_waypoint_list = []
+        augmented_ep_observation_list = []
+        for _ in range(num_agents):
+            augmented_ep_reward_list.append([])
+            augmented_ep_waypoint_list.append([])
+            augmented_ep_observation_list.append([])
+            augmented_ep_record_list.append({
+                "steps": 0,
+                "rewards": 0.0,
+                "max_step_cost": 0.0,
+                "first_step_cost": 0.0,
+                "cumulative_costs": 0.0,
+            })
+
+        state, info = eval_env.reset()
+
+        if starts is not None and goals is not None and start_costs is not None:
+
+            assert isinstance(starts, list) and isinstance(goals, list)
+            assert len(starts[0]) == 2 and len(goals[0]) == 2
+
+            state["goal"] = goals[0][1].copy()
+            state["grid"]["goal"] = goals[0][0].copy()
+            state["observation"] = starts[0][1].copy()
+            state["grid"]["observation"] = starts[0][0].copy()
+
+            state["composite_goals"] = goals.copy()
+            state["agent_waypoints"] = goals.copy()
+
+            state["composite_starts"] = starts.copy()
+            state["agent_observations"] = starts.copy()
+
+            for agent_id in range(num_agents):
+                augmented_ep_record_list[agent_id]["first_step_cost"] = start_costs[agent_id]
+                augmented_ep_record_list[agent_id]["cumulative_costs"] = start_costs[agent_id]
+        else:
+            # Use the sampled start and goal for the first agent
+            agent_goal = [(state["grid"]["goal"], state["goal"])]
+            agent_start = [(state["grid"]["observation"], state["observation"])]
+            augmented_ep_record_list[0]["first_step_cost"] = info.get("cost", 0.0)
+
+            # Mutable objects
+            state["agent_waypoints"] = agent_goal.copy()
+            state["agent_observations"] = agent_start.copy()
+
+            goals = agent_goal.copy()
+            starts = agent_start.copy()
+
+            # Sample the starts and goals for the other agents
+            for _ in range(num_agents - 1):
+
+                agent_state, info = eval_env.reset()
+                agent_goal = [(agent_state["grid"]["goal"], agent_state["goal"])]
+                agent_start = [
+                    (agent_state["grid"]["observation"], agent_state["observation"])
+                ]
+                augmented_ep_record_list[_ + 1]["first_step_cost"] = info.get("cost", 0.0)
+
+                # Add the new observations and goals to the state
+                goals.extend(agent_goal.copy())
+                starts.extend(agent_start.copy())
+                state["agent_waypoints"].extend(agent_goal.copy())
+                state["agent_observations"].extend(agent_start.copy())
+
+            # Immutable objects - Should not change ever!
+            state["composite_goals"] = goals.copy()
+            state["composite_starts"] = starts.copy()
+            logging.debug("Sampled the required starts and goals")
+
+        all_done = False
+        agent_dones = [False for _ in range(num_agents)]
+
+        while not all_done:
+
+            state["goal"] = state["agent_waypoints"][1]
+            state["grid"]["goal"] = state["agent_waypoints"][0]
+            state["observation"] = state["agent_observations"][1]
+            state["grid"]["observation"] = state["agent_observations"][0]
+
+            if "goalconditioned" in type(eval_env.env).__name__.lower():
+                eval_env.env._goal = goals[0][0]
+            eval_env.unwrapped.state_grid = state["grid"]["observation"]
+
+            # NOTE: state's agent_observations, agent_waypoints and goal are updated
+            if isinstance(policy, BasePolicy):
+                actions, agent_goals = policy.select_action(state)
+
+            for agent_id in range(num_agents):
+
+                if agent_dones[agent_id]:
+                    continue
+
+                if isinstance(policy, BasePolicy):
+                    assert len(agent_goals[agent_id]) == 2 and isinstance(agent_goals[agent_id], tuple)
+                    state["agent_waypoints"][agent_id] = agent_goals[agent_id]
+
+                current_agent_waypoint = state["agent_waypoints"][agent_id]
+                current_agent_observation = state["agent_observations"][agent_id]
+
+                augmented_ep_waypoint_list[agent_id].append(current_agent_waypoint)
+                augmented_ep_observation_list[agent_id].append(current_agent_observation)
+
+                state_copy = state.copy()
+
+                state["goal"] = state_copy["agent_waypoints"][agent_id][1]
+                state["grid"]["goal"] = state_copy["agent_waypoints"][agent_id][0]
+                state["observation"] = state_copy["agent_observations"][agent_id][1]
+                state["grid"]["observation"] = state_copy["agent_observations"][agent_id][0]
+
+                if "goalconditioned" in type(eval_env.env).__name__.lower():
+                    eval_env.env._goal = goals[agent_id][0]
+                eval_env.unwrapped.state_grid = state["grid"]["observation"]
+
+                action = actions[agent_id] if isinstance(policy, BasePolicy) else policy.select_action(state)
+
+                state, reward, done, info = eval_env.step(np.copy(action), num_agents=num_agents)
+
+                augmented_ep_record_list[agent_id]["steps"] += 1
+                augmented_ep_record_list[agent_id]["rewards"] += reward
+
+                agent_cost = info.get("cost", 0.0)
+                if agent_cost > augmented_ep_record_list[agent_id]["max_step_cost"]:
+                    augmented_ep_record_list[agent_id]["max_step_cost"] = agent_cost
+                augmented_ep_record_list[agent_id]["cumulative_costs"] += agent_cost
+
+                # At this point the state is changed and does not have the extra attributes so add them back
+                state["composite_goals"] = state_copy["composite_goals"]
+                state["composite_starts"] = state_copy["composite_starts"]
+
+                state["agent_waypoints"] = state_copy["agent_waypoints"]
+                state["agent_observations"] = state_copy["agent_observations"]
+
+                # The agent's observations are updated based on the step function
+                state["agent_observations"][agent_id] = (state["grid"]["observation"], state["observation"])
+
+                augmented_ep_reward_list[agent_id].append(reward)
+
+                if done:
+                    augmented_ep_record_list[agent_id]["success"] = info["success"]
+                    terminal_agent_observation = (
+                        info["terminal_observation"]["grid"]["observation"],
+                        info["terminal_observation"]["observation"]
+                    )
+                    augmented_ep_observation_list[agent_id].append(terminal_agent_observation)
+                    agent_dones[agent_id] = True
+
+            # Check if any of the agent's positions are within some threshold
+            for agent_id in range(num_agents):
+                for other_agent_id in range(num_agents):
+                    if agent_id == other_agent_id:
+                        continue
+
+                    agent_state = np.array(state["agent_observations"][agent_id][0])
+                    other_agent_state = np.array(state["agent_observations"][other_agent_id][0])
+
+                    if (np.linalg.norm(agent_state - other_agent_state) < threshold):
+                        logging.info(f"Agent {agent_id} is within threshold of agent {other_agent_id}")
+
+            all_done = all(agent_dones)
+
+        return (
+            starts,
+            goals,
+            augmented_ep_observation_list,
+            augmented_ep_waypoint_list,
+            augmented_ep_reward_list,
+            augmented_ep_record_list
+        )
 
     @classmethod
     def get_trajectories(

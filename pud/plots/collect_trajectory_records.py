@@ -13,6 +13,7 @@ from pud.ddpg import GoalConditionedCritic
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_collector import ConstrainedCollector
+from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent
 from pud.policies import (
     SearchPolicy,
@@ -20,15 +21,21 @@ from pud.policies import (
     MultiAgentSearchPolicy,
     ConstrainedMultiAgentSearchPolicy,
 )
+from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
+    safe_habitat_env_load_fn,
+    SafeGoalConditionedHabitatPointWrapper,
+    SafeGoalConditionedHabitatPointQueueWrapper,
+)
 from pud.envs.safe_pointenv.safe_wrappers import (
     safe_env_load_fn,
     SafeGoalConditionedPointWrapper,
     SafeGoalConditionedPointBlendWrapper,
     SafeGoalConditionedPointQueueWrapper,
 )
+from pud.vision_agent import LagVisionUVFDDPG
 
 
-def setup(args):
+def pointenv_setup(args):
     assert len(args.config_file) > 0
     assert len(args.constrained_ckpt_file) > 0
 
@@ -96,6 +103,68 @@ def setup(args):
     return config, eval_env, agent, trained_cost_limit
 
 
+def habitat_setup(args):
+    assert len(args.config_file) > 0
+    assert len(args.constrained_ckpt_file) > 0
+
+    with open(args.config_file, 'r') as f:
+        config = yaml.safe_load(f)
+    config = DotMap(config)
+
+    # User defined parameters for evaluation
+    trained_cost_limit = config.agent_cost_kwargs.cost_limit
+
+    config.device = args.device
+    config.num_samples = args.num_samples
+    config.replay_buffer.max_size = args.replay_buffer_size
+
+    set_global_seed(config.seed)
+
+    gym_env_wrappers = []
+    gym_env_wrapper_kwargs = []
+    for wrapper_name in config.wrappers:
+        if wrapper_name == "GoalConditionedHabitatPointWrapper":
+            gym_env_wrappers.append(GoalConditionedHabitatPointWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedHabitatPointWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedHabitatPointWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+        elif wrapper_name == "SafeGoalConditionedHabitatPointQueueWrapper":
+            gym_env_wrappers.append(SafeGoalConditionedHabitatPointQueueWrapper)
+            gym_env_wrapper_kwargs.append(config.wrappers[wrapper_name].toDict())
+
+    eval_env = safe_habitat_env_load_fn(
+        env_kwargs=config.env.toDict(),
+        cost_f_args=config.cost_function.toDict(),
+        cost_limit=config.agent_cost_kwargs.cost_limit,
+        max_episode_steps=config.time_limit.max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,  # type: ignore
+        wrapper_kwargs=gym_env_wrapper_kwargs,
+        terminate_on_timeout=True,
+        )
+    set_env_seed(eval_env, config.seed + 1)
+
+    config.agent["action_dim"] = eval_env.action_space.shape[0]
+    config.agent["max_action"] = float(eval_env.action_space.high[0])
+
+    agent = LagVisionUVFDDPG(
+        width=config.env.simulator_settings.width,
+        height=config.env.simulator_settings.height,
+        in_channels=4,
+        act_fn=torch.nn.SELU,
+        encoder="VisualEncoder",
+        device=config.device,
+        **config.agent.toDict(),
+        cost_kwargs=config.agent_cost_kwargs.toDict(),
+    )
+
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    agent.to(torch.device(config.device))
+    agent.eval()
+
+    return config, eval_env, agent, trained_cost_limit
+
+
 def load_agent_and_env(agent, eval_env, args, config, constrained=False):
     if constrained:
         agent.load_state_dict(torch.load(args.constrained_ckpt_file))
@@ -122,7 +191,6 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
     else:
         problems = sample_cost_pbs_by_agent(
             K=config.num_samples * 100,
-            non_grid=True,
             min_dist=0,
             agent=agent,  # type: ignore
             env=eval_env,  # type: ignore
@@ -159,6 +227,7 @@ def argument_parser():
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--num_samples", type=int, default=1000)
     parser.add_argument("--problem_set_file", type=str, default="")
+    parser.add_argument("--visual", default=False, action="store_true")
     parser.add_argument("--illustration_pb_file", type=str, default="")
     parser.add_argument("--constrained_ckpt_file", type=str, default="")
     parser.add_argument("--replay_buffer_size", type=int, default="1000")
@@ -173,6 +242,7 @@ def argument_parser():
 
 
 def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
@@ -189,7 +259,7 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, sa
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in range(start_idx, config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env)
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
         unconstrained_records.append(records)
 
         if save:
@@ -201,6 +271,7 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, sa
 
 
 def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
@@ -217,7 +288,9 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, sav
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents, threshold=0.0)
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+            agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+        )
         unconstrained_records.append(records)
 
         if save:
@@ -229,6 +302,7 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, sav
 
 
 def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
@@ -247,7 +321,7 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
 
     for _ in tqdm(range(start_idx, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env)
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env, habitat=habitat)
         unconstrained_search_records.append(records)
 
         if save:
@@ -259,6 +333,7 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
 
 
 def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
@@ -280,7 +355,7 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            ma_search_policy, eval_env, args.num_agents, threshold=0.0
+            ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
         )
         unconstrained_search_records.append(records)
 
@@ -293,6 +368,7 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
 
 
 def single_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
@@ -309,7 +385,7 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, save
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in range(start_idx, config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env)
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
         constrained_records.append(records)
 
         if save:
@@ -321,6 +397,7 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, save
 
 
 def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
@@ -337,7 +414,9 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(agent, eval_env, args.num_agents, threshold=0.0)
+        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+            agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+        )
         constrained_records.append(records)
 
         if save:
@@ -349,6 +428,7 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=
 
 
 def single_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     rb_vec = problem_setup[0].copy()
@@ -389,7 +469,9 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
         )
 
         for _ in tqdm(range(start_idx, config.num_samples)):
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(constrained_search_policy, eval_env)
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                constrained_search_policy, eval_env, habitat=habitat
+            )
             constrained_search_records.append(records)
 
             if save:
@@ -408,6 +490,7 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
 
 
 def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+    habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     rb_vec = problem_setup[0].copy()
@@ -449,7 +532,7 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
 
         for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                constrained_ma_search_policy, eval_env, args.num_agents, threshold=0.0
+                constrained_ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
             )
             constrained_search_records.append(records)
 
@@ -471,7 +554,10 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
 
 def main():
     args = argument_parser()
-    config, eval_env, agent, trained_cost_limit = setup(args)
+    if args.visual:
+        config, eval_env, agent, trained_cost_limit = habitat_setup(args)
+    else:
+        config, eval_env, agent, trained_cost_limit = pointenv_setup(args)
     if args.load_problem_set:
         assert len(args.problem_set_file) > 0
         problem_setup = load_problem_set(args.problem_set_file, eval_env, agent)
