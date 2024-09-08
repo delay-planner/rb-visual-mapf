@@ -27,7 +27,7 @@ env:
     action_noise: 0.0
     walls: FourRoomsModified
 replay_buffer:
-    max_size: 1000
+    max_size: 5000
 runner:
     collect_steps: 10
     batch_size_opt: 64
