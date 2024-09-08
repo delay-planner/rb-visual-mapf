@@ -123,7 +123,7 @@ class Collector:
         ep_waypoint_list = []
         ep_observation_list = []
 
-        state = eval_env.reset()
+        state, info = eval_env.reset()
 
         if start is not None and goal is not None:
             state["goal"] = goal[1].copy()
@@ -343,7 +343,7 @@ class Collector:
         augmented_ep_observation_list = [[] for _ in range(num_agents)]
         augmented_ep_records_list = [{"rewards": 0.0, "steps": 0} for _ in range(num_agents)]
 
-        state = eval_env.reset()
+        state, info = eval_env.reset()
 
         if starts is not None and goals is not None:
 
@@ -375,7 +375,7 @@ class Collector:
             # Sample the starts and goals for the other agents
             for _ in range(num_agents - 1):
 
-                agent_state = eval_env.reset()
+                agent_state, info = eval_env.reset()
                 agent_goal = [(agent_state["grid"]["goal"], agent_state["goal"])]
                 agent_start = [
                     (agent_state["grid"]["observation"], agent_state["observation"])

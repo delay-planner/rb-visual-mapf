@@ -30,6 +30,11 @@ from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
 )
+from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
+    safe_habitat_env_load_fn,
+    SafeGoalConditionedHabitatPointWrapper,
+    SafeGoalConditionedHabitatPointQueueWrapper,
+)
 from pud.envs.safe_pointenv.safe_wrappers import (
     safe_env_load_fn,
     SafeGoalConditionedPointWrapper,
