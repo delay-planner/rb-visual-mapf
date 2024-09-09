@@ -230,13 +230,18 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
     return rb_vec, pdist, pcost, problems if not habitat else (rb_vec_grid, rb_vec, pdist, pcost, problems)
 
 
-def load_problem_set(file_path, env, agent):
+def load_problem_set(file_path, env, agent, habitat=False):
     load = np.load(file_path, allow_pickle=True)
+    if habitat:
+        rb_vec_grid = load["rb_vec_grid"]
     rb_vec = load["rb_vec"]
     pdist = load["pdist"]
     pcost = load["pcost"]
     problems = load["problems"]
-    return rb_vec, pdist, pcost, problems.tolist()
+    if not habitat:
+        return rb_vec, pdist, pcost, problems.tolist()
+    else:
+        return rb_vec_grid, rb_vec, pdist, pcost, problems.tolist()
 
 
 def argument_parser():
@@ -344,7 +349,6 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     if not habitat:
         search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
     else:
-        print(type(rb_vec))
         search_policy = VisualSearchPolicy(
             agent, (rb_vec_grid, rb_vec), pdist=pdist, open_loop=True, max_search_steps=3, no_waypoint_hopping=True
         )
@@ -531,10 +535,14 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
             )
 
         for _ in tqdm(range(start_idx, config.num_samples)):
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-                constrained_search_policy, eval_env, habitat=habitat
-            )
-            constrained_search_records.append(records)
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                    constrained_search_policy, eval_env, habitat=habitat
+                )
+                constrained_search_records.append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                continue
 
             if save:
                 np.save(save_path, constrained_search_records)
@@ -642,7 +650,7 @@ def main():
         config, eval_env, agent, trained_cost_limit = pointenv_setup(args)
     if args.load_problem_set:
         assert len(args.problem_set_file) > 0
-        problem_setup = load_problem_set(args.problem_set_file, eval_env, agent)
+        problem_setup = load_problem_set(args.problem_set_file, eval_env, agent, args.visual)
     else:
         problem_setup = setup_problems(eval_env, agent, trained_cost_limit, args, config, save=True)
 
@@ -674,7 +682,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.ERROR)
         main()
     except Exception as e:
         print("Error: ", e)
