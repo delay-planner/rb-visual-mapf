@@ -17,9 +17,13 @@ from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent
 from pud.policies import (
     SearchPolicy,
-    ConstrainedSearchPolicy,
+    VisualSearchPolicy,
     MultiAgentSearchPolicy,
+    ConstrainedSearchPolicy,
+    VisualMultiAgentSearchPolicy,
+    VisualConstrainedSearchPolicy,
     ConstrainedMultiAgentSearchPolicy,
+    VisualConstrainedMultiAgentSearchPolicy,
 )
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     safe_habitat_env_load_fn,
@@ -182,7 +186,14 @@ def load_agent_and_env(agent, eval_env, args, config, constrained=False):
 
 def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False):
 
-    rb_vec = ConstrainedCollector.sample_initial_unconstrained_states(eval_env, config.replay_buffer.max_size)
+    habitat = args.visual
+    rb_vec = ConstrainedCollector.sample_initial_unconstrained_states(
+        eval_env, config.replay_buffer.max_size, habitat=habitat
+    )
+
+    if habitat:
+        rb_vec_grid, rb_vec = rb_vec
+
     pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
@@ -203,12 +214,20 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
         assert len(problems) > 0
 
     if save:
-        np.savez("pud/plots/illustration.npz",
-                 rb_vec=rb_vec,
-                 pdist=pdist,
-                 pcost=pcost,
-                 problems=problems)  # type: ignore
-    return rb_vec, pdist, pcost, problems
+        if not habitat:
+            np.savez("pud/plots/illustration.npz",
+                     rb_vec=rb_vec,
+                     pdist=pdist,
+                     pcost=pcost,
+                     problems=problems)  # type: ignore
+        else:
+            np.savez("pud/plots/illustration.npz",
+                     rb_vec_grid=rb_vec_grid,
+                     rb_vec=rb_vec,
+                     pdist=pdist,
+                     pcost=pcost,
+                     problems=problems)  # type: ignore
+    return rb_vec, pdist, pcost, problems if not habitat else (rb_vec_grid, rb_vec, pdist, pcost, problems)
 
 
 def load_problem_set(file_path, env, agent):
@@ -254,7 +273,7 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, sa
     start_idx = len(unconstrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
@@ -283,7 +302,7 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, sav
     start_idx = len(unconstrained_records) * args.num_agents
     logging.info(f"Starting from index: {start_idx // args.num_agents}")
 
-    problems = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
@@ -314,11 +333,21 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     start_idx = len(unconstrained_search_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    rb_vec, pdist, problems = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[3].copy()
+    if not habitat:
+        rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
+    else:
+        rb_vec_grid, rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[2].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
+    if not habitat:
+        search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
+    else:
+        print(type(rb_vec))
+        search_policy = VisualSearchPolicy(
+            agent, (rb_vec_grid, rb_vec), pdist=pdist, open_loop=True, max_search_steps=3, no_waypoint_hopping=True
+        )
 
     for _ in tqdm(range(start_idx, config.num_samples)):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env, habitat=habitat)
@@ -345,13 +374,28 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
     start_idx = len(unconstrained_search_records) * args.num_agents
     logging.info(f"Starting from index: {start_idx // args.num_agents}")
 
-    rb_vec, pdist, problems = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[3].copy()
+    if not habitat:
+        rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
+    else:
+        rb_vec_grid, rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy(), problem_setup[2].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    ma_search_policy = MultiAgentSearchPolicy(
-        agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True, radius=0
-    )
+    if not habitat:
+        ma_search_policy = MultiAgentSearchPolicy(
+            agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True, radius=0
+        )
+    else:
+        ma_search_policy = VisualMultiAgentSearchPolicy(
+            agent,
+            (rb_vec_grid, rb_vec),
+            args.num_agents,
+            pdist=pdist,
+            open_loop=True,
+            max_search_steps=3,
+            no_waypoint_hopping=True
+        )
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
         _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
@@ -380,7 +424,7 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, save
     start_idx = len(constrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
@@ -409,7 +453,7 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=
     start_idx = len(constrained_records) * args.num_agents
     logging.info(f"Starting from index: {start_idx // args.num_agents}")
 
-    problems = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
     problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
@@ -431,10 +475,16 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    rb_vec = problem_setup[0].copy()
-    pdist = problem_setup[1].copy()
-    pcost = problem_setup[2].copy()
-    problems = problem_setup[3].copy()
+    if not habitat:
+        rb_vec = problem_setup[0].copy()
+        pdist = problem_setup[1].copy()
+        pcost = problem_setup[2].copy()
+    else:
+        rb_vec_grid = problem_setup[0].copy()
+        rb_vec = problem_setup[1].copy()
+        pdist = problem_setup[2].copy()
+        pcost = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
 
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
@@ -452,21 +502,33 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
         start_idx = len(constrained_search_records)
         logging.info(f"Starting from index: {start_idx}")
 
-        problems = problem_setup[3].copy()
+        problems = problem_setup[-1].copy()
         problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
         edge_cost_limit = trained_cost_limit * factor
 
-        constrained_search_policy = ConstrainedSearchPolicy(
-            agent,
-            rb_vec,
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            no_waypoint_hopping=True,
-            max_cost_limit=edge_cost_limit
-        )
+        if not habitat:
+            constrained_search_policy = ConstrainedSearchPolicy(
+                agent,
+                rb_vec,
+                pdist=pdist,
+                pcost=pcost,
+                open_loop=True,
+                no_waypoint_hopping=True,
+                max_cost_limit=edge_cost_limit
+            )
+        else:
+            constrained_search_policy = VisualConstrainedSearchPolicy(
+                agent,
+                (rb_vec_grid, rb_vec),
+                pdist=pdist,
+                pcost=pcost,
+                open_loop=True,
+                max_search_steps=3,
+                no_waypoint_hopping=True,
+                max_cost_limit=edge_cost_limit
+            )
 
         for _ in tqdm(range(start_idx, config.num_samples)):
             _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
@@ -493,10 +555,16 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
-    rb_vec = problem_setup[0].copy()
-    pdist = problem_setup[1].copy()
-    pcost = problem_setup[2].copy()
-    problems = problem_setup[3].copy()
+    if not habitat:
+        rb_vec = problem_setup[0].copy()
+        pdist = problem_setup[1].copy()
+        pcost = problem_setup[2].copy()
+    else:
+        rb_vec_grid = problem_setup[0].copy()
+        rb_vec = problem_setup[1].copy()
+        pdist = problem_setup[2].copy()
+        pcost = problem_setup[3].copy()
+    problems = problem_setup[-1].copy()
 
     constrained_search_factored_records = []
     edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
@@ -512,23 +580,37 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
         start_idx = len(constrained_search_records) * args.num_agents
         logging.info(f"Starting from index: {start_idx // args.num_agents}")
 
-        problems = problem_setup[3].copy()
+        problems = problem_setup[-1].copy()
         problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
         edge_cost_limit = trained_cost_limit * factor
 
-        constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent,
-            rb_vec.copy(),
-            args.num_agents,
-            radius=0.0,
-            open_loop=True,
-            pdist=pdist.copy(),
-            pcost=pcost.copy(),
-            no_waypoint_hopping=True,
-            max_cost_limit=edge_cost_limit
-        )
+        if not habitat:
+            constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
+                agent,
+                rb_vec.copy(),
+                args.num_agents,
+                radius=0.0,
+                open_loop=True,
+                pdist=pdist.copy(),
+                pcost=pcost.copy(),
+                no_waypoint_hopping=True,
+                max_cost_limit=edge_cost_limit
+            )
+        else:
+            constrained_ma_search_policy = VisualConstrainedMultiAgentSearchPolicy(
+                agent,
+                (rb_vec_grid.copy(), rb_vec.copy()),
+                args.num_agents,
+                radius=0.0,
+                pdist=pdist,
+                pcost=pcost,
+                open_loop=True,
+                no_waypoint_hopping=True,
+                max_search_steps=3,
+                max_cost_limit=edge_cost_limit
+            )
 
         for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(

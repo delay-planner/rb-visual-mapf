@@ -494,6 +494,7 @@ class LagVisionUVFDDPG (VisionUVFDDPG):
         )
         # for lagrangian
         if cost_kwargs:
+            self.constraints = cost_kwargs
             self.lagrange = Lagrange(
                 cost_limit=cost_kwargs["cost_limit"],
                 lagrangian_multiplier_init=cost_kwargs["lagrangian_multiplier_init"],

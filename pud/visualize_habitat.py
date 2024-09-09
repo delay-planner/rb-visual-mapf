@@ -5,8 +5,9 @@ from moviepy.editor import ImageSequenceClip
 from matplotlib.animation import FuncAnimation
 
 from pud.collector import Collector
+from pud.envs.safe_habitatenv.safe_habitat_wrappers import set_safe_habitat_env_difficulty
 from pud.utils import set_env_seed, set_global_seed
-from pud.envs.habitat_navigation_env import plot_wall
+from pud.envs.habitat_navigation_env import plot_wall, set_habitat_env_difficulty
 from pud.visualize import plot_agent_paths, visualize_path
 from pud.envs.simple_navigation_env import set_env_difficulty
 from pud.algos.constrained_collector import ConstrainedCollector
@@ -18,7 +19,7 @@ extension = ".gif" if USE_GIFS else ".mp4"
 def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
 
     constrained = hasattr(agent, "constraints") and agent.constraints is not None
-    set_env_difficulty(eval_env, difficulty)
+    set_habitat_env_difficulty(eval_env.env, difficulty)
 
     height, width = eval_env.walls.shape
     normalizing_factor = np.array([height, width])
@@ -197,11 +198,13 @@ def visualize_habitat_agent(frames, outpath):
 def visualize_search_path_single_agent(search_policy, eval_env, outpath="", difficulty=0.5):
 
     constrained = search_policy.constraints is not None
-    set_env_difficulty(eval_env, difficulty)
+    safe = "safe" in type(eval_env.env).__name__.lower()  # type: ignore
+    set_habitat_env_difficulty(eval_env.env, difficulty)
 
     if search_policy.open_loop:
 
         state = eval_env.reset()
+        state = state[0] if safe else state
         goal = (state["grid"]["goal"], state["goal"])
         start = (state["grid"]["observation"], state["observation"])
         search_policy.select_action(state)
@@ -247,7 +250,7 @@ def visualize_search_path_single_agent(search_policy, eval_env, outpath="", diff
 def visualize_search_path_multi_agent(search_policy, eval_env, num_agents, outpath="", difficulty=0.5):
 
     constrained = search_policy.constraints is not None
-    set_env_difficulty(eval_env, difficulty)
+    set_habitat_env_difficulty(eval_env.env, difficulty)
 
     if search_policy.open_loop:
 
@@ -362,7 +365,7 @@ def visualize_search_path(search_policy, eval_env, outpath="", difficulty=0.5, n
 def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0, outpath="", difficulty=0.5):
 
     constrained = search_policy.constraints is not None
-    set_env_difficulty(eval_env, difficulty)
+    set_habitat_env_difficulty(eval_env.env, difficulty)
 
     plt.figure(figsize=(12, 6))
 
@@ -431,7 +434,7 @@ def visualize_compare_search_single_agent(agent, search_policy, eval_env, seed=0
 def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agents, seed=0, outpath="", difficulty=0.5):
 
     constrained = search_policy.constraints is not None
-    set_env_difficulty(eval_env, difficulty)
+    set_habitat_env_difficulty(eval_env.env, difficulty)
 
     plt.figure(figsize=(12, 6))
 
