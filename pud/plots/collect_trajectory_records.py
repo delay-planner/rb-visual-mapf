@@ -742,7 +742,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.ERROR)
         main()
     except Exception as e:
         print("Error: ", e)
