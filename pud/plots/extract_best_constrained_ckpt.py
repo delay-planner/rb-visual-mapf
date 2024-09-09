@@ -279,6 +279,10 @@ if __name__ == "__main__":
     logging.info(f"Min success rate: {np.min(srates)}")
     logging.info(f"Argmin success rate: {np.argmin(srates)}, {ckpt_files[np.argmin(srates)]}")
 
+    best_ckpt = ckpt_files[np.argmax(srates)]
+    best_ckpt_file = constrained_ckpt_dir / "best_ckpt.pth"
+    best_ckpt_file.write_bytes(best_ckpt.read_bytes())
+
     logging.info("Top 10 ckpts")
     top_10 = np.argsort(srates)[-10:]
     for idx in top_10[::-1]:

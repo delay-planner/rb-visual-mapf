@@ -7,11 +7,11 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from pud.vision_agent import VisionUVFDDPG
+from pud.vision_agent import LagVisionUVFDDPG, VisionUVFDDPG
 from pud.policies import VectorGaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.algos.visual_buffer import VisualReplayBuffer
-from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_pbs_by_agent
+from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent, sample_pbs_by_agent
 from pud.envs.safe_habitatenv.unit_tests.train_uvddpg_vec_habitat import setup_logger
 from pud.envs.habitat_navigation_env import (
     GoalConditionedHabitatPointWrapper,
@@ -20,6 +20,7 @@ from pud.envs.habitat_navigation_env import (
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
+    safe_habitat_env_load_fn,
 )
 
 
@@ -161,20 +162,21 @@ def setup_env(args):
             gym_env_wrappers.append(SafeGoalConditionedHabitatPointQueueWrapper)
             gym_env_wrapper_kwargs.append(cfg.wrappers[wrapper_name].toDict())
 
-    eval_env = habitat_env_load_fn(
-        **cfg.env.toDict(),
+    eval_env = safe_habitat_env_load_fn(
+        env_kwargs=cfg.env.toDict(),
+        cost_f_args=cfg.cost_function.toDict(),
+        cost_limit=cfg.agent_cost_kwargs.cost_limit,
         max_episode_steps=cfg.time_limit.max_episode_steps,
-        gym_env_wrappers=(GoalConditionedHabitatPointWrapper,),  # type: ignore
+        gym_env_wrappers=gym_env_wrappers,  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
-        device=cfg.device,
         terminate_on_timeout=True,
-    )
-    set_env_seed(eval_env, cfg.seed + args.num_envs)
+        )
+    set_env_seed(eval_env, cfg.seed + 1)
 
     cfg.agent["action_dim"] = eval_env.action_space.shape[0]  # type: ignore
     cfg.agent["max_action"] = float(eval_env.action_space.high[0])  # type: ignore
 
-    agent = VisionUVFDDPG(
+    agent = LagVisionUVFDDPG(
         width=cfg.env.simulator_settings.width,
         height=cfg.env.simulator_settings.height,
         in_channels=4,
@@ -182,9 +184,8 @@ def setup_env(args):
         encoder=args.encoder,
         device=cfg.device,
         **cfg.agent.toDict(),
+        cost_kwargs=cfg.agent_cost_kwargs.toDict(),
     )
-
-    agent.to(device=cfg.device)
 
     if len(args.resume) > 0:
         state_dict = torch.load(args.resume)
@@ -192,6 +193,7 @@ def setup_env(args):
 
     ckpt_file = args.ckpt
     agent.load_state_dict(torch.load(ckpt_file))
+    agent.to(device=cfg.device)
     agent.eval()
 
     replay_buffer = VisualReplayBuffer(
@@ -224,9 +226,11 @@ def setup_env(args):
 
 
 def sample_initial_states(eval_env, num_states):
+    safe = "safe" in type(eval_env.env).__name__.lower()  # type: ignore
     rb_vec = []
     for _ in range(num_states):
         state = eval_env.reset()
+        state = state[0] if safe else state
         rb_vec.append(state)
     rb_vec_grid = np.array([x["grid"]["observation"] for x in rb_vec])
     rb_vec_visual = np.array([x["observation"] for x in rb_vec])
@@ -254,11 +258,11 @@ if __name__ == "__main__":
     eval_env.duration = 100  # type: ignore
     visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=figdir.joinpath("vis_traj.jpg").as_posix())
 
-    eval_env.set_sample_goal_args(  # type: ignore
-        prob_constraint=0.0,
-        min_dist=0.0,
-        max_dist=np.inf,
-    )
+    # eval_env._set_sample_goal_args(  # type: ignore
+    #     prob_constraint=1.0,
+    #     min_dist=0.0,
+    #     max_dist=np.inf,
+    # )
 
     rb_vec_grid, rb_vec_visual = sample_initial_states(eval_env, replay_buffer.max_size)  # type: ignore
 
@@ -266,15 +270,54 @@ if __name__ == "__main__":
     visualize_buffer(rb_vec_grid, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())
 
     pdist = agent.get_pairwise_dist(rb_vec_visual, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb_vec_visual, aggregate=None)  # type: ignore
 
-    from pud.visualize import visualize_pairwise_dists
+    from pud.visualize import visualize_cost_graph
+    visualize_cost_graph(
+        pcost=pcost,
+        rb_vec=rb_vec_grid,
+        eval_env=eval_env,
+        edges_to_display=10,
+        cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        outpath=figdir.joinpath("vis_cost_graph.jpg").as_posix()
+    )
+
+    from pud.visualize import visualize_combined_graph
+    visualize_combined_graph(
+        cutoff=7,
+        pdist=pdist,
+        pcost=pcost,
+        eval_env=eval_env,
+        rb_vec=rb_vec_grid,
+        edges_to_display=10,
+        cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        outpath=figdir.joinpath("vis_combined_graph.jpg").as_posix()
+    )
+
+    from pud.visualize import visualize_pairwise_dists, visualize_pairwise_costs
     visualize_pairwise_dists(pdist, outpath=figdir.joinpath("vis_pdist.jpg").as_posix())  # type: ignore
+    visualize_pairwise_costs(
+        pcost,
+        n_bins=cfg.agent_cost_kwargs.cost_N,  # type: ignore
+        cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        outpath=figdir.joinpath("vis_pcost.jpg").as_posix()
+    )
 
     from pud.visualize_habitat import visualize_graph
     visualize_graph(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph.jpg").as_posix())
 
     from pud.visualize_habitat import visualize_graph_ensemble
     visualize_graph_ensemble(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix())
+
+    from pud.visualize import visualize_combined_graph_ensemble
+    visualize_combined_graph_ensemble(
+        rb_vec_grid,
+        eval_env,
+        pdist,
+        pcost,
+        cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        outpath=figdir.joinpath("vis_combined_graph_ensemble.jpg").as_posix()
+    )
 
     if "safe" in type(eval_env.env).__name__.lower():  # type: ignore
         eval_env.set_prob_constraint(1.0)  # type: ignore
@@ -302,7 +345,7 @@ if __name__ == "__main__":
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
         eval_env.set_use_q(True)  # type: ignore
 
-    from pud.policies import VisualSearchPolicy
+    from pud.policies import VisualSearchPolicy, VisualConstrainedSearchPolicy
     search_policy = VisualSearchPolicy(
         agent,
         (rb_vec_grid, rb_vec_visual),
@@ -326,7 +369,34 @@ if __name__ == "__main__":
         outpath=figdir.joinpath("vis_compare.jpg").as_posix(),  # type: ignore
     )
 
-    from pud.policies import VisualMultiAgentSearchPolicy
+    constrained_search_policy = VisualConstrainedSearchPolicy(
+        agent,
+        (rb_vec_grid, rb_vec_visual),
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        no_waypoint_hopping=True,
+        max_cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    visualize_search_path(
+        constrained_search_policy,
+        eval_env,
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_constrained_search.jpg").as_posix()
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    visualize_compare_search(
+        agent,
+        constrained_search_policy,
+        eval_env,
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_compare_constrained.jpg").as_posix()
+    )
+
+    from pud.policies import VisualMultiAgentSearchPolicy, VisualConstrainedMultiAgentSearchPolicy
     num_agents = 4
     ma_search_policy = VisualMultiAgentSearchPolicy(
         agent,
@@ -355,4 +425,34 @@ if __name__ == "__main__":
         num_agents=4,
         difficulty=0.9,
         outpath=figdir.joinpath("vis_compare_multi_agent.jpg").as_posix(),  # type: ignore
+    )
+
+    constrained_ma_search_policy = VisualConstrainedMultiAgentSearchPolicy(
+        agent,
+        (rb_vec_grid, rb_vec_visual),
+        num_agents,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        no_waypoint_hopping=True,
+        max_cost_limit=cfg.agent.cost_limit,  # type: ignore
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    visualize_search_path(
+        constrained_ma_search_policy,
+        eval_env,
+        num_agents=4,
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_constrained_multi_agent_search.jpg").as_posix()
+    )
+
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    visualize_compare_search(
+        agent,
+        constrained_ma_search_policy,
+        eval_env,
+        num_agents=4,
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_compare_constrained_multi_agent.jpg").as_posix()
     )
