@@ -10,7 +10,6 @@ from pud.utils import set_env_seed, set_global_seed
 from pud.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 
-from pud.buffer_large import ConstrainedLargeReplayBuffer
 from pud.algos.visual_buffer import ConstrainedVisualReplayBuffer
 
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
@@ -282,6 +281,7 @@ if __name__ == "__main__":
     # test collector
     replay_buffer = None
     if args.use_disk:
+        from pud.buffer_large import ConstrainedLargeReplayBuffer
         replay_buffer = ConstrainedLargeReplayBuffer(
             #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
             #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
