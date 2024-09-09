@@ -1,6 +1,4 @@
 import torch
-#torch.autograd.set_detect_anomaly(True)
-
 import yaml
 import argparse
 from pathlib import Path
@@ -11,7 +9,10 @@ from pud.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
+
 from pud.buffer_large import ConstrainedLargeReplayBuffer
+from pud.algos.visual_buffer import ConstrainedVisualReplayBuffer
+
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
@@ -130,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
+    parser.add_argument("--use_disk", action="store_true", help="use disk if ram is too small for replay buffer")
     parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
@@ -278,14 +280,23 @@ if __name__ == "__main__":
     #    obs = new_obs
 
     # test collector
-    replay_buffer = ConstrainedLargeReplayBuffer(
-        #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        #action_dim=env.action_space.shape[0],
-        max_size=cfg.replay_buffer.max_size,
-        scratch_dir=logger["buffer"],
-        )
-
+    replay_buffer = None
+    if args.use_disk:
+        replay_buffer = ConstrainedLargeReplayBuffer(
+            #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            scratch_dir=logger["buffer"],
+            )
+    else:
+        replay_buffer = ConstrainedVisualReplayBuffer(
+            obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            )
+    
     policy = GaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
