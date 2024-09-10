@@ -77,5 +77,6 @@ else
             --sampler_K $sampler_K \
             --sampler_std_ub $sampler_std_ub \
             --use_disk \
-            --visual
+            --visual \
+            --pbar
 fi
