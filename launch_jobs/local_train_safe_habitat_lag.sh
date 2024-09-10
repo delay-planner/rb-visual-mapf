@@ -1,16 +1,5 @@
 # !/bin/sh
 
-env=hatbitat
-comment="debug_safe"
-SLURM_JOB_ID=local_debug
-experiment_dir="runs_debug/results"
-log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
-
-echo "project root directory: ${project_root}"
-echo "experiment directory: ${log_dir}"
-
-cd "${project_root}"
-
 #debugger_port=5679
 
 ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_0335000"
@@ -21,6 +10,18 @@ illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_li
 ckpt="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/ckpt/ckpt_0480000"
 config="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/bk/config.yaml"
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
+
+ckpt="runs/results/habitat/job_local_sc3_staging_05/2024-09-09-05-57-11/ckpt/ckpt_0487500"
+config="runs/results/habitat/job_local_sc3_staging_05/2024-09-09-05-57-11/bk/config.yaml"
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_05_linear_r1.txt"
+
+ckpt="runs/results/habitat/job_local_sc3_staging_15/2024-09-09-05-04-59/ckpt/ckpt_0562500"
+config="runs/results/habitat/job_local_sc3_staging_15/2024-09-09-05-04-59/bk/config.yaml"
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_15_linear_r1.txt"
+
+ckpt="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/ckpt/ckpt_0720000"
+config="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/bk/config.yaml"
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_11_linear_r1.txt"
 
 
 lambda_lr=1
@@ -34,7 +35,7 @@ sampler_dist_bounds="0-5"
 sampler_K=10
 sampler_std_ub=1
 
-device="cuda:0" # must use GPU cluster
+device="cuda:1" # must use GPU cluster
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false
