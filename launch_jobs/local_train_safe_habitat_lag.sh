@@ -11,7 +11,7 @@ echo "experiment directory: ${log_dir}"
 
 cd "${project_root}"
 
-debugger_port=5679
+#debugger_port=5679
 
 ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_0335000"
 config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/bk/config.yaml"
@@ -23,7 +23,7 @@ config="runs/results/habitat/job_local_sc0_staging_20/bk/config.yaml"
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
 
 
-lambda_lr=10
+lambda_lr=1
 collect_steps=20
 eval_interval=2500  # 5000 | 10
 num_iterations=600000
@@ -63,16 +63,18 @@ if [[ -n ${debugger_port} ]]; then
 else
     echo "[INFO] running in normal mode"
     python pud/algos/train_safe_habitat_lag.py \
-        --cfg $config \
-        --ckpt $ckpt \
-        --collect_steps $collect_steps \
-        --eval_interval $eval_interval \
-        --cost_limit $cost_limit \
-        --lambda_lr $lambda_lr \
-        --num_iterations $num_iterations \
-        --device ${device} \
-        --illustration_pb_file ${illustration_pbs} \
-        --sampler_cost_bounds $sampler_cost_bounds \
-        --visual \
-        --pbar
+            --cfg $config \
+            --ckpt $ckpt \
+            --collect_steps $collect_steps \
+            --eval_interval $eval_interval \
+            --cost_limit $cost_limit \
+            --lambda_lr $lambda_lr \
+            --num_iterations $num_iterations \
+            --device ${device} \
+            --illustration_pb_file ${illustration_pbs} \
+            --sampler_cost_bounds $sampler_cost_bounds \
+            --sampler_dist_bounds $sampler_dist_bounds \
+            --sampler_K $sampler_K \
+            --sampler_std_ub $sampler_std_ub \
+            --visual
 fi
