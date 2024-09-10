@@ -18,8 +18,8 @@ config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
 
 
-ckpt="runs/results/habitat/job_local_sc0_staging_20/ckpt/ckpt_0480000"
-config="runs/results/habitat/job_local_sc0_staging_20/bk/config.yaml"
+ckpt="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/ckpt/ckpt_0480000"
+config="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/bk/config.yaml"
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
 
 
