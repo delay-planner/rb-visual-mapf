@@ -76,5 +76,6 @@ else
             --sampler_dist_bounds $sampler_dist_bounds \
             --sampler_K $sampler_K \
             --sampler_std_ub $sampler_std_ub \
+            --use_disk \
             --visual
 fi
