@@ -15,6 +15,13 @@ debugger_port=5679
 
 ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_0335000"
 config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/bk/config.yaml"
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
+
+
+ckpt="runs/results/habitat/job_local_sc0_staging_20/ckpt/ckpt_0480000"
+config="runs/results/habitat/job_local_sc0_staging_20/bk/config.yaml"
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
+
 
 lambda_lr=10
 collect_steps=20
@@ -28,7 +35,6 @@ sampler_K=10
 sampler_std_ub=1
 
 device="cuda:0" # must use GPU cluster
-illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
 
 # note: must have empty space between xx: [ xx ]
 # -z tests if condition true, -n no tests if condition if false

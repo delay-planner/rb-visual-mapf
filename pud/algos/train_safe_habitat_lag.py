@@ -105,6 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
     parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
+    parser.add_argument("--use_disk", action="store_true", help="use disk if ram is too small for replay buffer")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -253,12 +254,23 @@ if __name__ == "__main__":
 
     print(agent)
 
-    replay_buffer = ConstrainedVisualReplayBuffer(
-        obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        action_dim=env.action_space.shape[0],
-        max_size=cfg.replay_buffer.max_size,
-        )
+    replay_buffer = None
+    if args.use_disk:
+        from pud.buffer_large import ConstrainedLargeReplayBuffer
+        replay_buffer = ConstrainedLargeReplayBuffer(
+            #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            scratch_dir=logger["buffer"],
+            )
+    else:
+        replay_buffer = ConstrainedVisualReplayBuffer(
+            obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            )
 
     policy = GaussianPolicy(agent, noise_scale=0.2)
 
