@@ -184,7 +184,7 @@ def load_agent_and_env(agent, eval_env, args, config, constrained=False):
     return agent, eval_env
 
 
-def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False):
+def setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, save=False):
 
     habitat = args.visual
     rb_vec = ConstrainedCollector.sample_initial_unconstrained_states(
@@ -194,40 +194,60 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, save=False
     if habitat:
         rb_vec_grid, rb_vec = rb_vec
 
-    pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
+    agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    unconstrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
 
     if len(args.illustration_pb_file) > 0:
         problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
     else:
-        problems = sample_cost_pbs_by_agent(
-            K=config.num_samples * 100,
-            min_dist=0,
-            agent=agent,  # type: ignore
-            env=eval_env,  # type: ignore
-            target_val=trained_cost_limit,
-            num_states=1000,
-            ensemble_agg="mean",
-            use_uncertainty=False,
-            max_dist=eval_env.max_goal_dist,  # type: ignore
-        )
-        assert len(problems) > 0
+        K = 5
+        problems = []
+        for tqdm_idx in tqdm(range(config.num_samples * args.num_agents // K)):
+            inter_problems = sample_cost_pbs_by_agent(
+                # K=config.num_samples * 100,
+                K=K,
+                min_dist=0,
+                agent=agent,  # type: ignore
+                env=eval_env,  # type: ignore
+                target_val=trained_cost_limit,
+                num_states=1000,
+                ensemble_agg="mean",
+                use_uncertainty=False,
+                max_dist=eval_env.max_goal_dist,  # type: ignore
+            )
+            assert len(inter_problems) > 0
+            problems.extend(inter_problems)
+        print(len(problems))
+
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    constrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
+
+    if "unconstrained" in args.method_type:
+        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
 
     if save:
+        save_path = basedir / "illustration.npz"
         if not habitat:
-            np.savez("pud/plots/illustration.npz",
+            np.savez(save_path,
                      rb_vec=rb_vec,
-                     pdist=pdist,
+                     unconstrained_pdist=unconstrained_pdist,
+                     constrained_pdist=constrained_pdist,
                      pcost=pcost,
                      problems=problems)  # type: ignore
         else:
-            np.savez("pud/plots/illustration.npz",
+            np.savez(save_path,
                      rb_vec_grid=rb_vec_grid,
                      rb_vec=rb_vec,
-                     pdist=pdist,
+                     unconstrained_pdist=unconstrained_pdist,
+                     constrained_pdist=constrained_pdist,
                      pcost=pcost,
                      problems=problems)  # type: ignore
-    return rb_vec, pdist, pcost, problems if not habitat else (rb_vec_grid, rb_vec, pdist, pcost, problems)
+
+    if not habitat:
+        return rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems
+    else:
+        return rb_vec_grid, rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems
 
 
 def load_problem_set(file_path, env, agent, habitat=False):
@@ -235,13 +255,14 @@ def load_problem_set(file_path, env, agent, habitat=False):
     if habitat:
         rb_vec_grid = load["rb_vec_grid"]
     rb_vec = load["rb_vec"]
-    pdist = load["pdist"]
+    unconstrained_pdist = load["unconstrained_pdist"]
+    constrained_pdist = load["constrained_pdist"]
     pcost = load["pcost"]
     problems = load["problems"]
     if not habitat:
-        return rb_vec, pdist, pcost, problems.tolist()
+        return rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems.tolist()
     else:
-        return rb_vec_grid, rb_vec, pdist, pcost, problems.tolist()
+        return rb_vec_grid, rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems.tolist()
 
 
 def argument_parser():
@@ -265,12 +286,12 @@ def argument_parser():
     return args
 
 
-def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
-    save_path = "pud/plots/data/single_agent/unconstrained_records.npy"
+    save_path = basedir / "single_agent" / "unconstrained_records.npy"
     if save and Path(save_path).exists():
         unconstrained_records = np.load(save_path, allow_pickle=True)
         unconstrained_records = unconstrained_records.tolist()
@@ -294,12 +315,12 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, sa
     return unconstrained_records
 
 
-def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
-    save_path = f"pud/plots/data/multi_agent/unconstrained_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / f"unconstrained_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         unconstrained_records = np.load(save_path, allow_pickle=True)
         unconstrained_records = unconstrained_records.tolist()
@@ -325,12 +346,12 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, sav
     return unconstrained_records
 
 
-def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
+def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
-    save_path = "pud/plots/data/single_agent/unconstrained_search_records.npy"
+    save_path = basedir / "single_agent" / "unconstrained_search_records.npy"
     if save and Path(save_path).exists():
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
@@ -347,10 +368,17 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     if not habitat:
-        search_policy = SearchPolicy(agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True)
+        search_policy = SearchPolicy(
+            agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True
+        )
     else:
         search_policy = VisualSearchPolicy(
-            agent, (rb_vec_grid, rb_vec), pdist=pdist, open_loop=True, max_search_steps=3, no_waypoint_hopping=True
+            agent,
+            (rb_vec_grid, rb_vec),
+            pdist=pdist,
+            open_loop=True,
+            max_search_steps=3,
+            no_waypoint_hopping=True,
         )
 
     for _ in tqdm(range(start_idx, config.num_samples)):
@@ -365,12 +393,12 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     return unconstrained_search_records
 
 
-def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=False):
+def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
-    save_path = f"pud/plots/data/multi_agent/unconstrained_search_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / f"unconstrained_search_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
@@ -402,10 +430,14 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
         )
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-        )
-        unconstrained_search_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+            )
+            unconstrained_search_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            unconstrained_search_records.append({})
 
         if save:
             np.save(save_path, unconstrained_search_records)
@@ -415,12 +447,12 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
     return unconstrained_search_records
 
 
-def single_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+def single_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
-    save_path = "pud/plots/data/single_agent/constrained_records.npy"
+    save_path = basedir / "single_agent" / "constrained_records.npy"
     if save and Path(save_path).exists():
         constrained_records = np.load(save_path, allow_pickle=True)
         constrained_records = constrained_records.tolist()
@@ -444,12 +476,12 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, save
     return constrained_records
 
 
-def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=False):
+def multi_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
-    save_path = f"pud/plots/data/multi_agent/constrained_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / f"constrained_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         constrained_records = np.load(save_path, allow_pickle=True)
         constrained_records = constrained_records.tolist()
@@ -475,19 +507,29 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=
     return constrained_records
 
 
-def single_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+def single_constrained_search_policy(
+        agent,
+        eval_env,
+        problem_setup,
+        args,
+        config,
+        trained_cost_limit,
+        basedir,
+        save=False
+        ):
     habitat = args.visual
-    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+    # agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     if not habitat:
         rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[1].copy()
-        pcost = problem_setup[2].copy()
+        pdist = problem_setup[2].copy()
+        pcost = problem_setup[3].copy()
     else:
         rb_vec_grid = problem_setup[0].copy()
         rb_vec = problem_setup[1].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        pdist = problem_setup[3].copy()
+        pcost = problem_setup[4].copy()
     problems = problem_setup[-1].copy()
 
     eval_env.set_prob_constraint(1.0)  # type: ignore
@@ -498,7 +540,7 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
         logging.info(f"Factor: {factor}")
 
         constrained_search_records = []
-        save_path = f"pud/plots/data/single_agent/constrained_search_records_{factor}.npy"
+        save_path = basedir / "single_agent" / f"constrained_search_records_{factor}.npy"
         if save and Path(save_path).exists():
             constrained_search_records = np.load(save_path, allow_pickle=True)
             constrained_search_records = constrained_search_records.tolist()
@@ -520,7 +562,8 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
                 pcost=pcost,
                 open_loop=True,
                 no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit
+                max_cost_limit=edge_cost_limit,
+                ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
             )
         else:
             constrained_search_policy = VisualConstrainedSearchPolicy(
@@ -531,7 +574,8 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
                 open_loop=True,
                 max_search_steps=3,
                 no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit
+                max_cost_limit=edge_cost_limit,
+                ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
             )
 
         for _ in tqdm(range(start_idx, config.num_samples)):
@@ -542,7 +586,7 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
                 constrained_search_records.append(records)
             except Exception as e:
                 logging.error(f"Error: {e}")
-                continue
+                constrained_search_records.append({})
 
             if save:
                 np.save(save_path, constrained_search_records)
@@ -553,25 +597,33 @@ def single_constrained_search_policy(agent, eval_env, problem_setup, args, confi
         constrained_search_factored_records.append(constrained_search_records)
 
     if save:
-        np.save(
-            "pud/plots/data/single_agent/constrained_search_factored_records.npy", constrained_search_factored_records
-        )
+        save_path = basedir / "single_agent" / "constrained_search_factored_records.npy"
+        np.save(save_path, constrained_search_factored_records)
     return constrained_search_factored_records
 
 
-def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=False):
+def multi_constrained_search_policy(
+        agent,
+        eval_env,
+        problem_setup,
+        args,
+        config,
+        trained_cost_limit,
+        basedir,
+        save=False
+        ):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     if not habitat:
         rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[1].copy()
-        pcost = problem_setup[2].copy()
+        pdist = problem_setup[2].copy()
+        pcost = problem_setup[3].copy()
     else:
         rb_vec_grid = problem_setup[0].copy()
         rb_vec = problem_setup[1].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        pdist = problem_setup[3].copy()
+        pcost = problem_setup[4].copy()
     problems = problem_setup[-1].copy()
 
     constrained_search_factored_records = []
@@ -580,7 +632,7 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
         logging.info(f"Factor: {factor}")
 
         constrained_search_records = []
-        save_path = f"pud/plots/data/multi_agent/constrained_search_records_{args.num_agents}_{factor}.npy"
+        save_path = basedir / "multi_agent" / f"constrained_search_records_{args.num_agents}_{factor}.npy"
         if save and Path(save_path).exists():
             constrained_search_records = np.load(save_path, allow_pickle=True)
             constrained_search_records = constrained_search_records.tolist()
@@ -604,7 +656,8 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
                 pdist=pdist.copy(),
                 pcost=pcost.copy(),
                 no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit
+                max_cost_limit=edge_cost_limit,
+                ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
             )
         else:
             constrained_ma_search_policy = VisualConstrainedMultiAgentSearchPolicy(
@@ -635,10 +688,8 @@ def multi_constrained_search_policy(agent, eval_env, problem_setup, args, config
         constrained_search_factored_records.append(constrained_search_records)
 
     if save:
-        np.save(
-            f"pud/plots/data/multi_agent/constrained_search_factored_records_{args.num_agents}.npy",
-            constrained_search_factored_records
-        )
+        save_path = basedir / "multi_agent" / f"constrained_search_factored_records_{args.num_agents}.npy"
+        np.save(save_path, constrained_search_factored_records)
     return constrained_search_factored_records
 
 
@@ -648,41 +699,50 @@ def main():
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
     else:
         config, eval_env, agent, trained_cost_limit = pointenv_setup(args)
+
+    basedir = Path("pud/plots/data")
+    if not args.visual:
+        basedir = basedir / config.env.walls.lower()
+    else:
+        basedir = basedir / config.env.simulator_settings.scene.lower()
+
     if args.load_problem_set:
         assert len(args.problem_set_file) > 0
         problem_setup = load_problem_set(args.problem_set_file, eval_env, agent, args.visual)
     else:
-        problem_setup = setup_problems(eval_env, agent, trained_cost_limit, args, config, save=True)
+        problem_setup = setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, save=True)
 
     if args.method_type == "unconstrained":
         if args.num_agents == 1:
-            single_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+            single_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
         else:
-            multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+            multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
     elif args.method_type == "unconstrained_search":
         if args.num_agents == 1:
-            single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=True)
+            single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
         else:
-            multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, save=True)
+            multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
     elif args.method_type == "constrained":
         if args.num_agents == 1:
-            single_constrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+            single_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
         else:
-            multi_constrained_policy(agent, eval_env, problem_setup, args, config, save=True)
+            multi_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
     elif args.method_type == "constrained_search":
         if args.num_agents == 1:
             single_constrained_search_policy(
-                agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True
+                agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
             )
         else:
-            multi_constrained_search_policy(agent, eval_env, problem_setup, args, config, trained_cost_limit, save=True)
+            multi_constrained_search_policy(
+                agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
+            )
     else:
         raise ValueError("Invalid method type")
 
 
 if __name__ == "__main__":
     try:
-        logging.basicConfig(level=logging.ERROR)
+        logging.basicConfig(level=logging.INFO)
         main()
     except Exception as e:
         print("Error: ", e)
