@@ -221,7 +221,7 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config):
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     habitat = args.visual
-    problems = problem_setup[3]
+    problems = problem_setup[-1]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     constrained_records = []

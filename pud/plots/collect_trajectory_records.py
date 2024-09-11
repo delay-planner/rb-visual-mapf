@@ -14,7 +14,7 @@ from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.constrained_collector import ConstrainedCollector
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
-from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent
+from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_pbs_by_agent
 from pud.policies import (
     SearchPolicy,
     VisualSearchPolicy,
@@ -203,18 +203,18 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, s
     else:
         K = 5
         problems = []
-        for tqdm_idx in tqdm(range(config.num_samples * args.num_agents // K)):
-            inter_problems = sample_cost_pbs_by_agent(
+        for _ in tqdm(range(config.num_samples * args.num_agents // K)):
+            inter_problems = sample_pbs_by_agent(
                 # K=config.num_samples * 100,
                 K=K,
                 min_dist=0,
+                max_dist=eval_env.max_goal_dist,  # type: ignore
+                target_val=eval_env.max_goal_dist // 2,  # type: ignore
                 agent=agent,  # type: ignore
                 env=eval_env,  # type: ignore
-                target_val=trained_cost_limit,
                 num_states=1000,
                 ensemble_agg="mean",
                 use_uncertainty=False,
-                max_dist=eval_env.max_goal_dist,  # type: ignore
             )
             assert len(inter_problems) > 0
             problems.extend(inter_problems)
@@ -305,8 +305,12 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, ba
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in range(start_idx, config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
-        unconstrained_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
+            unconstrained_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            unconstrained_records.append({})
 
         if save:
             np.save(save_path, unconstrained_records)
@@ -334,10 +338,14 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, bas
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-        )
-        unconstrained_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+            )
+            unconstrained_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            unconstrained_records.append([{} for _ in range(args.num_agents)])
 
         if save:
             np.save(save_path, unconstrained_records)
@@ -383,8 +391,12 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
         )
 
     for _ in tqdm(range(start_idx, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env, habitat=habitat)
-        unconstrained_search_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(search_policy, eval_env, habitat=habitat)
+            unconstrained_search_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            unconstrained_search_records.append({})
 
         if save:
             np.save(save_path, unconstrained_search_records)
@@ -466,8 +478,12 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, base
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in range(start_idx, config.num_samples):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
-        constrained_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
+            constrained_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            constrained_records.append({})
 
         if save:
             np.save(save_path, constrained_records)
@@ -495,10 +511,14 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, based
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-        )
-        constrained_records.append(records)
+        try:
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+            )
+            constrained_records.append(records)
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            constrained_records.append([{} for _ in range(args.num_agents)])
 
         if save:
             np.save(save_path, constrained_records)
