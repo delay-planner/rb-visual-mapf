@@ -688,8 +688,8 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 {"observation": start, "goal": goal}, planning_graph, start_id, goal_id  # type: ignore
             )
 
-            assert planning_graph.has_node(start_id)
-            assert planning_graph.has_node(goal_id)
+            assert planning_graph.has_node(start_id), "Start node not added to graph"
+            assert planning_graph.has_node(goal_id), "Goal node not added to graph"
             num_nodes += 2
 
         logging.debug("Final graph size = ", planning_graph.number_of_nodes())
