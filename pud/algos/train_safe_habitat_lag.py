@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     # Custom Logging
     logger = setup_logger(
-        root_dir=cfg.ckpt_dir, 
+        root_dir=log_dir.as_posix(), 
         subdir_names=["ckpt", "tfevent", "bk", "imgs", "buffer"],
         tag_time=True,
         )

@@ -6,6 +6,7 @@ import numpy as np
 import gym
 from copy import deepcopy
 from pud.algos.visual_buffer import VisualReplayBuffer, ConstrainedVisualReplayBuffer
+from pud.policies import BasePolicy, GaussianPolicy, SearchPolicy, ConstrainedSearchPolicy, VisualConstrainedSearchPolicy, VisualSearchPolicy
 from pud.buffer_large import LargeReplayBuffer, ConstrainedLargeReplayBuffer
 
 def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
@@ -336,3 +337,127 @@ class ConstrainedVisualCollector (VisualCollector):
 
                 r, co, max_co, cum_co = [0.0] * 4
         return records
+
+    #@classmethod
+    #def get_visual_trajectory(cls, policy, eval_env, start=None, goal=None, start_cost=None):
+    #    ep_reward_list = []
+    #    ep_waypoint_list = []
+    #    ep_observation_list = []
+
+    #    state, info = eval_env.reset()
+    #    start_cost_value = info["cost"] if start_cost is None else start_cost
+
+    #    if start is not None and goal is not None:
+    #        state["goal"] = goal[1].copy()
+    #        state["grid"]["goal"] = goal[0].copy()
+    #        state["observation"] = start[1].copy()
+    #        state["grid"]["observation"] = start[0].copy()
+    #        if "goalconditioned" in type(eval_env.env).__name__.lower():
+    #            eval_env.env._goal = goal[0]
+    #        eval_env.unwrapped.state_grid = state["grid"]["observation"]
+
+    #    ep_goal = (state["grid"]["goal"], state["goal"])
+    #    ep_start = (state["grid"]["observation"], state["observation"])
+    #    ep_record = {
+    #        "steps": 0,
+    #        "rewards": 0.0,
+    #        "max_step_cost": 0.0,
+    #        "first_step_cost": start_cost_value,
+    #        "cumulative_costs": start_cost_value
+    #    }
+    #    while True:
+    #        ep_observation = (state["grid"]["observation"], state["observation"])
+    #        ep_observation_list.append(ep_observation)
+
+    #        action = policy.select_action(state)  # NOTE: state['goal'] may be modified
+
+    #        ep_waypoint = (state["grid"]["goal"], state["goal"])
+    #        ep_waypoint_list.append(ep_waypoint)
+
+    #        state, reward, done, info = eval_env.step(np.copy(action))
+    #        ep_record["steps"] += 1
+    #        ep_record["rewards"] += reward
+
+    #        cost = info.get("cost", 0.0)
+    #        if cost > ep_record["max_step_cost"]:
+    #            ep_record["max_step_cost"] = cost
+    #        ep_record["cumulative_costs"] += cost
+
+    #        ep_reward_list.append(reward)
+
+    #        if done:
+    #            ep_record["success"] = info["success"]
+    #            ep_observation = (
+    #                info["terminal_observation"]["grid"]["observation"],
+    #                info["terminal_observation"]["observation"]
+    #            )
+    #            ep_observation_list.append(ep_observation)
+    #            break
+
+    #    return (
+    #        ep_start,
+    #        ep_goal,
+    #        ep_observation_list,
+    #        ep_waypoint_list,
+    #        ep_reward_list,
+    #        ep_record,
+    #    )
+
+
+#def eval_agent_with_search(
+#        agent,
+#        eval_env,
+#        problem_setup,
+#        args,
+#        config,
+#        trained_cost_limit,
+#        basedir,
+#        save=False
+#        ):
+
+#    bk_prob_constriant = eval_env.get_prob_constraint()
+#    bk_duration = eval_env.duration
+#    eval_env.set_prob_constraint(1.0) # only use from the pb Q
+#    eval_env.duration = 300  # type: ignore
+#    eval_env.set_verbose(False)
+#    eval_env.set_use_q(True)
+
+#    constrained_search_factored_records = []
+#    edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
+
+
+#    constrained_search_records = []
+#    start_idx = len(constrained_search_records)
+
+#    constrained_search_policy = VisualConstrainedSearchPolicy(
+#        agent,
+#        (rb_vec_grid, rb_vec),
+#        pdist=pdist,
+#        pcost=pcost,
+#        open_loop=True,
+#        max_search_steps=3,
+#        no_waypoint_hopping=True,
+#        max_cost_limit=edge_cost_limit,
+#        ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
+#    )
+
+#    for _ in tqdm(range(start_idx, config.num_samples)):
+#        try:
+#            _, _, _, _, _, records = ConstrainedVisualCollector.get_trajectory(
+#                constrained_search_policy, eval_env, habitat=habitat
+#            )
+#            constrained_search_records.append(records)
+#        except Exception as e:
+#            logging.error(f"Error: {e}")
+#            constrained_search_records.append({})
+
+#        if save:
+#            np.save(save_path, constrained_search_records)
+
+#    if save:
+#        np.save(save_path, constrained_search_records)
+
+#    constrained_search_factored_records.append(constrained_search_records)
+
+
+#    return constrained_search_factored_records
