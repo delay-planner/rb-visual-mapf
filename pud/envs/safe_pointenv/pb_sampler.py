@@ -51,8 +51,14 @@ def sample_pbs_by_agent(
     ## online generate start and goal states nearest to target cumulative costs
     env: SafeGoalConditionedHabitatPointWrapper
     rb_vec = np.array([env.sample_empty_state() for _ in range(num_states)])
-
     rb_vec_goal = np.array([env.sample_empty_state() for _ in range(num_states)])
+    
+    # Ensure that the states are not repeated
+    rb_vec += np.random.uniform(size=rb_vec.shape)
+    rb_vec_goal += np.random.uniform(size=rb_vec_goal.shape)
+
+    rb_vec = np.clip(rb_vec, env.observation_space["goal"].low, env.observation_space["goal"].high)
+    rb_vec_goal = np.clip(rb_vec_goal, env.observation_space["goal"].low, env.observation_space["goal"].high)
 
     ## predict the pairwise costs
     pdist = agent.get_pairwise_dist(
