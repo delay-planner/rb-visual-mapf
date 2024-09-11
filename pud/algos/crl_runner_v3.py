@@ -12,8 +12,7 @@ from termcolor import cprint
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
-#from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.buffer_large import ConstrainedLargeReplayBuffer
+from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.algos.constrained_collector import ConstrainedCollector as Collector
 from pud.algos.constrained_collector import eval_agent_from_Q
 from pud.algos.data_struct import gather_log
@@ -31,7 +30,7 @@ from copy import deepcopy
 def train_eval(
     policy:GaussianPolicy,
     agent:DRLDDPGLag,
-    replay_buffer:ConstrainedLargeReplayBuffer,
+    replay_buffer:ConstrainedReplayBuffer,
     env,
     eval_env,
     num_iterations=int(1e6),

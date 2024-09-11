@@ -6,8 +6,9 @@ import numpy as np
 import gym
 from copy import deepcopy
 from pud.algos.visual_buffer import VisualReplayBuffer, ConstrainedVisualReplayBuffer
+#from pud.buffer_large import LargeReplayBuffer, ConstrainedLargeReplayBuffer
 from pud.policies import BasePolicy, GaussianPolicy, SearchPolicy, ConstrainedSearchPolicy, VisualConstrainedSearchPolicy, VisualSearchPolicy
-from pud.buffer_large import LargeReplayBuffer, ConstrainedLargeReplayBuffer
+
 
 def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     """
@@ -91,9 +92,9 @@ class VisualCollector (Collector):
         super(VisualCollector, self).__init__(
              policy, buffer, env, initial_collect_steps=initial_collect_steps
         )
-        assert isinstance(
-            self.buffer, VisualReplayBuffer
-        ) or isinstance(self.buffer, LargeReplayBuffer), "Error: Need to use VisualReplayBuffer"
+        #assert isinstance(
+        #    self.buffer, VisualReplayBuffer
+        #) or isinstance(self.buffer, LargeReplayBuffer), "Error: Need to use VisualReplayBuffer"
 
     @classmethod
     def eval_agent_n_trajs(cls, policy, eval_env, n, by_episode=True, verbose=False):
@@ -146,9 +147,9 @@ class ConstrainedVisualCollector (VisualCollector):
         super(ConstrainedVisualCollector, self).__init__(
             policy, buffer, env, initial_collect_steps=initial_collect_steps
         )
-        assert isinstance(
-            self.buffer, ConstrainedVisualReplayBuffer
-        ) or isinstance(self.buffer, ConstrainedLargeReplayBuffer), "Error: Need to use ConstrainedVisualReplayBuffer"
+        #assert isinstance(
+        #    self.buffer, ConstrainedVisualReplayBuffer
+        #) or isinstance(self.buffer, ConstrainedLargeReplayBuffer), "Error: Need to use ConstrainedVisualReplayBuffer"
 
         self.past_eps = []
         self.num_eps = 0
