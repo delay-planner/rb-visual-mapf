@@ -127,6 +127,10 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="resume training")
+    parser.add_argument("--seed",
+        type=int,
+        default=-1,
+        help="override seed")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
@@ -175,6 +179,8 @@ if __name__ == "__main__":
         cfg.env.simulator_settings.scene = args.scene
     if args.embedding_size > 0:
         cfg.agent.embedding_size = args.embedding_size
+    if args.seed >= 0:
+        cfg.seed = args.seed
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
     cfg.env.device = args.device
