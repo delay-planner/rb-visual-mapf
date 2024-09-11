@@ -2,35 +2,46 @@
 
 #debugger_port=5679
 
-ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_0335000"
-config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/bk/config.yaml"
+: '
+screen command
+screen_job sc3_staging_15 "conda_activate; conda activate habitat; bash launch_jobs/local_train_safe_habitat_lag.sh"
+'
+
+
+# sc02_staging_08
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
 
+ckpt="runs/results/habitat/job_local_sc0_staging_08/2024-09-10-02-59-43/ckpt/ckpt_0322500"
+config="runs/results/habitat/job_local_sc0_staging_08/2024-09-10-02-59-43/bk/config.yaml"
 
+ckpt="runs/results/habitat/job_local_sc0_staging_08/2024-09-10-03-00-39/ckpt/ckpt_0330000"
+config="runs/results/habitat/job_local_sc0_staging_08/2024-09-10-03-00-39/bk/config.yaml"
+
+
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
 ckpt="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/ckpt/ckpt_0480000"
 config="runs/results/habitat/job_local_sc0_staging_20/2024-09-09-05-58-37/bk/config.yaml"
-illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc0_staging_20_linear_r1.txt"
 
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_05_linear_r1.txt"
 ckpt="runs/results/habitat/job_local_sc3_staging_05/2024-09-09-05-57-11/ckpt/ckpt_0487500"
 config="runs/results/habitat/job_local_sc3_staging_05/2024-09-09-05-57-11/bk/config.yaml"
-illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_05_linear_r1.txt"
 
+illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_15_linear_r1.txt"
 ckpt="runs/results/habitat/job_local_sc3_staging_15/2024-09-09-05-04-59/ckpt/ckpt_0562500"
 config="runs/results/habitat/job_local_sc3_staging_15/2024-09-09-05-04-59/bk/config.yaml"
-illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_15_linear_r1.txt"
 
-ckpt="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/ckpt/ckpt_0720000"
-config="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/bk/config.yaml"
-illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_11_linear_r1.txt"
+#illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sc3_staging_11_linear_r1.txt"
+#ckpt="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/ckpt/ckpt_0720000"
+#config="runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/bk/config.yaml"
 
 
-lambda_lr=1
+lambda_lr=0.035
 collect_steps=20
 eval_interval=2500  # 5000 | 10
 num_iterations=600000
-cost_limit=10.0
+cost_limit=10
 
-sampler_cost_bounds="5-40"
+sampler_cost_bounds="0-40"
 sampler_dist_bounds="0-5"
 sampler_K=10
 sampler_std_ub=1
