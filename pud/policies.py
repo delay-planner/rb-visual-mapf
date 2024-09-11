@@ -562,6 +562,40 @@ class VisualSearchPolicy(SearchPolicy):
         return super(SearchPolicy, self).select_action(state)
 
 
+class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        pdist=None,
+        pcost=None,
+        open_loop=False,
+        max_search_steps=7,
+        max_cost_limit=1.0,
+        dist_aggregate="min",
+        cost_aggregate="max",
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+        **kwargs,
+    ):
+        super().__init__(
+            agent=agent,
+            pdist=pdist,
+            pcost=pcost,
+            rb_vec=rb_vec,
+            open_loop=open_loop,
+            dist_aggregate=dist_aggregate,
+            cost_aggregate=cost_aggregate,
+            max_cost_limit=max_cost_limit,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
+        )
+
+
 class MultiAgentSearchPolicy(SearchPolicy):
     def __init__(
         self,
@@ -1199,6 +1233,44 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             agent_actions.append(agent_action)
 
         return agent_actions, agent_goals
+
+
+class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMultiAgentSearchPolicy):
+    def __init__(
+        self,
+        agent,
+        rb_vec,
+        n_agents,
+        pdist=None,
+        pcost=None,
+        radius=0.1,
+        open_loop=False,
+        max_search_steps=7,
+        max_cost_limit=1.0,
+        dist_aggregate="min",
+        cost_aggregate="max",
+        no_waypoint_hopping=False,
+        weighted_path_planning=False,
+        waypoint_consistency_cutoff=5.0,
+        **kwargs,
+    ):
+        super().__init__(
+            agent=agent,
+            rb_vec=rb_vec,
+            pdist=pdist,
+            pcost=pcost,
+            radius=radius,
+            n_agents=n_agents,
+            open_loop=open_loop,
+            dist_aggregate=dist_aggregate,
+            cost_aggregate=cost_aggregate,
+            max_cost_limit=max_cost_limit,
+            max_search_steps=max_search_steps,
+            no_waypoint_hopping=no_waypoint_hopping,
+            weighted_path_planning=weighted_path_planning,
+            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
+            **kwargs,
+        )
 
 
 class SparseSearchPolicy(SearchPolicy):
