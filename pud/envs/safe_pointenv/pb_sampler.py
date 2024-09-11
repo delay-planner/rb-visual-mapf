@@ -213,6 +213,10 @@ def sample_cost_pbs_by_agent(
     rb_vec = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
     rb_vec_goal = np.array([env.sample_safe_empty_state() for _ in range(num_states)])
 
+    # Ensure that the states are not repeated
+    rb_vec += np.random.uniform(size=rb_vec.shape)
+    rb_vec_goal += np.random.uniform(size=rb_vec_goal.shape)
+
     prod_mask = np.ones([num_states, num_states], dtype=bool)
     if min_dist and max_dist:
         ## predict the pairwise costs

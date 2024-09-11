@@ -1,5 +1,6 @@
 import time
 import scipy
+import torch
 import logging
 import numpy as np
 import networkx as nx
@@ -325,6 +326,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
         rb_vec,
         pdist=None,
         pcost=None,
+        ckpts=None,
         open_loop=False,
         max_search_steps=7,
         max_cost_limit=1.0,
@@ -345,6 +347,9 @@ class ConstrainedSearchPolicy(SearchPolicy):
         self.pcost = pcost
         self.cost_aggregate = cost_aggregate
         self.max_cost_limit = max_cost_limit
+
+        assert ckpts is not None
+        self.ckpts = ckpts
 
         assert hasattr(agent, "constraints") and agent.constraints is not None
         self.constraints = agent.constraints
@@ -378,6 +383,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
         self.g = g
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
+        self.agent.load_state_dict(torch.load(self.ckpts["unconstrained"]))
         start_to_rb_cost = self.agent.get_pairwise_cost(
             [state["observation"]],
             self.rb_vec,
@@ -388,6 +394,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
             [state["goal"]],
             aggregate=self.cost_aggregate,
         )
+        self.agent.load_state_dict(torch.load(self.ckpts["constrained"]))
         return start_to_rb_cost, rb_to_goal_cost
 
     def get_closest_waypoint(self, state):
@@ -569,6 +576,7 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
         rb_vec,
         pdist=None,
         pcost=None,
+        ckpts=None,
         open_loop=False,
         max_search_steps=7,
         max_cost_limit=1.0,
@@ -583,6 +591,7 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
             agent=agent,
             pdist=pdist,
             pcost=pcost,
+            ckpts=ckpts,
             rb_vec=rb_vec,
             open_loop=open_loop,
             dist_aggregate=dist_aggregate,
@@ -785,8 +794,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
 
             if state.get("first_step", False):
 
-                logging.debug("Composite starts: ", state["composite_starts"])
-                logging.debug("Composite goals: ", state["composite_goals"])
                 self.initialize_paths(self.rb_vec, state["composite_starts"], state["composite_goals"])
 
             if self.cleanup:
@@ -885,6 +892,7 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
         agent,
         rb_vec,
         n_agents,
+        ckpts=None,
         pdist=None,
         pcost=None,
         radius=0.1,
@@ -903,6 +911,7 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
             rb_vec=rb_vec,
             pdist=pdist,
             pcost=pcost,
+            ckpts=ckpts,
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,
@@ -1243,6 +1252,7 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
         n_agents,
         pdist=None,
         pcost=None,
+        ckpts=None,
         radius=0.1,
         open_loop=False,
         max_search_steps=7,
@@ -1259,6 +1269,7 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
             rb_vec=rb_vec,
             pdist=pdist,
             pcost=pcost,
+            ckpts=ckpts,
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,

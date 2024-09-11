@@ -174,10 +174,11 @@ def load_agent_and_env(agent, eval_env, args, config, constrained=False):
 def load_problem_set(file_path, env, agent):
     load = np.load(file_path, allow_pickle=True)
     rb_vec = load["rb_vec"]
-    pdist = load["pdist"]
+    unconstrained_pdist = load["unconstrained_pdist"]
+    constrained_pdist = load["constrained_pdist"]
     pcost = load["pcost"]
     problems = load["problems"]
-    return rb_vec, pdist, pcost, problems.tolist()
+    return rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems.tolist()
 
 
 def argument_parser():
@@ -224,9 +225,14 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config):
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     constrained_records = []
-    for tqdm_idx in tqdm(range(config.num_samples)):
-        _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
-        constrained_records.append(records)
+    if args.visual:
+        for tqdm_idx in tqdm(range(config.num_samples)):
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
+            constrained_records.append(records)
+    else:
+        for _ in range(config.num_samples):
+            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(agent, eval_env, habitat=habitat)
+            constrained_records.append(records)
 
     return constrained_records
 
