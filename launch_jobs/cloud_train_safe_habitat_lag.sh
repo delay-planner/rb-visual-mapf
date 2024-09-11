@@ -18,36 +18,37 @@ export PATH=/home/gridsan/mfeng1/my_python_user_bases/$MYPYTHONENV/bin:$PATH
 export PYTHONUSERBASE=$MYPYTHONUSERBASE
 # add project to python path
 project_root=/home/gridsan/mfeng1/git_repos/cc-sorb
+cd "${project_root}"
 export PYTHONPATH=$project_root:$PYTHONPATH
 ## -----------------------------------------------------------------------------
-env=hatbitat
-comment="visual_cost_correct_flag"
-#SLURM_JOB_ID=local_vec
-experiment_dir="runs"
-log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
+#env=hatbitat
+#comment="visual_cost_correct_flag"
+##SLURM_JOB_ID=local_vec
+#experiment_dir="runs"
+#log_dir=${experiment_dir}/${env}/job_${SLURM_JOB_ID}_${comment}
 
-echo "project root directory: ${project_root}"
-echo "experiment directory: ${log_dir}"
-
-
-cd "${project_root}"
-
-ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_1582500"
-config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/bk/config.yaml"
+#echo "project root directory: ${project_root}"
+#echo "experiment directory: ${log_dir}"
 
 lambda_lr=1
 collect_steps=20
-eval_interval=2500  # 5000 | 10
+eval_interval=5000  # 5000 | 10
 num_iterations=600000
-cost_limit=10.0
+cost_limit=10
 
-sampler_cost_bounds="5-40"
+sampler_cost_bounds="0-10"
 sampler_dist_bounds="0-5"
 sampler_K=10
 sampler_std_ub=1
 
 device="cuda:0" # must use GPU cluster
 illustration_pbs="pud/envs/safe_habitatenv/illustration_set/sci_02_staging_08_linear_r1.txt"
+ckpt="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/ckpt/ckpt_1582500"
+config="runs/hatbitat/job_26896380_visual_cost_correct_flag/2024-08-28-03-58-20/bk/config.yaml"
+
+illustration_pb_file=pud/envs/safe_habitatenv/illustration_set/sc3_staging_11_linear_r1.txt
+config=runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/bk/config.yaml
+ckpt=runs/hatbitat/job_26928411_visual_w_cost/2024-08-31-03-23-27/ckpt/ckpt_0720000
 
 python pud/algos/train_safe_habitat_lag.py \
         --cfg $config \
