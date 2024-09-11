@@ -8,6 +8,8 @@ temp/
 external_data/
 .vscode/
 outputs/
+pud/plots/data/
+pud/plots/figures/
 pud/envs/safe_habitatenv/apsps/
 
 # Byte-compiled / optimized / DLL files
@@ -24,6 +26,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+models/
 eggs/
 .eggs/
 lib/

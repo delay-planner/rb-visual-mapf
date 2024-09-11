@@ -278,6 +278,7 @@ def argument_parser():
     parser.add_argument("--replay_buffer_size", type=int, default="1000")
     parser.add_argument("--unconstrained_ckpt_file", type=str, default="")
     parser.add_argument("--load_problem_set", default=False, action="store_true")
+    parser.add_argument("--use_unconstrained_ckpt", default=False, action="store_true")
     parser.add_argument("--method_type", type=str,
                         choices=["unconstrained", "unconstrained_search", "constrained", "constrained_search"],
                         default="unconstrained")
@@ -437,7 +438,7 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
             unconstrained_search_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            unconstrained_search_records.append({})
+            unconstrained_search_records.append([{} for _ in range(args.num_agents)])
 
         if save:
             np.save(save_path, unconstrained_search_records)
@@ -518,8 +519,10 @@ def single_constrained_search_policy(
         save=False
         ):
     habitat = args.visual
-    # agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
-    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+    if args.use_unconstrained_ckpt:
+        agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+    else:
+        agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     if not habitat:
         rb_vec = problem_setup[0].copy()
@@ -541,6 +544,8 @@ def single_constrained_search_policy(
 
         constrained_search_records = []
         save_path = basedir / "single_agent" / f"constrained_search_records_{factor}.npy"
+        if args.use_unconstrained_ckpt:
+            save_path = save_path.as_posix()[:-4] + "_uc.npy"
         if save and Path(save_path).exists():
             constrained_search_records = np.load(save_path, allow_pickle=True)
             constrained_search_records = constrained_search_records.tolist()
@@ -598,6 +603,8 @@ def single_constrained_search_policy(
 
     if save:
         save_path = basedir / "single_agent" / "constrained_search_factored_records.npy"
+        if args.use_unconstrained_ckpt:
+            save_path = save_path.as_posix()[:-4] + "_uc.npy"
         np.save(save_path, constrained_search_factored_records)
     return constrained_search_factored_records
 
@@ -613,7 +620,10 @@ def multi_constrained_search_policy(
         save=False
         ):
     habitat = args.visual
-    agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
+    if args.use_unconstrained_ckpt:
+        agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
+    else:
+        agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     if not habitat:
         rb_vec = problem_setup[0].copy()
@@ -633,6 +643,8 @@ def multi_constrained_search_policy(
 
         constrained_search_records = []
         save_path = basedir / "multi_agent" / f"constrained_search_records_{args.num_agents}_{factor}.npy"
+        if args.use_unconstrained_ckpt:
+            save_path = save_path.as_posix()[:-4] + "_uc.npy"
         if save and Path(save_path).exists():
             constrained_search_records = np.load(save_path, allow_pickle=True)
             constrained_search_records = constrained_search_records.tolist()
@@ -665,19 +677,24 @@ def multi_constrained_search_policy(
                 (rb_vec_grid.copy(), rb_vec.copy()),
                 args.num_agents,
                 radius=0.0,
-                pdist=pdist,
-                pcost=pcost,
+                pdist=pdist.copy(),
+                pcost=pcost.copy(),
                 open_loop=True,
-                no_waypoint_hopping=True,
                 max_search_steps=3,
-                max_cost_limit=edge_cost_limit
+                no_waypoint_hopping=True,
+                max_cost_limit=edge_cost_limit,
+                ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
             )
 
         for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                constrained_ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-            )
-            constrained_search_records.append(records)
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                    constrained_ma_search_policy, eval_env, args.num_agents, threshold=0.0, habitat=habitat
+                )
+                constrained_search_records.append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                constrained_search_records.append([{} for _ in range(args.num_agents)])
 
             if save:
                 np.save(save_path, constrained_search_records)
@@ -689,6 +706,8 @@ def multi_constrained_search_policy(
 
     if save:
         save_path = basedir / "multi_agent" / f"constrained_search_factored_records_{args.num_agents}.npy"
+        if args.use_unconstrained_ckpt:
+            save_path = save_path.as_posix()[:-4] + "_uc.npy"
         np.save(save_path, constrained_search_factored_records)
     return constrained_search_factored_records
 
