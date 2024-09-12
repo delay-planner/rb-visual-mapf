@@ -386,7 +386,7 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
             (rb_vec_grid, rb_vec),
             pdist=pdist,
             open_loop=True,
-            max_search_steps=3,
+            max_search_steps=4,
             no_waypoint_hopping=True,
         )
 
@@ -438,7 +438,7 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
             args.num_agents,
             pdist=pdist,
             open_loop=True,
-            max_search_steps=3,
+            max_search_steps=4,
             no_waypoint_hopping=True
         )
 
@@ -597,7 +597,7 @@ def single_constrained_search_policy(
                 pdist=pdist,
                 pcost=pcost,
                 open_loop=True,
-                max_search_steps=3,
+                max_search_steps=4,
                 no_waypoint_hopping=True,
                 max_cost_limit=edge_cost_limit,
                 ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}
@@ -700,7 +700,7 @@ def multi_constrained_search_policy(
                 pdist=pdist.copy(),
                 pcost=pcost.copy(),
                 open_loop=True,
-                max_search_steps=3,
+                max_search_steps=4,
                 no_waypoint_hopping=True,
                 max_cost_limit=edge_cost_limit,
                 ckpts={"unconstrained": args.unconstrained_ckpt_file, "constrained": args.constrained_ckpt_file}

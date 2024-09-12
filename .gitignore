@@ -9,6 +9,7 @@ external_data/
 .vscode/
 outputs/
 pud/plots/data/
+pud/plots/old_data/
 pud/plots/figures/
 pud/envs/safe_habitatenv/apsps/
 

@@ -24,6 +24,8 @@ def setup_args_parser(parser):
     parser.add_argument("--action_noise", type=float, default=-1, help="Action noise from environment")
     parser.add_argument("--resize_factor", type=int, default=-1, help="Override default resize factor")
     parser.add_argument('--ckpt', type=str, help='The path to ckpt file')
+    parser.add_argument("--constrained_ckpt", type=str, default="", help="The path to constrained ckpt file")
+    parser.add_argument("--unconstrained_ckpt", type=str, default="", help="The path to unconstrained ckpt file")
     parser.add_argument('--figsavedir', type=str, help='Directory to save figures')
     parser.add_argument('--pbar', action='store_true', help='Show progress bar')
     parser.add_argument("--buffer_size", type=int, default=-1, help="Replay buffer size")
@@ -122,7 +124,7 @@ def setup_env(args):
             **cfg.agent,
         )
 
-    ckpt_file = args.ckpt
+    ckpt_file = args.constrained_ckpt
     agent.load_state_dict(torch.load(ckpt_file))
     agent.to(torch.device(args.device))
     agent.eval()
@@ -187,7 +189,16 @@ if __name__ == "__main__":
 
     # ensemble, rb_vec, rb_vec
     pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
+
+    agent.load_state_dict(torch.load(args.unconstrained_ckpt))  # type: ignore
+    agent.to(torch.device(args.device))  # type: ignore
+    agent.eval()  # type: ignore
+
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+
+    agent.load_state_dict(torch.load(args.constrained_ckpt))  # type: ignore
+    agent.to(torch.device(args.device))  # type: ignore
+    agent.eval()  # type: ignore
 
     from pud.visualize import visualize_cost_graph
     visualize_cost_graph(
@@ -415,6 +426,7 @@ if __name__ == "__main__":
         open_loop=True,
         no_waypoint_hopping=True,
         max_cost_limit=cfg.agent.cost_limit,  # type: ignore
+        ckpts={"unconstrained": args.unconstrained_ckpt, "constrained": args.constrained_ckpt}
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -473,6 +485,7 @@ if __name__ == "__main__":
         open_loop=True,
         no_waypoint_hopping=True,
         max_cost_limit=cfg.agent.cost_limit,  # type: ignore
+        ckpts={"unconstrained": args.unconstrained_ckpt, "constrained": args.constrained_ckpt}
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
