@@ -1,5 +1,6 @@
 from __future__ import annotations
 import heapq
+import logging
 from networkx import Graph
 from typing import Dict, List, Union
 
@@ -158,6 +159,7 @@ def a_star(
     heuristics: Dict[int, float],
     constraints,
     weighted: bool = False,
+    max_iterations: int = 100000,
 ) -> Union[List[int], None]:
 
     open_list = []
@@ -178,9 +180,14 @@ def a_star(
     for node in graph.nodes:
         graph.add_edge(node, node, weight=0)
 
-    while len(open_list) != 0:
+    iterations = 0
+    while len(open_list) != 0 and iterations < max_iterations:
 
+        iterations += 1
+        logging.debug(f"Size of open List: {len(open_list)}")
         current_node = heapq.heappop(open_list)[3]
+        logging.debug(f"Current Node: {current_node.location}")
+        logging.debug(f"Current Timestep: {current_node.timestep}")
         if current_node.location == goal and not is_constrained(
             goal, goal, current_node.timestep, constraint_table, goal=True
         ):
@@ -223,6 +230,7 @@ def a_star(
                     successor.g_value + successor.h_value
                     < existing_node.g_value + existing_node.h_value
                 ):
+                    logging.debug(f"Updating node {successor.location}")
                     closed_list[(successor.location, successor.timestep)] = successor
                     heapq.heappush(
                         open_list,
@@ -234,6 +242,7 @@ def a_star(
                         ),
                     )
             else:
+                logging.debug(f"Adding node {successor.location}")
                 closed_list[(successor.location, successor.timestep)] = successor
                 heapq.heappush(
                     open_list,

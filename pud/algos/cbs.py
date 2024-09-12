@@ -240,6 +240,7 @@ class CBSSolver(object):
         }
 
         for i in range(self.num_agents):
+            logging.debug("Computing paths for agent {}".format(i))
             agent_path = a_star(
                 i,
                 self.graph,
@@ -250,7 +251,7 @@ class CBSSolver(object):
                 weighted=self.weighted,
             )
             if agent_path is None:
-                raise BaseException("No path found for agent {}".format(i))
+                raise RuntimeError("No path found for agent {}".format(i))
 
             root["paths"].append(agent_path)
 
@@ -321,7 +322,7 @@ class CBSSolver(object):
 
                 skip = False
                 if agent_path is None:
-                    raise BaseException(
+                    raise RuntimeError(
                         "No path found for agent {}".format(constraint["agent_id"])
                     )
                 else:
@@ -398,4 +399,4 @@ class CBSSolver(object):
                         logging.debug("Generated: ", self.num_generated)
                         self.num_generated += 1
 
-        raise BaseException("No solution found")
+        raise RuntimeError("No solution found")
