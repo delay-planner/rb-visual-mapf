@@ -18,6 +18,7 @@ fi
 
 if [[ $env == *"staging"* ]]; then
     visual="--visual"
+    agents=(1 5 10)
 else
     visual=""
 fi
