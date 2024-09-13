@@ -16,9 +16,15 @@ if [[ ! " ${env_options[@]} " =~ " ${env} " ]]; then
     exit 1
 fi
 
+if [[ $env == *"staging"* ]]; then
+    visual="--visual"
+else
+    visual=""
+fi
+
 collect_trajectories() {
     while true; do
-        python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --num_agents ${num_agent}
+        python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --num_agents ${num_agent} ${visual}
         EXIT_CODE=$?
         if [ $EXIT_CODE -eq 0 ]; then
             echo "Script completed successfully."
@@ -32,7 +38,7 @@ collect_trajectories() {
         echo "Method type: ${method_type} with unconstrained checkpoint"
         printf "%*s\n" 50 | tr ' ' '*'
         while true; do
-            python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --use_unconstrained_ckpt --num_agents ${num_agent}
+            python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --use_unconstrained_ckpt --num_agents ${num_agent} ${visual}
             EXIT_CODE=$?
             if [ $EXIT_CODE -eq 0 ]; then
                 echo "Script completed successfully."
@@ -48,7 +54,7 @@ if [ $5 = true ]; then
     for problem_type in "${problem_types[@]}"; do
         printf "%*s\n" 100 | tr ' ' '*'
         echo "Sampling problems for ${env} on ${problem_type} problems"
-        python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --collect_trajs --traj_difficulty ${problem_type} --num_samples ${num_samples} --num_agents 25
+        python -u pud/plots/collect_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --collect_trajs --traj_difficulty ${problem_type} --num_samples ${num_samples} --num_agents 25 ${visual}
     done
 fi
 
