@@ -45,4 +45,5 @@ else
 fi
 
 ## -----------------------------------------------------------------------------
-pud/plots/collect_all_trajs.sh $env $config $unconstrained_ckpt $constrained_ckpt true 
+# pud/plots/collect_all_trajs.sh $env $config $unconstrained_ckpt $constrained_ckpt true 
+pud/plots/collect_all_trajs.sh $env $config $unconstrained_ckpt $constrained_ckpt false 
