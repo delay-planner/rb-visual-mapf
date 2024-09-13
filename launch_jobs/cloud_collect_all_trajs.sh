@@ -23,7 +23,7 @@ export PYTHONPATH=$project_root:$PYTHONPATH
 
 env=$1
 
-if [[ $env = "sc2_staging_20" ]]; then
+if [[ $env = "sc0_staging_20" ]]; then
     unconstrained_ckpt=models/SC0_Staging_20/ckpt/ckpt_0482500
     config=models/SC0_Staging_20/lag/2024-09-11-19-43-42/bk/config.yaml
     constrained_ckpt=models/SC0_Staging_20/lag/2024-09-11-19-43-42/bk/ckpt/ckpt_0250000
