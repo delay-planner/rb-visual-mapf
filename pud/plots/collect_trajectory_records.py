@@ -184,7 +184,7 @@ def load_agent_and_env(agent, eval_env, args, config, constrained=False):
     return agent, eval_env
 
 
-def setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, save=False):
+def setup_problems(eval_env, agent, args, config, basedir, save=False):
 
     habitat = args.visual
     rb_vec = ConstrainedCollector.sample_initial_unconstrained_states(
@@ -202,14 +202,20 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, s
         problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
     else:
         K = 5
+        difficulty = eval_env.max_goal_dist
+        if args.traj_difficulty == "easy":
+            difficulty = eval_env.max_goal_dist // 8
+        elif args.traj_difficulty == "medium":
+            difficulty = eval_env.max_goal_dist // 4
+        elif args.traj_difficulty == "hard":
+            difficulty = eval_env.max_goal_dist // 2
         problems = []
         for _ in tqdm(range(config.num_samples * args.num_agents // K)):
             inter_problems = sample_pbs_by_agent(
-                # K=config.num_samples * 100,
                 K=K,
                 min_dist=0,
                 max_dist=eval_env.max_goal_dist,  # type: ignore
-                target_val=eval_env.max_goal_dist // 2,  # type: ignore
+                target_val=difficulty,  # type: ignore
                 agent=agent,  # type: ignore
                 env=eval_env,  # type: ignore
                 num_states=1000,
@@ -227,7 +233,12 @@ def setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, s
         agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
 
     if save:
-        save_path = basedir / "illustration.npz"
+        if args.traj_difficulty == "easy":
+            save_path = basedir / "easy.npz"
+        elif args.traj_difficulty == "medium":
+            save_path = basedir / "medium.npz"
+        elif args.traj_difficulty == "hard":
+            save_path = basedir / "hard.npz"
         if not habitat:
             np.savez(save_path,
                      rb_vec=rb_vec,
@@ -277,8 +288,10 @@ def argument_parser():
     parser.add_argument("--constrained_ckpt_file", type=str, default="")
     parser.add_argument("--replay_buffer_size", type=int, default="1000")
     parser.add_argument("--unconstrained_ckpt_file", type=str, default="")
+    parser.add_argument("--collect_trajs", default=False, action="store_true")
     parser.add_argument("--load_problem_set", default=False, action="store_true")
     parser.add_argument("--use_unconstrained_ckpt", default=False, action="store_true")
+    parser.add_argument("--traj_difficulty", type=str, default="easy", choices=["easy", "medium", "hard"])
     parser.add_argument("--method_type", type=str,
                         choices=["unconstrained", "unconstrained_search", "constrained", "constrained_search"],
                         default="unconstrained")
@@ -292,7 +305,10 @@ def single_unconstrained_policy(agent, eval_env, problem_setup, args, config, ba
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
-    save_path = basedir / "single_agent" / "unconstrained_records.npy"
+    save_path = basedir / "single_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / "unconstrained_records.npy"
     if save and Path(save_path).exists():
         unconstrained_records = np.load(save_path, allow_pickle=True)
         unconstrained_records = unconstrained_records.tolist()
@@ -325,7 +341,10 @@ def multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, bas
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_records = []
-    save_path = basedir / "multi_agent" / f"unconstrained_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / f"unconstrained_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         unconstrained_records = np.load(save_path, allow_pickle=True)
         unconstrained_records = unconstrained_records.tolist()
@@ -360,7 +379,10 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
-    save_path = basedir / "single_agent" / "unconstrained_search_records.npy"
+    save_path = basedir / "single_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / "unconstrained_search_records.npy"
     if save and Path(save_path).exists():
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
@@ -411,7 +433,10 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
     unconstrained_search_records = []
-    save_path = basedir / "multi_agent" / f"unconstrained_search_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / f"unconstrained_search_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
@@ -465,7 +490,10 @@ def single_constrained_policy(agent, eval_env, problem_setup, args, config, base
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
-    save_path = basedir / "single_agent" / "constrained_records.npy"
+    save_path = basedir / "single_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / "constrained_records.npy"
     if save and Path(save_path).exists():
         constrained_records = np.load(save_path, allow_pickle=True)
         constrained_records = constrained_records.tolist()
@@ -498,7 +526,10 @@ def multi_constrained_policy(agent, eval_env, problem_setup, args, config, based
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=True)
 
     constrained_records = []
-    save_path = basedir / "multi_agent" / f"constrained_records_{args.num_agents}.npy"
+    save_path = basedir / "multi_agent" / args.traj_difficulty
+    if not save_path.exists():
+        save_path.mkdir(parents=True)
+    save_path = save_path / f"constrained_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         constrained_records = np.load(save_path, allow_pickle=True)
         constrained_records = constrained_records.tolist()
@@ -563,7 +594,10 @@ def single_constrained_search_policy(
         logging.info(f"Factor: {factor}")
 
         constrained_search_records = []
-        save_path = basedir / "single_agent" / f"constrained_search_records_{factor}.npy"
+        save_path = basedir / "single_agent" / args.traj_difficulty
+        if not save_path.exists():
+            save_path.mkdir(parents=True)
+        save_path = save_path / f"constrained_search_records_{factor}.npy"
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         if save and Path(save_path).exists():
@@ -622,7 +656,10 @@ def single_constrained_search_policy(
         constrained_search_factored_records.append(constrained_search_records)
 
     if save:
-        save_path = basedir / "single_agent" / "constrained_search_factored_records.npy"
+        save_path = basedir / "single_agent" / args.traj_difficulty
+        if not save_path.exists():
+            save_path.mkdir(parents=True)
+        save_path = save_path / "constrained_search_factored_records.npy"
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         np.save(save_path, constrained_search_factored_records)
@@ -662,7 +699,10 @@ def multi_constrained_search_policy(
         logging.info(f"Factor: {factor}")
 
         constrained_search_records = []
-        save_path = basedir / "multi_agent" / f"constrained_search_records_{args.num_agents}_{factor}.npy"
+        save_path = basedir / "multi_agent" / args.traj_difficulty
+        if not save_path.exists():
+            save_path.mkdir(parents=True)
+        save_path = save_path / f"constrained_search_records_{args.num_agents}_{factor}.npy"
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         if save and Path(save_path).exists():
@@ -725,7 +765,10 @@ def multi_constrained_search_policy(
         constrained_search_factored_records.append(constrained_search_records)
 
     if save:
-        save_path = basedir / "multi_agent" / f"constrained_search_factored_records_{args.num_agents}.npy"
+        save_path = basedir / "multi_agent" / args.traj_difficulty
+        if not save_path.exists():
+            save_path.mkdir(parents=True)
+        save_path = save_path / f"constrained_search_factored_records_{args.num_agents}.npy"
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         np.save(save_path, constrained_search_factored_records)
@@ -745,38 +788,42 @@ def main():
     else:
         basedir = basedir / config.env.simulator_settings.scene.lower()
 
-    if args.load_problem_set:
+    if not basedir.exists():
+        basedir.mkdir(parents=True)
+
+    if args.collect_trajs:
+        problem_setup = setup_problems(eval_env, agent, args, config, basedir, save=True)
+    else:
+        assert args.load_problem_set
         assert len(args.problem_set_file) > 0
         problem_setup = load_problem_set(args.problem_set_file, eval_env, agent, args.visual)
-    else:
-        problem_setup = setup_problems(eval_env, agent, trained_cost_limit, args, config, basedir, save=True)
 
-    if args.method_type == "unconstrained":
-        if args.num_agents == 1:
-            single_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+        if args.method_type == "unconstrained":
+            if args.num_agents == 1:
+                single_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+            else:
+                multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+        elif args.method_type == "unconstrained_search":
+            if args.num_agents == 1:
+                single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+            else:
+                multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+        elif args.method_type == "constrained":
+            if args.num_agents == 1:
+                single_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+            else:
+                multi_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+        elif args.method_type == "constrained_search":
+            if args.num_agents == 1:
+                single_constrained_search_policy(
+                    agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
+                )
+            else:
+                multi_constrained_search_policy(
+                    agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
+                )
         else:
-            multi_unconstrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
-    elif args.method_type == "unconstrained_search":
-        if args.num_agents == 1:
-            single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
-        else:
-            multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
-    elif args.method_type == "constrained":
-        if args.num_agents == 1:
-            single_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
-        else:
-            multi_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
-    elif args.method_type == "constrained_search":
-        if args.num_agents == 1:
-            single_constrained_search_policy(
-                agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
-            )
-        else:
-            multi_constrained_search_policy(
-                agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
-            )
-    else:
-        raise ValueError("Invalid method type")
+            raise ValueError("Invalid method type")
 
 
 if __name__ == "__main__":
