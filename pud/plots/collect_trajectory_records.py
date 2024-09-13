@@ -589,7 +589,7 @@ def single_constrained_search_policy(
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
     constrained_search_factored_records = []
-    edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
+    edge_cost_limit_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
     for factor in edge_cost_limit_factors:
         logging.info(f"Factor: {factor}")
 
@@ -694,7 +694,7 @@ def multi_constrained_search_policy(
     problems = problem_setup[-1].copy()
 
     constrained_search_factored_records = []
-    edge_cost_limit_factors = [0.25, 0.5, 0.75, 1.0]
+    edge_cost_limit_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
     for factor in edge_cost_limit_factors:
         logging.info(f"Factor: {factor}")
 
