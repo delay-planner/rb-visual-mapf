@@ -6,7 +6,7 @@ config_file=$2
 agents=(1 5 10 20)
 constrained_ckpt_file=$4
 unconstrained_ckpt_file=$3
-problem_types=("easy" "medium" "hard")
+problem_types=("hard" "medium" "easy")
 method_types=("unconstrained" "constrained" "unconstrained_search" "constrained_search")
 
 env_options=("centerdot" "sc2_staging_08" "sc0_staging_20" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15")
