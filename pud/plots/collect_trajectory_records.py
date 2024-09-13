@@ -100,7 +100,7 @@ def pointenv_setup(args):
             **config.agent,
         )
 
-    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file, map_location=torch.device(config.device)))
     agent.to(torch.device(config.device))
     agent.eval()
 
@@ -162,7 +162,7 @@ def habitat_setup(args):
         cost_kwargs=config.agent_cost_kwargs.toDict(),
     )
 
-    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file, map_location=torch.device(config.device)))
     agent.to(torch.device(config.device))
     agent.eval()
 
@@ -171,9 +171,9 @@ def habitat_setup(args):
 
 def load_agent_and_env(agent, eval_env, args, config, constrained=False):
     if constrained:
-        agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+        agent.load_state_dict(torch.load(args.constrained_ckpt_file, map_location=torch.device(config.device)))
     else:
-        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
+        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file, map_location=torch.device(config.device)))
     agent.to(torch.device(config.device))
     agent.eval()
 
@@ -194,7 +194,7 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
     if habitat:
         rb_vec_grid, rb_vec = rb_vec
 
-    agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
+    agent.load_state_dict(torch.load(args.unconstrained_ckpt_file, map_location=torch.device(config.device)))
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
     unconstrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
 
@@ -226,11 +226,11 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
             problems.extend(inter_problems)
         print(len(problems))
 
-    agent.load_state_dict(torch.load(args.constrained_ckpt_file))
+    agent.load_state_dict(torch.load(args.constrained_ckpt_file, map_location=torch.device(config.device)))
     constrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
 
     if "unconstrained" in args.method_type:
-        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file))
+        agent.load_state_dict(torch.load(args.unconstrained_ckpt_file, map_location=torch.device(config.device)))
 
     if save:
         if args.traj_difficulty == "easy":

@@ -383,7 +383,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
         self.g = g
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
-        self.agent.load_state_dict(torch.load(self.ckpts["unconstrained"]))
+        self.agent.load_state_dict(torch.load(self.ckpts["unconstrained"], map_location="cuda:0"))
         start_to_rb_cost = self.agent.get_pairwise_cost(
             [state["observation"]],
             self.rb_vec,
@@ -394,7 +394,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
             [state["goal"]],
             aggregate=self.cost_aggregate,
         )
-        self.agent.load_state_dict(torch.load(self.ckpts["constrained"]))
+        self.agent.load_state_dict(torch.load(self.ckpts["constrained"], map_location="cuda:0"))
         return start_to_rb_cost, rb_to_goal_cost
 
     def get_closest_waypoint(self, state):
