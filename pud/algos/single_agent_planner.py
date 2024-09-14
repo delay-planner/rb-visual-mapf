@@ -1,6 +1,7 @@
 from __future__ import annotations
 import heapq
 import logging
+import time
 from networkx import Graph
 from typing import Dict, List, Union
 
@@ -160,6 +161,7 @@ def a_star(
     constraints,
     weighted: bool = False,
     max_iterations: int = 100000,
+    max_time: int = 300,
 ) -> Union[List[int], None]:
 
     open_list = []
@@ -181,6 +183,7 @@ def a_star(
         graph.add_edge(node, node, weight=0)
 
     iterations = 0
+    start_time = time.time()
     while len(open_list) != 0 and iterations < max_iterations:
 
         iterations += 1
@@ -253,6 +256,11 @@ def a_star(
                         successor,
                     ),
                 )
+
+        loop_time = time.time() - start_time
+        if loop_time > max_time:
+            logging.debug(f"Exceeded max time of {max_time}")
+            return None
 
         # Wait Action
         # successor_location = current_node["location"]

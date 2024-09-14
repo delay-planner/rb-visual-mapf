@@ -207,6 +207,7 @@ class CBSSolver(object):
         seed: Union[int, None] = None,
         weighted: bool = False,
         collision_radius=0.1,
+        max_expanded=10000,
     ):
 
         if seed is not None:
@@ -217,6 +218,7 @@ class CBSSolver(object):
         self.weighted = weighted
         self.disjoint = disjoint
         self.num_agents = len(starts)
+        self.max_expanded = max_expanded
         self.graph_waypoints = graph_waypoints
         self.collision_radius = collision_radius
 
@@ -271,7 +273,7 @@ class CBSSolver(object):
         logging.debug("Generated: ", self.num_generated)
         self.num_generated += 1
 
-        while len(self.open_list) > 0:
+        while len(self.open_list) > 0 and self.num_expanded < self.max_expanded:
             id, current_node = heapq.heappop(self.open_list)[2:]
             logging.debug("Expanded: ", id)
             self.num_expanded += 1
