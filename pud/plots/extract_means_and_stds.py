@@ -38,6 +38,9 @@ def extract_multi_agent_metrics(records, num_agents, search_based=(False, None))
     mean_steps = []
     mean_rewards = []
     mean_cumulative_costs = []
+    if search_based[0]:
+        fallback_num = 0
+        fallback_successes = 0
     for idx, record in enumerate(records):
         steps = []
         rewards = []
@@ -45,10 +48,12 @@ def extract_multi_agent_metrics(records, num_agents, search_based=(False, None))
         cumulative_costs = []
         if len(record[0]) == 0:
             if search_based[0]:
+                fallback_num += 1
                 for i in range(num_agents):
                     successes.append(search_based[1][idx][i]["success"])
                 all_success = all(successes)
                 if all_success:
+                    fallback_successes += 1
                     success_rate += 1
                     for i in range(num_agents):
                         steps.append(search_based[1][idx][i]["steps"])
@@ -73,6 +78,10 @@ def extract_multi_agent_metrics(records, num_agents, search_based=(False, None))
             mean_rewards.append(np.mean(rewards))
             mean_cumulative_costs.append(np.max(cumulative_costs))
 
+    # if search_based[0]:
+    #     if fallback_num != 0:
+    #         ratio = fallback_successes / fallback_num  # type: ignore
+    #         print(f"Fallbacks Success Ratio: {ratio:.2f}")
     metrics = {
         'mean_steps': mean_steps,
         'mean_rewards': mean_rewards,
@@ -89,29 +98,29 @@ def means_and_stddevs(metrics, num_agents):
     unconstrained_search_cc = metrics[1][key]
     constrained_cc = metrics[2][key]
     constrained_search_cc = [metric[key] for metric in metrics[3]]
-    constrained_search_uc = [metric[key] for metric in metrics[4]]
+    # constrained_search_uc = [metric[key] for metric in metrics[4]]
 
     unconstrained_cc_mean = np.mean(unconstrained_cc)
     unconstrained_search_cc_mean = np.mean(unconstrained_search_cc)
     constrained_cc_mean = np.mean(constrained_cc)
     constrained_search_cc_means = [np.mean(metric) for metric in constrained_search_cc]
     best_constrained_search_cc_index = np.argmin(constrained_search_cc_means)
-    constrained_search_uc_means = [np.mean(metric) for metric in constrained_search_uc]
-    best_constrained_search_uc_index = np.argmin(constrained_search_uc_means)
+    # constrained_search_uc_means = [np.mean(metric) for metric in constrained_search_uc]
+    # best_constrained_search_uc_index = np.argmin(constrained_search_uc_means)
 
     unconstrained_cc_stddev = np.std(unconstrained_cc)
     unconstrained_search_cc_stddev = np.std(unconstrained_search_cc)
     constrained_cc_stddev = np.std(constrained_cc)
     constrained_search_cc_stddevs = [np.std(metric) for metric in constrained_search_cc]
-    constrained_search_uc_stddevs = [np.std(metric) for metric in constrained_search_uc]
+    # constrained_search_uc_stddevs = [np.std(metric) for metric in constrained_search_uc]
 
     unconstrained_sr = metrics[0]["success_rate"]
     unconstrained_search_sr = metrics[1]["success_rate"]
     constrained_sr = metrics[2]["success_rate"]
     constrained_search_sr = [metric["success_rate"] for metric in metrics[3]]
-    constrained_search_uc_sr = [metric["success_rate"] for metric in metrics[4]]
+    # constrained_search_uc_sr = [metric["success_rate"] for metric in metrics[4]]
 
-    # edge_cost_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
+    edge_cost_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
 
     print(f"Num Agents\t\t\t: {num_agents}")
     print(f"Unconstrained\t\t\t: {unconstrained_cc_mean:.2f} +/- {unconstrained_cc_stddev:.2f} "
@@ -119,18 +128,18 @@ def means_and_stddevs(metrics, num_agents):
     print(f"Unconstrained Search\t\t: {unconstrained_search_cc_mean:.2f} +/- {unconstrained_search_cc_stddev:.2f} "
           f"({unconstrained_search_sr:.2f})")
     print(f"Constrained\t\t\t: {constrained_cc_mean:.2f} +/- {constrained_cc_stddev:.2f} ({constrained_sr:.2f})")
-    # for idx, metric in enumerate(constrained_search_cc_means):
-    #     print(f"Constrained Search ({edge_cost_factors[idx]})\t: "
-    #           f"{metric:.2f} +/- {constrained_search_cc_stddevs[idx]:.2f}")
+    for idx, metric in enumerate(constrained_search_cc_means):
+        print(f"Constrained Search ({edge_cost_factors[idx]})\t: "
+              f"{metric:.2f} +/- {constrained_search_cc_stddevs[idx]:.2f} ({constrained_search_sr[idx]:.2f})")
     print(f"Best Constrained Search\t\t: {constrained_search_cc_means[best_constrained_search_cc_index]:.2f} "
           f"+/- {constrained_search_cc_stddevs[best_constrained_search_cc_index]:.2f} "
           f"({constrained_search_sr[best_constrained_search_cc_index]:.2f})")
     # for idx, metric in enumerate(constrained_search_uc_means):
     #     print(f"Constrained Search UC ({edge_cost_factors[idx]})\t: "
-    #           f"{metric:.2f} +/- {constrained_search_uc_stddevs[idx]:.2f}")
-    print(f"Best Constrained Search UC\t: {constrained_search_uc_means[best_constrained_search_uc_index]:.2f} "
-          f"+/- {constrained_search_uc_stddevs[best_constrained_search_uc_index]:.2f} "
-          f"({constrained_search_uc_sr[best_constrained_search_uc_index]:.2f})")
+    #           f"{metric:.2f} +/- {constrained_search_uc_stddevs[idx]:.2f} ({constrained_search_uc_sr[idx]:.2f})")
+    # print(f"Best Constrained Search UC\t: {constrained_search_uc_means[best_constrained_search_uc_index]:.2f} "
+    #       f"+/- {constrained_search_uc_stddevs[best_constrained_search_uc_index]:.2f} "
+    #       f"({constrained_search_uc_sr[best_constrained_search_uc_index]:.2f})")
 
 
 def collect_metrics(basedir, problem_type, n_agents):
@@ -140,9 +149,9 @@ def collect_metrics(basedir, problem_type, n_agents):
         unconstrained_records = np.load(local_basedir / "unconstrained_records.npy", allow_pickle=True)
         unconstrained_search_records = np.load(local_basedir / "unconstrained_search_records.npy", allow_pickle=True)
         constrained_records = np.load(local_basedir / "constrained_records.npy", allow_pickle=True)
-        constrained_search_factored_records = np.load(
-            local_basedir / "constrained_search_factored_records_uc.npy",
-            allow_pickle=True)
+        # constrained_search_factored_records = np.load(
+        #     local_basedir / "constrained_search_factored_records_uc.npy",
+        #     allow_pickle=True)
         constrained_search_factored_records_cc = np.load(
             local_basedir / "constrained_search_factored_records.npy",
             allow_pickle=True)
@@ -151,8 +160,8 @@ def collect_metrics(basedir, problem_type, n_agents):
         unconstrained_search_metrics = extract_single_agent_metrics(unconstrained_search_records,
                                                                     (True, unconstrained_records))
         constrained_metrics = extract_single_agent_metrics(constrained_records)
-        constrained_search_factored_metrics = [extract_single_agent_metrics(csr, (True, constrained_records))
-                                               for csr in constrained_search_factored_records]
+        # constrained_search_factored_metrics = [extract_single_agent_metrics(csr, (True, constrained_records))
+        #                                        for csr in constrained_search_factored_records]
         constrained_search_factored_metrics_cc = [extract_single_agent_metrics(csr, (True, constrained_records))
                                                   for csr in constrained_search_factored_records_cc]
     else:
@@ -162,9 +171,9 @@ def collect_metrics(basedir, problem_type, n_agents):
         unconstrained_search_records = np.load(local_basedir / f"unconstrained_search_records_{n_agents}.npy",
                                                allow_pickle=True)
         constrained_records = np.load(local_basedir / f"constrained_records_{n_agents}.npy", allow_pickle=True)
-        constrained_search_factored_records = np.load(
-            local_basedir / f"constrained_search_factored_records_{n_agents}_uc.npy",
-            allow_pickle=True)
+        # constrained_search_factored_records = np.load(
+        #     local_basedir / f"constrained_search_factored_records_{n_agents}_uc.npy",
+        #     allow_pickle=True)
         constrained_search_factored_records_cc = np.load(
             local_basedir / f"constrained_search_factored_records_{n_agents}.npy",
             allow_pickle=True)
@@ -173,14 +182,16 @@ def collect_metrics(basedir, problem_type, n_agents):
         unconstrained_search_metrics = extract_multi_agent_metrics(unconstrained_search_records, n_agents,
                                                                    (True, unconstrained_records))
         constrained_metrics = extract_multi_agent_metrics(constrained_records, n_agents)
-        constrained_search_factored_metrics = [extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
-                                               for csr in constrained_search_factored_records]
+        # constrained_search_factored_metrics = [extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
+        #                                        for csr in constrained_search_factored_records]
         constrained_search_factored_metrics_cc = [extract_multi_agent_metrics(csr, n_agents,
                                                                               (True, constrained_records))
                                                   for csr in constrained_search_factored_records_cc]
 
+    # return means_and_stddevs([unconstrained_metrics, unconstrained_search_metrics, constrained_metrics,
+    #                           constrained_search_factored_metrics, constrained_search_factored_metrics_cc], n_agents)
     return means_and_stddevs([unconstrained_metrics, unconstrained_search_metrics, constrained_metrics,
-                              constrained_search_factored_metrics, constrained_search_factored_metrics_cc], n_agents)
+                              constrained_search_factored_metrics_cc], n_agents)
 
 
 if __name__ == "__main__":
