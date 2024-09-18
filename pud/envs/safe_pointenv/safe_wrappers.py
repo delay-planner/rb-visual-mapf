@@ -6,7 +6,7 @@ from typing import Union, List
 
 from pud.envs.wrappers import TimeLimit
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
-from pud.algos.cbfs_eval import sample_precompiled_grid_policies
+from pud.algos.cbfs.cbfs_eval import sample_precompiled_grid_policies
 
 class SafeGoalConditionedPointWrapper(gym.Wrapper):
     """

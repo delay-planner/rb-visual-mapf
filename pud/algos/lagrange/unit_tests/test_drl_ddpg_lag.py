@@ -3,8 +3,8 @@ import torch
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.ddpg import (GoalConditionedActor, GoalConditionedCritic)
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.algos.ddpg import (GoalConditionedActor, GoalConditionedCritic)
 
 """
 python pud/algos/lagrange/unit_tests/test_drl_ddpg_lag.py TestDRLDDPGLag.test_lagrange

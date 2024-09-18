@@ -1,7 +1,7 @@
 import unittest
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
 
 """
 python pud/algos/unit_tests/test_buffer.py TestConstrainedBuffer.test_add

@@ -7,20 +7,20 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from pud.policies import VectorGaussianPolicy
+from pud.algos.policies import VectorGaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
-from pud.vision_agent import VisionUVFDDPG
-from pud.ddpg import GoalConditionedCritic
+from pud.algos.vision.vision_agent import VisionUVFDDPG
+from pud.algos.ddpg import GoalConditionedCritic
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn
 #from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.algos.visual_buffer import VisualReplayBuffer
-from pud.collector import Collector
+from pud.buffers.visual_buffer import VisualReplayBuffer
+from pud.collectors.collector import Collector
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-from pud.runner_vec import train_eval, eval_pointenv_dists
+from pud.runners.runner_vec import train_eval, eval_pointenv_dists
 from tqdm.auto import tqdm
 import shutil
 from typing import List

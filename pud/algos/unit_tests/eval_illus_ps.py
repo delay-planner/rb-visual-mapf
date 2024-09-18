@@ -11,16 +11,16 @@ import yaml
 from dotmap import DotMap
 from copy import deepcopy
 
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.algos.constrained_collector import eval_agent_from_Q
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.collectors.constrained_collector import eval_agent_from_Q
 
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
+from pud.algos.ddpg import GoalConditionedActor, GoalConditionedCritic
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
-from pud.visualize import visualize_eval_records
+from pud.visualizers.visualize import visualize_eval_records
 from pud.utils import set_env_seed, set_global_seed
 import matplotlib.pyplot as plt
 

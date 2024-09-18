@@ -7,11 +7,11 @@ from tqdm import tqdm
 from pathlib import Path
 from dotmap import DotMap
 
-from pud.ddpg import GoalConditionedCritic
-from pud.vision_agent import LagVisionUVFDDPG
+from pud.algos.ddpg import GoalConditionedCritic
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.algos.constrained_collector import ConstrainedCollector
+from pud.collectors.constrained_collector import ConstrainedCollector
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     safe_habitat_env_load_fn,

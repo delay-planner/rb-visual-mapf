@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Union
 import numpy as np
 import torch
 
-from pud.ddpg import (EnsembledCritic, GoalConditionedActor, GoalConditionedCritic)
+from pud.algos.ddpg import (EnsembledCritic, GoalConditionedActor, GoalConditionedCritic)
 from pud.algos.distributional_ops import CategoricalActivation
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.ddpg import UVFDDPG
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.algos.ddpg import UVFDDPG
 from pud.algos.lagrange.lagrange import Lagrange
 from pud.algos.data_struct import inp_to_torch_device
 

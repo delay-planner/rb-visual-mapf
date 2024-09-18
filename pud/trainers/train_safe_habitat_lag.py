@@ -1,4 +1,5 @@
 import torch
+
 import yaml
 import argparse
 from pathlib import Path
@@ -7,16 +8,16 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.algos.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
-from pud.algos.vision.vision_agent import GCOVisionUVFDDPG
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
-from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+from pud.buffers.visual_buffer import ConstrainedVisualReplayBuffer
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-
-from pud.algos.gco.runner_habitat import train_eval, eval_pointenv_dists
+from pud.runners.runner_habitat_lag import train_eval, eval_pointenv_dists
+from tqdm.auto import tqdm
 import shutil
 from typing import List
 
@@ -104,6 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
     parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
+    parser.add_argument("--use_disk", action="store_true", help="use disk if ram is too small for replay buffer")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -155,7 +157,7 @@ if __name__ == "__main__":
     # Custom Logging
     logger = setup_logger(
         root_dir=log_dir.as_posix(), 
-        subdir_names=["ckpt", "tfevent", "bk", "imgs"],
+        subdir_names=["ckpt", "tfevent", "bk", "imgs", "buffer"],
         tag_time=True,
         )
 
@@ -170,10 +172,10 @@ if __name__ == "__main__":
     logger["sampler"] = cfg.sampler
     logger["sampler_extra"] = cfg.sampler_extra
 
-    #shutil.copy("launch_jobs/local_train_safe_habitat_lag.sh", logger["bk"].as_posix())
-    #shutil.copy("launch_jobs/cloud_train_safe_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/local_train_safe_habitat_lag.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/cloud_train_safe_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
-    shutil.copy("pud/algos/gco/constraint_act.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/runner_habitat_lag.py", logger["bk"].as_posix())
     shutil.copy("pud/algos/visual_collector.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
@@ -218,7 +220,19 @@ if __name__ == "__main__":
     cfg.agent["max_action"] = float(env.action_space.high[0])
     
 
-    agent = GCOVisionUVFDDPG(
+    agent = LagVisionUVFDDPG(
+        width=cfg.env.simulator_settings.width,
+        height=cfg.env.simulator_settings.height,
+        in_channels=4,
+        act_fn=torch.nn.SELU,
+        #act_fn=torch.nn.ReLU,
+        encoder=args.encoder,
+        device=cfg.device,
+        **cfg.agent.toDict(),
+        cost_kwargs=cfg.agent_cost_kwargs.toDict(),
+    )
+
+    agent_g = LagVisionUVFDDPG(
         width=cfg.env.simulator_settings.width,
         height=cfg.env.simulator_settings.height,
         in_channels=4,
@@ -231,17 +245,39 @@ if __name__ == "__main__":
     )
 
     agent.to(torch.device(args.device))
+    agent_g.to(torch.device(args.device))
+
+    agent_g.load_state_dict(torch.load(args.ckpt))
+    agent.load_state_dict(torch.load(args.ckpt))
+
+    agent_g.eval()
+
     print(agent)
 
-    replay_buffer = ConstrainedLargeReplayBuffer(
-        max_size=cfg.replay_buffer.max_size,
-        )
+    replay_buffer = None
+    if args.use_disk:
+        from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+        replay_buffer = ConstrainedLargeReplayBuffer(
+            #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            scratch_dir=logger["buffer"],
+            )
+    else:
+        replay_buffer = ConstrainedVisualReplayBuffer(
+            obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            )
 
     policy = GaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
         policy=policy,
         agent=agent,
+        agent_g=agent_g,
         replay_buffer=replay_buffer,
         env=env,
         eval_env=eval_env,

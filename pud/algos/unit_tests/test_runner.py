@@ -1,11 +1,11 @@
 import unittest
 from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper, safe_env_load_fn
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.algos.constrained_collector import ConstrainedCollector
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.collectors.constrained_collector import ConstrainedCollector
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.policies import GaussianPolicy
-from pud.ddpg import GoalConditionedCritic
-from pud.algos.crl_runner import eval_pointenv_cost_constrained_dists, ConstrainedReplayBuffer
+from pud.algos.policies import GaussianPolicy
+from pud.algos.ddpg import GoalConditionedCritic
+from pud.runners.crl_runner import eval_pointenv_cost_constrained_dists, ConstrainedReplayBuffer
 from termcolor import cprint
 
 """

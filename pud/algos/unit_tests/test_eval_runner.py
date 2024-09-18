@@ -4,7 +4,7 @@ import argparse
 import numpy as np
 from dotmap import DotMap
 
-from pud.ddpg import GoalConditionedCritic
+from pud.algos.ddpg import GoalConditionedCritic
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_wrappers import (
     #SafeGoalConditionedPointWrapper, 
@@ -13,7 +13,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
     safe_env_load_fn,
 )
 from pud.utils import set_env_seed, set_global_seed
-#from pud.algos.crl_runner_v2 import train_eval, eval_pointenv_cost_constrained_dists
+#from pud.runners.crl_runner_v2 import train_eval, eval_pointenv_cost_constrained_dists
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -80,15 +80,15 @@ if __name__ == "__main__":
     )
     agent.to(torch.device(args.device))
 
-    from pud.policies import GaussianPolicy
+    from pud.algos.policies import GaussianPolicy
     # gaussian policy seems just add exploration noise, the evaluation code
     # does not use it
     policy = GaussianPolicy(agent)
 
     print(agent)
 
-    from pud.algos.constrained_collector import ConstrainedCollector as Collector
-    from pud.algos.constrained_collector import eval_agent_from_Q
+    from pud.collectors.constrained_collector import ConstrainedCollector as Collector
+    from pud.collectors.constrained_collector import eval_agent_from_Q
     from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost
 
     eval_env.set_use_q(True)

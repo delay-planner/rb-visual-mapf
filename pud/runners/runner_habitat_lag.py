@@ -2,17 +2,19 @@ import time
 from pathlib import Path
 import matplotlib.pyplot as plt
 from typing import Optional
+from termcolor import cprint
 
 import numpy as np
 import torch
+from copy import deepcopy
 from dotmap import DotMap
 from tqdm.auto import tqdm
-from pud.algos.vision.vision_agent import GCOVisionUVFDDPG
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointQueueWrapper, SafeTimeLimit)
 from pud.envs.simple_navigation_env import set_env_difficulty
 from pud.collectors.visual_collector import ConstrainedVisualCollector, eval_agent_from_Q
-from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+from pud.buffers.visual_buffer import ConstrainedVisualReplayBuffer
 from pud.algos.policies import GaussianPolicy
 from pud.envs.habitat_navigation_env import plot_wall, plot_traj, plot_start_n_goals
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
@@ -52,6 +54,8 @@ def log_time(step:int=0, log:dict=None):
 def visualize_visual_eval_records(eval_records, 
         eval_env, ax:plt.axes, starts=[], goals=[], 
         normalize_map=False,
+        color:Optional[list]=None,
+        append_label:str="",
         ):
     """
     for habitat env
@@ -67,12 +71,14 @@ def visualize_visual_eval_records(eval_records,
     ax = plot_wall(eval_env.walls.copy(), ax, normalize=normalize_map)
 
     for i in eval_records.keys():
+        traj_color = color if color else distinct_colors[i]
+
         ax = plot_traj(
             traj=np.stack(eval_records[i]["traj"]), walls=eval_env.walls.copy(), 
             normalize=normalize_map,
             ax=ax,
-            color=distinct_colors[i],
-            label="traj{:0>2d}".format(i),
+            color=traj_color,
+            label=append_label+"traj{:0>2d}".format(i),
             marker="o",
             markersize=4,
                     )
@@ -86,15 +92,56 @@ def visualize_visual_eval_records(eval_records,
         ax.scatter(
             goals[i:i+1,0],
             goals[i:i+1,1], 
-            marker="*", s=30, color=distinct_colors[i],
+            marker="*", s=30, color=traj_color,
             )
 
     return ax
 
+def update_train_pbs_by_metric(
+        agent: LagVisionUVFDDPG,
+        env: SafeGoalConditionedHabitatPointQueueWrapper,
+        target_cost:float,
+        #ref_distances=[2, 5, 10], # reference grouping based on estimated distances
+        #ref_cost_intervals=[0., 0.2, 0.5, 1.0], # grouping cost eval results
+        use_uncertainty:bool=True, # boost samples of high uncertainty 
+        logger:Optional[dict]=None,
+    ):
+    # update pbs in the train eval
+    new_train_pbs = []
+    #for dd in ref_distances:
+    #pbs_i = sample_pbs_by_agent(env=env, 
+    #        agent=agent, 
+    #        num_states=sample_size,
+    #        target_val=None,
+    #        K=num_pbs_per_ref,
+    #        ensemble_agg="mean",
+    #        min_dist=0.0,
+    #        max_dist=20.0,
+    #        use_uncertainty=use_uncertainty, # boost samples of high uncertainty 
+    #        uncertainty_lb=uncertainty_lb, 
+    #        uncertainty_ub=uncertainty_ub,
+    #        )
+    #new_train_pbs.extend(pbs_i)
+
+    cost_eval_pbs = sample_cost_pbs_by_agent(
+            env=env,
+            agent=agent,
+            use_uncertainty=use_uncertainty,
+            **logger["sampler"]
+            )
+    
+    new_train_pbs.extend(cost_eval_pbs)
+
+    #cost_eval_pbs = load_pb_set(file_path=illustration_pb_file,
+    #        env=env,
+    #        agent=agent,)
+    env.set_pbs(pb_list=new_train_pbs)
+
 def train_eval(
-    policy: GaussianPolicy,
-    agent: GCOVisionUVFDDPG,
-    replay_buffer: ConstrainedLargeReplayBuffer,
+    policy:GaussianPolicy,
+    agent:LagVisionUVFDDPG,
+    agent_g:LagVisionUVFDDPG,
+    replay_buffer: ConstrainedVisualReplayBuffer,
     env: SafeGoalConditionedHabitatPointQueueWrapper,
     eval_env: SafeGoalConditionedHabitatPointQueueWrapper,
     num_iterations=int(1e6),
@@ -112,13 +159,16 @@ def train_eval(
     env.set_verbose(False)
     env.set_use_q(True)
     # train cost critic but not penalize unsafe actions
-    agent.set_lag_status(turn_on_lag=False)
-
+    agent.set_lag_status(turn_on_lag=True)
 
     time_logs = log_time(step=0)
     collector = ConstrainedVisualCollector(
         policy, replay_buffer, env, initial_collect_steps=initial_collect_steps
     )
+
+    ep_cost = 0.0
+    num_eps = collector.num_eps
+
     collector.step(collector.initial_collect_steps)
 
     for i in tqdm(range(1, num_iterations + 1), total=num_iterations, 
@@ -132,6 +182,15 @@ def train_eval(
             replay_buffer, iterations=opt_steps, batch_size=batch_size_opt
         )
 
+        if collector.num_eps > num_eps:
+            ep_cost = collector.past_eps[-1]["ep_cost"]
+            ep_len = collector.past_eps[-1]["ep_len"]
+            if verbose:
+                cprint("[INFO] eps Jc={:.2f}, eps length={}".format(ep_cost, ep_len), "green")
+            num_eps = collector.num_eps
+            agent.optimize_lagrange(ep_cost=ep_cost)
+
+
         if i % opt_log_interval == 0:
             if verbose:
                 print(f"iteration = {i}, opt_info = {opt_info}")
@@ -143,7 +202,26 @@ def train_eval(
             agent.eval()
             if verbose:
                 print(f"evaluating iteration = {i}")
-            eval_info = eval_func(agent, eval_env, logger=logger,)
+
+            # use reference agent to generate problem samples
+            target_cost = np.random.uniform(
+                low=logger["sampler_extra"]["cost_bounds"][0],
+                high=logger["sampler_extra"]["cost_bounds"][1],
+                )
+            update_train_pbs_by_metric(
+                agent=agent_g,
+                env=env,
+                use_uncertainty=True,
+                logger=logger,
+                target_cost=target_cost,
+            )
+
+            eval_info = eval_func(
+                        agent=agent,
+                        eval_env=eval_env,
+                        agent_g=agent_g,
+                        logger=logger,
+                        )
             if verbose:
                 print("-" * 10)
 
@@ -158,67 +236,9 @@ def train_eval(
                 logger["tb"].add_scalar(
                     "Opt/cost_critic_loss", np.mean(opt_info["cost_critic_loss"]), global_step=i
                 )
+                logger["tb"].add_scalar("Opt/Lagrange_Multiplier", agent.lagrange.lagrangian_multiplier.item(), global_step=i)
             
             if i > 1 and i % eval_interval == 0:
-                # for dists
-                field_header = "Eval Dist ~ "
-                for ii in eval_info["dists"]:
-                    logger["tb"].add_scalars(field_header+"{:0>2d}/mean".format(eval_info["dists"][ii]["ref"]),
-                    tag_scalar_dict={
-                        "pred": np.mean(eval_info["dists"][ii]["pred"]),
-                        "val": -1.0*np.mean(eval_info["dists"][ii]["vals"]),
-                        }, global_step=i)
-
-                    logger["tb"].add_scalars(field_header+"{:0>2d}/std".format(eval_info["dists"][ii]["ref"]),
-                    tag_scalar_dict={
-                        "pred": np.std(eval_info["dists"][ii]["pred"]),
-                        "val": np.std(eval_info["dists"][ii]["vals"]),
-                        }, global_step=i)
-
-                    N_success = np.array(eval_info["dists"][ii]["success"], dtype=float)
-                    if len(N_success) > 0:
-                        success_rate = np.sum(N_success) / len(N_success)
-                        logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["ref"]), success_rate, global_step=i)
-                
-                field_header = "Eval Cost ~ "
-                for ii in eval_info["costs"]:
-                    logger["tb"].add_scalars(field_header+"{:.2f}/mean".format(eval_info["costs"][ii]["ref"]), 
-                        tag_scalar_dict={
-                            "pred": np.mean(eval_info["costs"][ii]["pred"]),
-                            "val": np.mean(eval_info["costs"][ii]["vals"]),
-                        }, global_step=i)
-                    logger["tb"].add_scalars(field_header+"{:.2f}/std".format(eval_info["costs"][ii]["ref"]), 
-                        tag_scalar_dict={
-                            "pred": np.std(eval_info["costs"][ii]["pred"]),
-                            "val": np.std(eval_info["costs"][ii]["vals"]),
-                        }, global_step=i)
-
-                    N_success = np.array(eval_info["costs"][ii]["success"], dtype=float)
-                    if len(N_success) > 0:
-                        success_rate = np.sum(N_success) / len(N_success)
-                        logger["tb"].add_scalar(field_header+"{:.2f}/success_rate".format(eval_info["costs"][ii]["ref"]), success_rate, global_step=i)
-                    logger["tb"].add_scalar(field_header+"{:.2f}/N".format(eval_info["costs"][ii]["ref"]), len(N_success), global_step=i)
-
-                field_header = "Eval Ref ~ "
-                if "ref" in eval_info:
-                    for ii in eval_info["ref"]:
-                        logger["tb"].add_scalars(field_header+"{}/mean".format(ii), 
-                            tag_scalar_dict={
-                                "pred": np.mean(eval_info["ref"][ii]["pred"]),
-                                "val": np.mean(eval_info["ref"][ii]["vals"]),
-                            }, global_step=i)
-                        logger["tb"].add_scalars(field_header+"{}/std".format(ii), 
-                            tag_scalar_dict={
-                                "pred": np.std(eval_info["ref"][ii]["pred"]),
-                                "val": np.std(eval_info["ref"][ii]["vals"]),
-                            }, global_step=i)
-
-                        N_success = np.array(eval_info["ref"][ii]["success"], dtype=float)
-                        if len(N_success) > 0:
-                            success_rate = np.sum(N_success) / len(N_success)
-                            logger["tb"].add_scalar(field_header+"{}/success_rate".format(ii), success_rate, global_step=i)
-                        logger["tb"].add_scalar(field_header+"{}/N".format(ii), len(N_success), global_step=i)
-
                 time_logs = log_time(step=i, log=time_logs)
                 logger["tb"].add_scalar(
                     "Time/Iters per Seconds", time_logs["speed"][-1], global_step=i
@@ -227,9 +247,80 @@ def train_eval(
                     "Time/Total Time", time_logs["time"][-1], global_step=i
                 )
 
+                # for dists
+                field_header = "Eval Dist ~ "
+                for ii in eval_info["dists"]:
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/mean".format(eval_info["dists"][ii]["agent"]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.mean(eval_info["dists"][ii]["agent"]["pred"]),
+                        "val": -1.0*np.mean(eval_info["dists"][ii]["agent"]["vals"]),
+                        "pred_greedy": np.mean(eval_info["dists"][ii]["agent_g"]["pred"]),
+                        "val_greedy": -1.0*np.mean(eval_info["dists"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+
+                    logger["tb"].add_scalars(field_header+"{:0>2d}/std".format(eval_info["dists"][ii]["agent"]["ref"]),
+                    tag_scalar_dict={
+                        "pred": np.std(eval_info["dists"][ii]["agent"]["pred"]),
+                        "val": np.std(eval_info["dists"][ii]["agent"]["vals"]),
+                        "pred_greedy": np.std(eval_info["dists"][ii]["agent_g"]["pred"]),
+                        "val_greedy": np.std(eval_info["dists"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+
+                    N_success = np.array(eval_info["dists"][ii]["agent"]["success"], dtype=float)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        logger["tb"].add_scalar(field_header+"{:0>2d}/success_rate".format(eval_info["dists"][ii]["agent"]["ref"]), success_rate, global_step=i)
+                
+                field_header = "Eval Cost ~ "
+                for ii in eval_info["costs"]:
+                    logger["tb"].add_scalars(field_header+"{}/mean".format(ii), 
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info["costs"][ii]["agent"]["pred"]),
+                            "val": np.mean(eval_info["costs"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.mean(eval_info["costs"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.mean(eval_info["costs"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+                    logger["tb"].add_scalars(field_header+"{}/std".format(ii), 
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info["costs"][ii]["agent"]["pred"]),
+                            "val": np.std(eval_info["costs"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.std(eval_info["costs"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.std(eval_info["costs"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+
+                    N_success = np.array(eval_info["costs"][ii]["agent"]["success"], dtype=float)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        logger["tb"].add_scalar(field_header+"{}/success_rate".format(ii), success_rate, global_step=i)
+                    logger["tb"].add_scalar(field_header+"{}/N".format(ii), len(N_success), global_step=i)
+
+                field_header = "Eval Ref ~ "
+                for ii in eval_info["ref"]:
+                    logger["tb"].add_scalars(field_header+"{}/mean".format(ii), 
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info["ref"][ii]["agent"]["pred"]),
+                            "val": np.mean(eval_info["ref"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.mean(eval_info["ref"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.mean(eval_info["ref"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+                    logger["tb"].add_scalars(field_header+"{}/std".format(ii), 
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info["ref"][ii]["agent"]["pred"]),
+                            "val": np.std(eval_info["ref"][ii]["agent"]["vals"]),
+                            "pred_greedy": np.std(eval_info["ref"][ii]["agent_g"]["pred"]),
+                            "val_greedy": np.std(eval_info["ref"][ii]["agent_g"]["vals"]),
+                        }, global_step=i)
+
+                    N_success = np.array(eval_info["ref"][ii]["agent"]["success"], dtype=float)
+                    if len(N_success) > 0:
+                        success_rate = np.sum(N_success) / len(N_success)
+                        logger["tb"].add_scalar(field_header+"{}/success_rate".format(ii), success_rate, global_step=i)
+                    logger["tb"].add_scalar(field_header+"{}/N".format(ii), len(N_success), global_step=i)
+
 def eval_pointenv_dists(
     agent, 
     eval_env:SafeGoalConditionedHabitatPointQueueWrapper, 
+    agent_g:Optional[LagVisionUVFDDPG]=None,
     num_evals=10, 
     sample_size:int=100,
     eval_distances=[1,2,3,4],
@@ -262,12 +353,19 @@ def eval_pointenv_dists(
                 ensemble_agg="mean",
                 )
         if len(pbs) > 0:
-            eval_env.append_pbs(pb_list=pbs)
+            eval_env.append_pbs(pb_list=deepcopy(pbs))
             dist_eval_i = eval_agent_from_Q(
                             policy=agent, 
                             eval_env=eval_env, 
                             collect_trajs=not (eval_img_dir is None),
                             )
+            eval_env.append_pbs(pb_list=deepcopy(pbs))
+            dist_eval_i_g = eval_agent_from_Q(
+                            policy=agent_g, 
+                            eval_env=eval_env, 
+                            collect_trajs=not (eval_img_dir is None),
+                            )
+
             if eval_img_dir is not None:
                 fig, ax = plt.subplots()
                 start_list = [p["start"].tolist() for p in pbs]
@@ -278,23 +376,48 @@ def eval_pointenv_dists(
                     ax=ax,
                     starts=start_list,
                     goals=goal_list,
+                    append_label="Lag_",
                 )
+                visualize_visual_eval_records(
+                    eval_records=dist_eval_i_g,
+                    eval_env=eval_env,
+                    ax=ax,
+                    starts=start_list,
+                    goals=goal_list,
+                    color="r",
+                )
+
+                ax.set_title("target dist ~ {}".format(eval_distances[ii_d]))
+                figname = "dist={:0>2d}.jpg".format(eval_distances[ii_d])
         
                 fig.savefig(eval_img_dir.joinpath("dist~{}.jpg".format(eval_distances[ii_d])), dpi=300)
 
                 plt.close(fig=fig)
 
+            dist_eval_stats[ii_d] = {}
             dist_logs = gather_log(eval_stats=dist_eval_i, 
                         names_n_keys={
                             "attr_vals": ["rewards"],
                             "attr_pred": ["init_info", "prediction"],
                             "success_hist": ["success"],
                             })
-            dist_eval_stats[ii_d] = {
+            dist_eval_stats[ii_d]["agent"] = {
                 "vals": dist_logs["attr_vals"],
                 "pred": dist_logs["attr_pred"],
                 "ref": eval_distances[ii_d],
                 "success": dist_logs["success_hist"],
+            }
+            dist_logs_g = gather_log(eval_stats=dist_eval_i_g, 
+                        names_n_keys={
+                            "attr_vals": ["rewards"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            dist_eval_stats[ii_d]["agent_g"] = {
+                "vals": dist_logs_g["attr_vals"],
+                "pred": dist_logs_g["attr_pred"],
+                "ref": eval_distances[ii_d],
+                "success": dist_logs_g["success_hist"],
             }
         else:
             print("[WARN] empty set for dist eval problem")
@@ -316,12 +439,19 @@ def eval_pointenv_dists(
                         use_uncertainty=False,
                         ensemble_agg="mean",)
         if len(cost_eval_pbs) > 0:
-            eval_env.append_pbs(pb_list=cost_eval_pbs)
+            eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
             cost_eval_i = eval_agent_from_Q(
                             policy=agent, 
                             eval_env=eval_env, 
                             collect_trajs=not (eval_img_dir is None),
                             )
+            eval_env.append_pbs(pb_list=deepcopy(cost_eval_pbs))
+            cost_eval_i_g = eval_agent_from_Q(
+                            policy=agent_g, 
+                            eval_env=eval_env, 
+                            collect_trajs=not (eval_img_dir is None),
+                            )
+            
             if eval_img_dir is not None:
                 fig, ax = plt.subplots()
                 start_list = [p["start"].tolist() for p in cost_eval_pbs]
@@ -332,23 +462,44 @@ def eval_pointenv_dists(
                     ax=ax,
                     starts=start_list,
                     goals=goal_list,
+                    append_label="Lag_",
+                )
+                visualize_visual_eval_records(
+                    eval_records=cost_eval_i_g,
+                    eval_env=eval_env,
+                    ax=ax,
+                    starts=start_list,
+                    goals=goal_list,
                 )
         
                 fig.savefig(eval_img_dir.joinpath("cost~{}.jpg".format(cost_intervals[ii])), dpi=300)
 
                 plt.close(fig=fig)
 
+            cost_eval_stats[ii] = {}
             cost_logs = gather_log(eval_stats=cost_eval_i, 
                         names_n_keys={
                             "attr_vals": ["cum_costs"],
                             "attr_pred": ["init_info", "prediction"],
                             "success_hist": ["success"],
                             })
-            cost_eval_stats[ii] = {
+            cost_eval_stats[ii]["agent"] = {
                 "vals": cost_logs["attr_vals"],
                 "pred": cost_logs["attr_pred"],
                 "ref": cost_intervals[ii],
                 "success": cost_logs["success_hist"],
+            }
+            cost_logs_g = gather_log(eval_stats=cost_eval_i_g, 
+                        names_n_keys={
+                            "attr_vals": ["cum_costs"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            cost_eval_stats[ii]["agent_g"] = {
+                "vals": cost_logs_g["attr_vals"],
+                "pred": cost_logs_g["attr_pred"],
+                "ref": cost_intervals[ii],
+                "success": cost_logs_g["success_hist"],
             }
         else:
             print("[WARN] empty set for dist eval problem")
@@ -362,8 +513,12 @@ def eval_pointenv_dists(
                             env=eval_env,
                             agent=agent,)
         if len(ref_pbs) > 0:
-            eval_env.append_pbs(pb_list=ref_pbs)
+            eval_env.append_pbs(pb_list=deepcopy(ref_pbs))
             ref_eval_i = eval_agent_from_Q(policy=agent, 
+                            eval_env=eval_env,
+                            collect_trajs=not (eval_img_dir is None))
+            eval_env.append_pbs(pb_list=deepcopy(ref_pbs))
+            ref_eval_i_g = eval_agent_from_Q(policy=agent_g, 
                             eval_env=eval_env,
                             collect_trajs=not (eval_img_dir is None))
             if eval_img_dir is not None:
@@ -376,12 +531,25 @@ def eval_pointenv_dists(
                         ax=ax,
                         starts=start_list,
                         goals=goal_list,
+                        append_label="Lag_",
+                        )
+                ax = visualize_visual_eval_records(
+                        eval_records=ref_eval_i_g,
+                        eval_env=eval_env,
+                        ax=ax,
+                        starts=start_list,
+                        goals=goal_list,
                         )
                 text_offset = eval_env.walls.shape[0]*0.05
+                line_i = 0
                 for jj in range(len(start_list)):
                     xy_n = start_list[jj]
                     ax.text(x=xy_n[0]+text_offset, y=xy_n[1], s="{}".format(jj))
-                    ax.text(x=0.0, y=-4.0-text_offset*jj, s="traj {}: cost={:.2f}, predicted cost={:.2f}".format(jj, ref_eval_i[jj]["cum_costs"], ref_pbs[jj]["info"]["prediction"]))
+                    ax.text(x=0.0, y=-4.0-text_offset*line_i, s="Lag traj {}: cost={:.2f}, predicted cost={:.2f}".format(jj, ref_eval_i[jj]["cum_costs"], ref_pbs[jj]["info"]["prediction"]))
+                    line_i+= 1
+                    ax.text(x=0.0, y=-4.0-text_offset*line_i, s="traj {}: cost={:.2f}, predicted cost={:.2f}".format(jj, ref_eval_i_g[jj]["cum_costs"], ref_pbs[jj]["info"]["prediction"]))
+                    line_i+= 1
+
                 ax.set_title("illustration problems")
                 #ax.legend()
                 ax.legend(bbox_to_anchor=(1.01, 1.01))
@@ -389,19 +557,29 @@ def eval_pointenv_dists(
                 fig.savefig(eval_img_dir.joinpath(figname), dpi=300, bbox_inches="tight")
                 plt.close()
 
-            
+            ref_eval_stats[0] = {}
             ref_logs = gather_log(eval_stats=ref_eval_i, 
                         names_n_keys={
                             "attr_vals": ["cum_costs"],
                             "attr_pred": ["init_info", "prediction"],
                             "success_hist": ["success"],
                             })
-            ref_eval_stats[0] = {
+            ref_eval_stats[0]["agent"] = {
                 "vals": ref_logs["attr_vals"],
                 "pred": ref_logs["attr_pred"],
                 "success": ref_logs["success_hist"],
             }
-    
+            ref_logs_g = gather_log(eval_stats=ref_eval_i_g, 
+                        names_n_keys={
+                            "attr_vals": ["cum_costs"],
+                            "attr_pred": ["init_info", "prediction"],
+                            "success_hist": ["success"],
+                            })
+            ref_eval_stats[0]["agent_g"] = {
+                "vals": ref_logs_g["attr_vals"],
+                "pred": ref_logs_g["attr_pred"],
+                "success": ref_logs_g["success_hist"],
+            }
 
     eval_stats = {}
     eval_stats["dists"] = dist_eval_stats

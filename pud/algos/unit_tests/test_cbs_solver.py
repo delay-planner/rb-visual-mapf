@@ -1,6 +1,6 @@
 import unittest
 import networkx as nx
-from pud.algos.cbs import CBSSolver
+from pud.mapf.cbs import CBSSolver
 
 """
 python pud/algos/unit_tests/test_cbs_solver.py TestCBSSolver.test_find_paths

@@ -5,7 +5,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 
-from pud.algos.cbfs_eval import (CBFS, catalog_precompiled_paths,
+from pud.algos.cbfs.cbfs_eval import (CBFS, catalog_precompiled_paths,
                                  compile_all_pair_constrained_shortest_trajs,
                                  sample_precompiled_grid_policies,
                                  validate_test_args)

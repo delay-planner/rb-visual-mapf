@@ -22,7 +22,7 @@ L = np.array([[0, 0, 0, 0, 0, 0, 0],
 
 However, the visualization of this maze via matplotlib will display an L in a different orientation (e.g., CCW 90 deg). 
 
-<img src="README_RES/L.jpg" alt="Visualized L Maze with selected points" width="300">
+<img src="readme_resources/L.jpg" alt="Visualized L Maze with selected points" width="300">
 
 In our case, we don't bother it. If we really want to have the L shape in the vertical standup orientation, we change the maze definition in numpy array and rotate it CW 90 deg. The reason is to make the coords of visualization and points picked from visualization consistent with the internal maze coords. Although they look different due to different representation pipeline, they are internally the same thing. This make it easy to manually craft benchmark problems by selecting start and goal coords from the maze image (e.g., the dots and lines on the image above).
 
@@ -36,8 +36,8 @@ Again, we ignore any orientation discrepancy between the numpy array and visuali
 
 Example code: [vis_handed_crafted_waypoints_w_topdown_maps in test_replica_cad_barebone.py](/run/media/me/SharedData/work/hrl/codes/cc-sorb-rev/pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py)
 
-Video proof of matching coordinate: [trace_bounds.mp4 -- trace map bounds by manual point selection](README_RES/trace_bounds.mp4)
-<!--<video src="README_RES/trace_bounds.mp4" width="300" />-->
+Video proof of matching coordinate: [trace_bounds.mp4 -- trace map bounds by manual point selection](readme_resources/trace_bounds.mp4)
+<!--<video src="readme_resources/trace_bounds.mp4" width="300" />-->
 
 ## Train with visual inputs
 ```bash
@@ -124,73 +124,11 @@ bash launch_jobs/local_illustration_eval.sh
 ```
 **Example output**: 
 <p align="center">
-<img src="README_RES/illustration_problem_2d_maze_unconstrained.jpg" alt="Illustration problem in 2D maze" width="500">
+<img src="readme_resources/illustration_problem_2d_maze_unconstrained.jpg" alt="Illustration problem in 2D maze" width="500">
 </p>
 
-# Sparse Graphical Memory (SGM) and Search on the Replay Buffer (SoRB) in PyTorch
-
-## Example usage
-```
-pip install -e .
-
-python run_PointEnv.py configs/config_PointEnv.py
-```
-
-## Results
-
-### SoRB (re-planning with closest waypoint) trajectory visualization
-![Search comparison](./workdirs/uvfddpg_FourRooms/sorb_compare_search_openloop0.png)
-
-```
-policy: no search
-start: [0.03271197 0.99020872]
-goal: [0.81310241 0.028764  ]
-steps: 300
-----------
-policy: search
-start: [0.03271197 0.99020872]
-goal: [0.81310241 0.028764  ]
-steps: 127
-```
-
-### SoRB (open loop planning) trajectory visualization
-![Search comparison](./workdirs/uvfddpg_FourRooms/sorb_compare_search_openloop1.png)
-
-```
-policy: no search
-start: [0.03271197 0.99020872]
-goal: [0.81310241 0.028764  ]
-steps: 300
-----------
-policy: search
-start: [0.03271197 0.99020872]
-goal: [0.81310241 0.028764  ]
-steps: 111
-```
-
-### State graph visualization 
-
-1. SoRB state graph (per critic in ensemble)
-![SoRB state graph](./workdirs/uvfddpg_FourRooms/sorb_state_graph_ensemble.png)
-
-2. SGM state graph (ensembled)
-<!-- ![SGM state graph](./workdirs/uvfddpg_FourRooms/sgm_state_graph.png) -->
-<p align="center"><img src="./workdirs/uvfddpg_FourRooms/sgm_state_graph.png" width="275" alt="SGM state graph"></p>
-
-```
-Initial SparseSearchPolicy (|V|=202, |E|=1894) has success rate 0.20, evaluated in 14.26 seconds
-Filtered SparseSearchPolicy (|V|=202, |E|=986) has success rate 0.80, evaluated in 8.44 seconds
-Took 10000 cleanup steps in 84.45 seconds
-Cleaned SparseSearchPolicy (|V|=202, |E|=955) has success rate 1.00, evaluated in 6.69 seconds
-```
-
 ## Credits
-* https://github.com/scottemmons/sgm
 * https://github.com/google-research/google-research/tree/master/sorb
-* https://github.com/sfujim/TD3
 
-## References
-[1]: Michael Laskin, Scott Emmons, Ajay Jain, Thanard Kurutach, Pieter Abbeel, Deepak Pathak, ["Sparse Graphical Memory for Robust Planning"](https://arxiv.org/abs/2003.06417), 2020.
-
-[2]: Benjamin Eysenbach, Ruslan Salakhutdinov, Sergey Levine, ["Search on the Replay Buffer: Bridging Planning and Reinforcement Learning"](https://arxiv.org/abs/1906.05253), 2019.
+[1]: Benjamin Eysenbach, Ruslan Salakhutdinov, Sergey Levine, ["Search on the Replay Buffer: Bridging Planning and Reinforcement Learning"](https://arxiv.org/abs/1906.05253), 2019.
 

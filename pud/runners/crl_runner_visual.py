@@ -7,12 +7,12 @@ import numpy as np
 import torch
 from dotmap import DotMap
 from tqdm.auto import tqdm
-from pud.algos.vision.vision_agent import GCOVisionUVFDDPG
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointQueueWrapper, SafeTimeLimit)
 from pud.envs.simple_navigation_env import set_env_difficulty
 from pud.collectors.visual_collector import ConstrainedVisualCollector, eval_agent_from_Q
-from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+from pud.buffers.visual_buffer import ConstrainedVisualReplayBuffer
 from pud.algos.policies import GaussianPolicy
 from pud.envs.habitat_navigation_env import plot_wall, plot_traj, plot_start_n_goals
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent, 
@@ -92,9 +92,9 @@ def visualize_visual_eval_records(eval_records,
     return ax
 
 def train_eval(
-    policy: GaussianPolicy,
-    agent: GCOVisionUVFDDPG,
-    replay_buffer: ConstrainedLargeReplayBuffer,
+    policy:GaussianPolicy,
+    agent:LagVisionUVFDDPG,
+    replay_buffer: ConstrainedVisualReplayBuffer,
     env: SafeGoalConditionedHabitatPointQueueWrapper,
     eval_env: SafeGoalConditionedHabitatPointQueueWrapper,
     num_iterations=int(1e6),

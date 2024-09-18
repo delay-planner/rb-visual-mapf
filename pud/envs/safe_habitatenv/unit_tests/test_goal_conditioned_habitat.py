@@ -1,7 +1,7 @@
 import unittest
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn, HabitatNavigationEnv
-from pud.algos.visual_buffer import VisualReplayBuffer
-from pud.visual_models import VisualEncoder, VisualDecoder
+from pud.buffers.visual_buffer import VisualReplayBuffer
+from pud.algos.vision.visual_models import VisualEncoder, VisualDecoder
 import torch
 from torch import nn
 from pud.algos.data_struct import inp_to_torch_device

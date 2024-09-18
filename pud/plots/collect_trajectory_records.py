@@ -9,13 +9,13 @@ from tqdm import tqdm
 from pathlib import Path
 from dotmap import DotMap
 
-from pud.ddpg import GoalConditionedCritic
+from pud.algos.ddpg import GoalConditionedCritic
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.algos.constrained_collector import ConstrainedCollector
+from pud.collectors.constrained_collector import ConstrainedCollector
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_pbs_by_agent
-from pud.policies import (
+from pud.algos.policies import (
     SearchPolicy,
     VisualSearchPolicy,
     MultiAgentSearchPolicy,
@@ -36,7 +36,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper,
     SafeGoalConditionedPointQueueWrapper,
 )
-from pud.vision_agent import LagVisionUVFDDPG
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 
 
 def pointenv_setup(args):

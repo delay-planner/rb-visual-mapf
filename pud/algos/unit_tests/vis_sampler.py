@@ -7,13 +7,13 @@ import torch
 import yaml
 from dotmap import DotMap
 
-from pud.algos.constrained_buffer import ConstrainedReplayBuffer
-from pud.algos.constrained_collector import ConstrainedCollector as Collector
-from pud.algos.constrained_collector import eval_agent_from_Q
-from pud.algos.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
+from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.collectors.constrained_collector import ConstrainedCollector as Collector
+from pud.collectors.constrained_collector import eval_agent_from_Q
+from pud.runners.crl_runner_v3 import (eval_pointenv_cost_constrained_dists,
                                      train_eval)
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.ddpg import GoalConditionedActor, GoalConditionedCritic
+from pud.algos.ddpg import GoalConditionedActor, GoalConditionedCritic
 from pud.envs.safe_pointenv.pb_sampler import (sample_cost_pbs_by_agent,
                                                sample_pbs_by_agent)
 from pud.envs.safe_pointenv.safe_pointenv import plot_safe_walls, plot_trajs
@@ -21,7 +21,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointBlendWrapper, SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointWrapper, safe_env_load_fn)
 from pud.utils import set_env_seed, set_global_seed
-from pud.visualize import visualize_eval_records
+from pud.visualizers.visualize import visualize_eval_records
 
 
 def setup_args_parser(parser:argparse.ArgumentParser):

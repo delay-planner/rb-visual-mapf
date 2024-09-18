@@ -7,16 +7,18 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from pud.algos.policies import GaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
-from pud.algos.vision.vision_agent import GCOVisionUVFDDPG
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
-from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+
+from pud.buffers.visual_buffer import ConstrainedVisualReplayBuffer
+
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
 )
-
-from pud.algos.gco.runner_habitat import train_eval, eval_pointenv_dists
+from pud.runners.crl_runner_visual import train_eval, eval_pointenv_dists
+from tqdm.auto import tqdm
 import shutil
 from typing import List
 
@@ -39,14 +41,40 @@ def setup_logger(root_dir:str, subdir_names:List[str], tag_time:bool=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt",
-        type=str,
-        help="policy checkpoint")
     parser.add_argument(
         "--cfg",
         type=str,
+        default="configs/config_HabitatReplicaCAD.yaml",
         help="Training configuration",
     )
+    parser.add_argument("--cost_name",
+        type=str,
+        default="",
+        help="override cost type")
+    parser.add_argument("--cost_radius",
+        type=float,
+        default=-1,
+        help="override cost type")
+    parser.add_argument("--cost_max",
+        type=float,
+        default=-1,
+        help="override if > 0")
+    parser.add_argument("--cost_N",
+        type=int,
+        default=0,
+        help="override if > 0")
+    parser.add_argument("--embedding_size",
+        type=int,
+        default=-1,
+        help="")
+    parser.add_argument("--ckpt",
+        type=str,
+        default="",
+        help="if non-empty, load the checkpoint into agent model")
+    parser.add_argument("--i_start",
+        type=int,
+        default=1,
+        help="override the start iteration index, for resume training")
     parser.add_argument("--collect_steps",
         type=int,
         default=-1,
@@ -55,67 +83,86 @@ if __name__ == "__main__":
         type=int,
         default=-1,
         help="override num of iterations")
-    parser.add_argument("--encoder",
-        type=str,
-        default="VisualEncoder",
-        help="VisualEncoder")
     parser.add_argument("--eval_interval",
         type=int,
         default=-1,
-        help="")
-    parser.add_argument("--initial_collect_steps",
-        type=int,
-        default=-1,
-        help="")
+        help="evaluation interval")
     parser.add_argument("--cost_limit",
         type=float,
         default=-1,
         help="override cost limit")
-    
-    parser.add_argument("--sampler_cost_bounds",
+    parser.add_argument("--scene",
         type=str,
         default="",
-        help="cost bounds for pb sampler, delimited by -")
-    parser.add_argument("--sampler_dist_bounds",
-        type=str,
-        default="",
-        help="dist bounds for pb sampler, delimited by -")
-    parser.add_argument("--sampler_K",
-        type=int,
-        default=-1,
-        help="number of pbs per target, delimited by -")
-    parser.add_argument("--sampler_popsize",
-        type=int,
-        default=-1,
-        help="sampler number of random candidate")
-    parser.add_argument("--sampler_std_ub",
+        help="override scene")
+    parser.add_argument("--actor_lr",
         type=float,
-        default="",
-        help="bounds in boosting scores of uncertain samples")
+        default=-1,
+        help="")
+    parser.add_argument("--critic_lr",
+        type=float,
+        default=-1,
+        help="")
     parser.add_argument("--lambda_lr",
         type=float,
         default=-1,
         help="override lagrange lr")
-
+    parser.add_argument("--replay_buffer_size",
+        type=int,
+        default=-1,
+        help="max replay buffer size")
+    parser.add_argument("--apsp_path",
+        type=str,
+        default="",
+        help="supply pre-computed apsp path")
+    parser.add_argument("--encoder",
+        type=str,
+        default="VisualEncoder",
+        help="VisualEncoder")
     parser.add_argument("--illustration_pb_file",
         type=str,
+        default="",
         help="problems that serve as illustration and evaluation set")
+    parser.add_argument("--resume",
+        type=str,
+        default="",
+        help="resume training")
+    parser.add_argument("--seed",
+        type=int,
+        default=-1,
+        help="override seed")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
+    parser.add_argument("--use_disk", action="store_true", help="use disk if ram is too small for replay buffer")
     parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
     args = parser.parse_args()
+
     cfg = {}
     with open(args.cfg, "r") as f:
         cfg = yaml.safe_load(f)
-    # For dot completion
     cfg = DotMap(cfg)
 
+    # Override cfs from terminal
+    if len(args.logdir) > 0:
+        cfg.ckpt_dir = args.logdir
+    if len(args.cost_name) > 0:
+        cfg.cost_function.name = args.cost_name
+    if args.cost_radius > 0:
+        cfg.cost_function.radius = args.cost_radius
+    if args.cost_max > 0:
+        cfg.agent.cost_max = args.cost_max
+    if args.cost_N > 0:
+        cfg.agent.cost_N = args.cost_N
     if args.lambda_lr > 0:
-        cfg.agent_cost_kwargs.lambda_lr = args.lambda_lr
+        cfg.agent.lambda_lr = args.lambda_lr
+    if args.actor_lr > 0:
+        cfg.agent.actor_lr = args.actor_lr
+    if args.critic_lr > 0:
+        cfg.agent.critic_lr = args.critic_lr
     if args.cost_limit >= 0:
         cfg.agent_cost_kwargs.cost_limit = args.cost_limit
     if args.num_iterations > 0:
@@ -124,56 +171,38 @@ if __name__ == "__main__":
         cfg.runner.collect_steps = args.collect_steps
     if args.eval_interval > 0:
         cfg.runner.eval_interval = args.eval_interval
-    if args.initial_collect_steps > 0:
-        cfg.runner.initial_collect_steps = args.initial_collect_steps
-    # Override cfs from terminal
+    if args.replay_buffer_size > 0:
+        cfg.replay_buffer.max_size = args.replay_buffer_size
+    if len(args.apsp_path) > 0:
+        cfg.env.apsp_path = args.apsp_path
+    if len(args.scene) > 0:
+        cfg.env.simulator_settings.scene = args.scene
+    if args.embedding_size > 0:
+        cfg.agent.embedding_size = args.embedding_size
+    if args.seed >= 0:
+        cfg.seed = args.seed
     cfg.runner.verbose = args.verbose
     cfg.device = args.device
-
-    if len(args.sampler_cost_bounds) > 0:
-        sampler_cost_bounds = [float(x) for x in args.sampler_cost_bounds.split("-")]
-        cfg.sampler_extra.cost_bounds = sampler_cost_bounds
-
-    if len(args.sampler_dist_bounds) > 0:
-        sampler_dist_bounds = [float(x) for x in args.sampler_dist_bounds.split("-")]
-        cfg.sampler.min_dist = sampler_dist_bounds[0]
-        cfg.sampler.max_dist = sampler_dist_bounds[1]
-
-    if args.sampler_K > 0:
-        cfg.sampler.K = args.sampler_K
-    if args.sampler_popsize > 0:
-        cfg.sampler.num_states = args.sampler_popsize
-    if args.sampler_std_ub > 0:
-        cfg.sampler.uncertainty_ub = args.sampler_std_ub
-
-
-    # create a lag dir inside the original training dir
-    path_ckpt = Path(args.ckpt)
-    log_dir = path_ckpt.parent.parent.joinpath("lag")
+    cfg.env.device = args.device
     cfg.pprint()
 
     # Custom Logging
     logger = setup_logger(
-        root_dir=log_dir.as_posix(), 
-        subdir_names=["ckpt", "tfevent", "bk", "imgs"],
+        root_dir=cfg.ckpt_dir, 
+        subdir_names=["ckpt", "tfevent", "bk", "imgs", "buffer"],
         tag_time=True,
         )
-
     with open(logger["bk"].joinpath("config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    
     logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
     logger["pbar"] = args.pbar
     if len(args.illustration_pb_file) > 0:
         logger["illustration_pb_file"] = args.illustration_pb_file
 
-    logger["sampler"] = cfg.sampler
-    logger["sampler_extra"] = cfg.sampler_extra
-
-    #shutil.copy("launch_jobs/local_train_safe_habitat_lag.sh", logger["bk"].as_posix())
-    #shutil.copy("launch_jobs/cloud_train_safe_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/local_train_safe_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/cloud_train_safe_habitat.sh", logger["bk"].as_posix())
     shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
-    shutil.copy("pud/algos/gco/constraint_act.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/crl_runner_visual.py", logger["bk"].as_posix())
     shutil.copy("pud/algos/visual_collector.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
@@ -200,7 +229,6 @@ if __name__ == "__main__":
         wrapper_kwargs=gym_env_wrapper_kwargs,
         terminate_on_timeout=False,
         )
-    
     set_env_seed(env, cfg.seed)
 
     eval_env = safe_habitat_env_load_fn(
@@ -217,8 +245,7 @@ if __name__ == "__main__":
     cfg.agent["action_dim"] = env.action_space.shape[0]
     cfg.agent["max_action"] = float(env.action_space.high[0])
     
-
-    agent = GCOVisionUVFDDPG(
+    agent = LagVisionUVFDDPG(
         width=cfg.env.simulator_settings.width,
         height=cfg.env.simulator_settings.height,
         in_channels=4,
@@ -230,19 +257,58 @@ if __name__ == "__main__":
         cost_kwargs=cfg.agent_cost_kwargs.toDict(),
     )
 
-    agent.to(torch.device(args.device))
-    print(agent)
+    agent.to(device=cfg.device)
 
-    replay_buffer = ConstrainedLargeReplayBuffer(
-        max_size=cfg.replay_buffer.max_size,
-        )
+    if len(args.resume) > 0:
+        state_dict = torch.load(args.resume)
+        agent.load_state_dict(state_dict)
 
+    # load pretrained encoder
+    #encoder_ckpt = torch.load("runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
+    #agent.actor.encoder.load_state_dict(encoder_ckpt.state_dict())
+    #agent.actor_target.encoder.load_state_dict(encoder_ckpt.state_dict())
+    #for ii in range(len(agent.critic.critics)):
+    #    agent.critic.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
+    #    agent.critic_target.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
+
+    #obs = env.reset()
+    #done_count = 0
+    #num_steps = 200
+    #for _ in tqdm(range(num_steps), total=num_steps):
+    #    #at = env.action_space.sample()
+    #    at = agent.select_action(obs)
+    #    agent.get_q_values(obs)
+    #    new_obs, rew, done, info = env.step(at)
+    #    if done:
+    #        done_count += 1
+
+    #    obs = new_obs
+
+    # test collector
+    replay_buffer = None
+    if args.use_disk:
+        from pud.buffers.buffer_large import ConstrainedLargeReplayBuffer
+        replay_buffer = ConstrainedLargeReplayBuffer(
+            #obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            #action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            scratch_dir=logger["buffer"],
+            )
+    else:
+        replay_buffer = ConstrainedVisualReplayBuffer(
+            obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+            action_dim=env.action_space.shape[0],
+            max_size=cfg.replay_buffer.max_size,
+            )
+    
     policy = GaussianPolicy(agent, noise_scale=0.2)
 
     train_eval(
-        policy=policy,
-        agent=agent,
-        replay_buffer=replay_buffer,
+        policy,
+        agent,
+        replay_buffer,
         env=env,
         eval_env=eval_env,
         eval_func=eval_pointenv_dists,
