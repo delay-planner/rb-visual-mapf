@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import networkx as nx
 from pud.mapf.cbs import CBSSolver
+from pud.mapf.cbs_ds import CBSDSSolver
 
 
 class BasePolicy:
@@ -139,7 +140,7 @@ class SearchPolicy(BasePolicy):
 
     def build_rb_graph(self, rb_vec):
         g = nx.DiGraph()
-        assert self.pdist is not None
+        assert self.pdist is not None, "Pairwise distances not provided"
         pdist_combined = np.max(self.pdist, axis=0)
 
         for i, s_i in enumerate(rb_vec):
@@ -348,10 +349,10 @@ class ConstrainedSearchPolicy(SearchPolicy):
         self.cost_aggregate = cost_aggregate
         self.max_cost_limit = max_cost_limit
 
-        assert ckpts is not None
+        assert ckpts is not None, "Checkpoints for constrained and unconstrained models must be provided"
         self.ckpts = ckpts
 
-        assert hasattr(agent, "constraints") and agent.constraints is not None
+        assert hasattr(agent, "constraints") and agent.constraints is not None, "Agent must have constraints"
         self.constraints = agent.constraints
 
         super().__init__(
@@ -369,8 +370,8 @@ class ConstrainedSearchPolicy(SearchPolicy):
 
     def build_rb_graph(self, rb_vec):
         g = nx.DiGraph()
-        assert self.pdist is not None
-        assert self.pcost is not None
+        assert self.pdist is not None, "Pairwise distances not provided"
+        assert self.pcost is not None, "Pairwise costs not provided"
         pdist_combined = np.max(self.pdist, axis=0)
         pcost_combined = np.max(self.pcost, axis=0)
 
@@ -486,7 +487,7 @@ class VisualSearchPolicy(SearchPolicy):
             **kwargs,
         )
 
-        assert isinstance(rb_vec, tuple)
+        assert isinstance(rb_vec, tuple), "rb_vec must be a tuple of (grid, vec)"
         self.rb_vec_grid, self.rb_vec = rb_vec
 
         self.build_rb_graph(self.rb_vec_grid)
@@ -616,6 +617,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        disjoint_split=False,
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
@@ -635,11 +637,12 @@ class MultiAgentSearchPolicy(SearchPolicy):
         )
         self.radius = radius
         self.n_agents = n_agents
+        self.disjoint_split = disjoint_split
 
     def get_closest_waypoints(self, state):
 
-        assert "composite_goals" in state.keys()
-        assert len(state["composite_goals"]) == self.n_agents
+        assert "composite_goals" in state.keys(), "Composite goals not present in state"
+        assert len(state["composite_goals"]) == self.n_agents, "Number of composite goals not equal to number of agents"
 
         augmented_waypoints = []
         augmented_waypoint_indices = []
@@ -692,7 +695,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             assert planning_graph.has_node(goal_id), "Goal node not added to graph"
             num_nodes += 2
 
-        logging.debug("Final graph size = ", planning_graph.number_of_nodes())
+        logging.debug("Final graph size = {}".format(planning_graph.number_of_nodes()))
         return planning_graph, nodes_to_agent_maps
 
     def initialize_paths(self, rb_vec, starts, goals):
@@ -705,7 +708,12 @@ class MultiAgentSearchPolicy(SearchPolicy):
         for _, (start, goal) in enumerate(zip(starts, goals)):
             augmented_wps = np.vstack([augmented_wps, start, goal])
 
-        cbs_solver = CBSSolver(
+        if not self.disjoint_split:
+            cbs_class = CBSSolver
+        else:
+            cbs_class = CBSDSSolver
+
+        cbs_solver = cbs_class(
             graph,
             augmented_wps,
             start_ids,
@@ -713,9 +721,13 @@ class MultiAgentSearchPolicy(SearchPolicy):
             weighted=self.weighted_path_planning,
             collision_radius=self.radius,
         )
-        paths = cbs_solver.find_paths()
+        solution = cbs_solver.find_paths()
+        paths = solution["paths"]  # type: ignore
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            print("Cost of solution: {}".format(solution["cost"]))  # type: ignore
+            print("Number of expanded nodes: {}".format(cbs_solver.num_expanded))
+            print("Number of generated nodes: {}".format(cbs_solver.num_generated))
             print("Printing the paths")
             for agent_id, path in enumerate(paths):
                 print("--" * 10)
@@ -777,8 +789,8 @@ class MultiAgentSearchPolicy(SearchPolicy):
         return augmented_waypoints
 
     def select_action(self, state):
-        assert "composite_goals" in state.keys()
-        assert len(state["composite_goals"]) == self.n_agents
+        assert "composite_goals" in state.keys(), "Composite goals not present in state"
+        assert len(state["composite_goals"]) == self.n_agents, "Number of composite goals not equal to number of agents"
 
         # Composite start and goals are the grid representation of the state
         composite_goals = state["composite_goals"]
@@ -900,6 +912,7 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
         max_search_steps=7,
         max_cost_limit=1.0,
         dist_aggregate="min",
+        disjoint_split=False,
         cost_aggregate="max",
         no_waypoint_hopping=False,
         weighted_path_planning=False,
@@ -915,6 +928,7 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,
+            disjoint_split=disjoint_split,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
             max_cost_limit=max_cost_limit,
@@ -937,6 +951,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        disjoint_split=False,
         no_waypoint_hopping=False,
         weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
@@ -950,6 +965,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             n_agents=n_agents,
             aggregate=aggregate,
             open_loop=open_loop,
+            disjoint_split=disjoint_split,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
@@ -957,7 +973,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             **kwargs,
         )
 
-        assert isinstance(rb_vec, tuple)
+        assert isinstance(rb_vec, tuple), "rb_vec should be a tuple"
         self.rb_vec_grid, self.rb_vec = rb_vec
 
         self.build_rb_graph(self.rb_vec_grid)
@@ -1026,7 +1042,12 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         for _, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
             augmented_wps = np.vstack([augmented_wps, start, goal])
 
-        cbs_solver = CBSSolver(
+        if not self.disjoint_split:
+            cbs_class = CBSSolver
+        else:
+            cbs_class = CBSDSSolver
+
+        cbs_solver = cbs_class(
             graph,
             augmented_wps,
             start_ids,
@@ -1034,9 +1055,13 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             weighted=self.weighted_path_planning,
             collision_radius=self.radius,
         )
-        paths = cbs_solver.find_paths()
+        solution = cbs_solver.find_paths()
+        paths = solution["paths"]  # type: ignore
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            print("Cost of solution: {}".format(solution["cost"]))  # type: ignore
+            print("Number of expanded nodes: {}".format(cbs_solver.num_expanded))
+            print("Number of generated nodes: {}".format(cbs_solver.num_generated))
             print("Printing the paths")
             for a_id, path in enumerate(paths):
                 print("--" * 10)
@@ -1109,8 +1134,8 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         return augmented_waypoints
 
     def select_action(self, state):
-        assert "composite_goals" in state.keys()
-        assert len(state["composite_goals"]) == self.n_agents
+        assert "composite_goals" in state.keys(), "Composite goals not present in state"
+        assert len(state["composite_goals"]) == self.n_agents, "Number of composite goals not equal to number of agents"
 
         # Composite start and goals are the grid representation of the state
         composite_goals = state["composite_goals"]
@@ -1257,6 +1282,7 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
         open_loop=False,
         max_search_steps=7,
         max_cost_limit=1.0,
+        disjoint_split=False,
         dist_aggregate="min",
         cost_aggregate="max",
         no_waypoint_hopping=False,
@@ -1273,6 +1299,7 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,
+            disjoint_split=disjoint_split,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
             max_cost_limit=max_cost_limit,

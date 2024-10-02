@@ -293,7 +293,14 @@ def argument_parser():
     parser.add_argument("--use_unconstrained_ckpt", default=False, action="store_true")
     parser.add_argument("--traj_difficulty", type=str, default="easy", choices=["easy", "medium", "hard"])
     parser.add_argument("--method_type", type=str,
-                        choices=["unconstrained", "unconstrained_search", "constrained", "constrained_search"],
+                        choices=[
+                            "unconstrained",
+                            "unconstrained_search",
+                            "constrained",
+                            "constrained_search",
+                            "unconstrained_search_ds",
+                            "constrained_search_ds"
+                        ],
                         default="unconstrained")
 
     args = parser.parse_args()
@@ -428,7 +435,7 @@ def single_unconstrained_search_policy(agent, eval_env, problem_setup, args, con
     return unconstrained_search_records
 
 
-def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=False):
+def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, ds=False, save=False):
     habitat = args.visual
     agent, eval_env = load_agent_and_env(agent, eval_env, args, config, constrained=False)
 
@@ -436,7 +443,11 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
     save_path = basedir / "multi_agent" / args.traj_difficulty
     if not save_path.exists():
         save_path.mkdir(parents=True)
-    save_path = save_path / f"unconstrained_search_records_{args.num_agents}.npy"
+
+    if ds:
+        save_path = save_path / f"unconstrained_search_ds_records_{args.num_agents}.npy"
+    else:
+        save_path = save_path / f"unconstrained_search_records_{args.num_agents}.npy"
     if save and Path(save_path).exists():
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
@@ -454,7 +465,14 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
 
     if not habitat:
         ma_search_policy = MultiAgentSearchPolicy(
-            agent, rb_vec, args.num_agents, pdist=pdist, open_loop=True, no_waypoint_hopping=True, radius=0
+            agent,
+            rb_vec,
+            args.num_agents,
+            pdist=pdist,
+            open_loop=True,
+            no_waypoint_hopping=True,
+            radius=0,
+            disjoint_split=ds
         )
     else:
         ma_search_policy = VisualMultiAgentSearchPolicy(
@@ -463,6 +481,7 @@ def multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, conf
             args.num_agents,
             pdist=pdist,
             open_loop=True,
+            disjoint_split=ds,
             max_search_steps=4,
             no_waypoint_hopping=True
         )
@@ -674,6 +693,7 @@ def multi_constrained_search_policy(
         config,
         trained_cost_limit,
         basedir,
+        ds=False,
         save=False
         ):
     habitat = args.visual
@@ -702,7 +722,12 @@ def multi_constrained_search_policy(
         save_path = basedir / "multi_agent" / args.traj_difficulty
         if not save_path.exists():
             save_path.mkdir(parents=True)
-        save_path = save_path / f"constrained_search_records_{args.num_agents}_{factor}.npy"
+
+        if ds:
+            save_path = save_path / f"constrained_search_ds_records_{args.num_agents}_{factor}.npy"
+        else:
+            save_path = save_path / f"constrained_search_records_{args.num_agents}_{factor}.npy"
+
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         if save and Path(save_path).exists():
@@ -725,6 +750,7 @@ def multi_constrained_search_policy(
                 args.num_agents,
                 radius=0.0,
                 open_loop=True,
+                disjoint_split=ds,
                 pdist=pdist.copy(),
                 pcost=pcost.copy(),
                 no_waypoint_hopping=True,
@@ -740,6 +766,7 @@ def multi_constrained_search_policy(
                 pdist=pdist.copy(),
                 pcost=pcost.copy(),
                 open_loop=True,
+                disjoint_split=ds,
                 max_search_steps=4,
                 no_waypoint_hopping=True,
                 max_cost_limit=edge_cost_limit,
@@ -808,6 +835,9 @@ def main():
                 single_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
             else:
                 multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
+        elif args.method_type == "unconstrained_search_ds":
+            assert args.num_agents != 1
+            multi_unconstrained_search_policy(agent, eval_env, problem_setup, args, config, basedir, ds=True, save=True)
         elif args.method_type == "constrained":
             if args.num_agents == 1:
                 single_constrained_policy(agent, eval_env, problem_setup, args, config, basedir, save=True)
@@ -821,6 +851,11 @@ def main():
             else:
                 multi_constrained_search_policy(
                     agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, save=True
+                )
+        elif args.method_type == "constrained_search_ds":
+            assert args.num_agents != 1
+            multi_constrained_search_policy(
+                    agent, eval_env, problem_setup, args, config, trained_cost_limit, basedir, ds=True, save=True
                 )
         else:
             raise ValueError("Invalid method type")

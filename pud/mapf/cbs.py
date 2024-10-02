@@ -1,8 +1,8 @@
 import heapq
 import random
 import logging
+import time
 import numpy as np
-import networkx as nx
 from networkx import Graph
 from numpy.typing import NDArray
 from typing import List, Union, Dict
@@ -15,12 +15,19 @@ from pud.mapf.single_agent_planner import (
 
 def location_collision(path1: List[int], path2: List[int], timestep: int):
 
-    if (path1[timestep] == path2[timestep]):
-        return [path1[timestep]], timestep, "vertex"
+    position1 = get_location(path1, timestep)
+    position2 = get_location(path2, timestep)
+
+    if position1 == position2:
+        return [position1], timestep, "vertex"
     if timestep < len(path1) - 1:
-        if (path1[timestep] == path2[timestep + 1] and path1[timestep + 1] == path2[timestep]):
-            return ([path1[timestep], path1[timestep + 1]], timestep + 1, "edge")
-        
+        next_position1 = get_location(path1, timestep + 1)
+        next_position2 = get_location(path2, timestep + 1)
+        if position1 == next_position2 and position2 == next_position1:
+            return [position1, next_position1], timestep + 1, "edge"
+
+    return None
+
 
 def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray, radius: float = 0.1):
     if (
@@ -30,6 +37,7 @@ def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_wa
         <= radius
     ):
         return [path1[timestep]], timestep, "vertex"
+
     if timestep < len(path1) - 1:
         if (
             np.linalg.norm(
@@ -49,6 +57,8 @@ def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_wa
                 "edge",
             )
 
+    return None
+
 
 def detect_collision(
     pathA: List[int], pathB: List[int], graph_waypoints: NDArray, collision_radius=0.1
@@ -67,12 +77,14 @@ def detect_collision(
         short_path.append(short_path[-1])
 
     for timestep in range(len(path1)):
+        collided = None
         if collision_radius > 0:
-            return radius_collision(
-                path1, path2, timestep, graph_waypoints, collision_radius
-            )
+            collided = radius_collision(path1, path2, timestep, graph_waypoints, collision_radius)
         else:
-            return location_collision(path1, path2, timestep)
+            collided = location_collision(path1, path2, timestep)
+
+        if collided is not None:
+            return collided
 
     return None
 
@@ -171,28 +183,13 @@ def disjoint_split(collision: Dict) -> List[Dict]:
     ]
 
 
-def to_inflate(
-    constraint: Dict,
-    graph: Graph,
-    paths: List[List[int]],
-    radius: int = 3,
-):
-
-    for idx, other_agent_path in enumerate(paths):
-        if idx == constraint["agent_id"]:
-            continue
-
-        nearest_nodes = nx.ego_graph(
-            graph, constraint["location"][0], radius=radius
-        ).nodes
-        for node in nearest_nodes:
-            tpath = nx.shortest_path(
-                graph, source=constraint["location"][0], target=node
-            )
-            for i in range(len(tpath) - 1):
-                if tpath[i + 1] in other_agent_path[constraint["timestep"] :]:  # noqa
-                    return True
-    return False
+def get_location(path, timestep):
+    if timestep < 0:
+        return path[0]
+    elif timestep < len(path):
+        return path[timestep]
+    else:
+        return path[-1]
 
 
 class CBSSolver(object):
@@ -207,18 +204,18 @@ class CBSSolver(object):
         seed: Union[int, None] = None,
         weighted: bool = False,
         collision_radius=0.1,
-        max_expanded=10000,
+        max_time: int = 300,
     ):
 
         if seed is not None:
             random.seed(seed)
         self.graph = graph
         self.goals = goals
+        self.max_time = max_time
         self.starts = starts
         self.weighted = weighted
         self.disjoint = disjoint
         self.num_agents = len(starts)
-        self.max_expanded = max_expanded
         self.graph_waypoints = graph_waypoints
         self.collision_radius = collision_radius
 
@@ -233,6 +230,7 @@ class CBSSolver(object):
         self.num_generated = 0
 
     def find_paths(self) -> List[List[int]]:
+        self.start_time = time.time()
         logging.debug("Finding paths using CBS Solver")
         root = {
             "cost": 0,
@@ -262,24 +260,20 @@ class CBSSolver(object):
             root["paths"], self.graph_waypoints, self.collision_radius
         )
 
-        logging.debug(root["collisions"])
-        for collision in root["collisions"]:
-            logging.debug(standard_split(collision))
-
         heapq.heappush(
             self.open_list,
             (root["cost"], len(root["collisions"]), self.num_generated, root),
         )
-        logging.debug("Generated: ", self.num_generated)
+        logging.debug("Generated: {}".format(self.num_generated))
         self.num_generated += 1
 
-        while len(self.open_list) > 0 and self.num_expanded < self.max_expanded:
+        while len(self.open_list) > 0 and time.time() - self.start_time < self.max_time:
             id, current_node = heapq.heappop(self.open_list)[2:]
-            logging.debug("Expanded: ", id)
+            logging.debug("Expanded: {}".format(id))
             self.num_expanded += 1
 
             if len(current_node["collisions"]) == 0:
-                return current_node["paths"]
+                return current_node
 
             collision = random.choice(current_node["collisions"])
             constraints = (
@@ -296,28 +290,12 @@ class CBSSolver(object):
                     "constraints": [*current_node["constraints"], constraint],
                 }
 
-                # radius = 3
-                # inflate = to_inflate(constraint, self.graph, successor["paths"], radius)
-                # if inflate:
-                #     print("Inflated!!")
-                #     print("---" * 50)
-
-                # update_h = self.heuristics[constraint["agent_id"]].copy()
-                # if inflate:
-                #     for key, value in update_h.items():
-                #         if value < radius:
-                #             update_h[key] = value + 10
-
                 agent_path = a_star(
                     constraint["agent_id"],
                     self.graph,
                     self.starts[constraint["agent_id"]],
                     self.goals[constraint["agent_id"]],
-                    (
-                        self.heuristics[constraint["agent_id"]]
-                        # if not inflate
-                        # else update_h
-                    ),
+                    self.heuristics[constraint["agent_id"]],
                     successor["constraints"],
                     weighted=self.weighted,
                 )
@@ -328,7 +306,6 @@ class CBSSolver(object):
                         "No path found for agent {}".format(constraint["agent_id"])
                     )
                 else:
-                    logging.debug(agent_path)
                     successor["paths"][constraint["agent_id"]] = agent_path
                     if constraint["positive"]:
                         violating_agents = []
@@ -336,27 +313,19 @@ class CBSSolver(object):
                             for agent in range(self.num_agents):
                                 if (
                                     constraint["location"][0]
-                                    == successor["paths"][agent][constraint["timestep"]]
+                                    == get_location(successor["paths"]["agent"], constraint["timestep"])
                                 ):
                                     violating_agents.append(agent)
                         else:
                             for agent in range(self.num_agents):
+                                successor_path_location = [
+                                    get_location(successor["paths"][agent], constraint["timestep"] - 1),
+                                    get_location(successor["paths"][agent], constraint["timestep"])
+                                ]
                                 if (
-                                    constraint["location"]
-                                    == [
-                                        successor["paths"][agent][
-                                            constraint["timestep"] - 1
-                                        ],
-                                        successor["paths"][agent][
-                                            constraint["timestep"]
-                                        ],
-                                    ]
-                                    or constraint["location"][0]
-                                    == successor["paths"][agent][
-                                        constraint["timestep"] - 1
-                                    ]
-                                    or constraint["location"][1]
-                                    == successor["paths"][agent][constraint["timestep"]]
+                                    constraint["location"] == successor_path_location
+                                    or constraint["location"][0] == successor_path_location[0]
+                                    or constraint["location"][1] == successor_path_location[1]
                                 ):
                                     violating_agents.append(agent)
 
@@ -379,12 +348,11 @@ class CBSSolver(object):
                                 skip = True
                                 break
                             else:
-                                logging.debug(agent_path)
                                 successor["paths"][agent] = agent_path
 
                     if not skip:
                         successor["collisions"] = detect_collisions(
-                            successor["paths"], self.graph_waypoints
+                            successor["paths"], self.graph_waypoints, self.collision_radius
                         )
                         successor["cost"] = compute_sum_of_costs(
                             successor["paths"], self.graph
@@ -398,7 +366,7 @@ class CBSSolver(object):
                                 successor,
                             ),
                         )
-                        logging.debug("Generated: ", self.num_generated)
+                        logging.debug("Generated: {}".format(self.num_generated))
                         self.num_generated += 1
 
-        raise RuntimeError("No solution found")
+        raise RuntimeError("Timelimit exceeded")
