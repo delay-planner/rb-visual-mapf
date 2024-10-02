@@ -795,7 +795,11 @@ def multi_constrained_search_policy(
         save_path = basedir / "multi_agent" / args.traj_difficulty
         if not save_path.exists():
             save_path.mkdir(parents=True)
-        save_path = save_path / f"constrained_search_factored_records_{args.num_agents}.npy"
+
+        if ds:
+            save_path = save_path / f"constrained_search_ds_factored_records_{args.num_agents}.npy"
+        else:
+            save_path = save_path / f"constrained_search_factored_records_{args.num_agents}.npy"
         if args.use_unconstrained_ckpt:
             save_path = save_path.as_posix()[:-4] + "_uc.npy"
         np.save(save_path, constrained_search_factored_records)
