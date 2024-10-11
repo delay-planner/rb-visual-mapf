@@ -11,6 +11,7 @@ outputs/
 pud/plots/data/
 pud/plots/old_data/
 pud/plots/figures/
+cc-sorb-venv/
 pud/envs/safe_habitatenv/apsps/
 
 # Byte-compiled / optimized / DLL files

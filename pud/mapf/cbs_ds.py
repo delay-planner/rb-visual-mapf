@@ -1,12 +1,14 @@
+import time
 import heapq
 import random
 import logging
-import time
 from networkx import Graph
 from typing import List, Union
+import numpy as np
 from numpy.typing import NDArray
 
 from pud.mapf.cbs import CBSSolver, detect_collisions, get_location
+from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
 from pud.mapf.single_agent_planner import (
     a_star_with_ds,
     compute_sum_of_costs,
@@ -64,7 +66,8 @@ class CBSDSSolver(CBSSolver):
         goals: List[int],
         disjoint: bool = True,
         seed: Union[int, None] = None,
-        weighted: bool = False,
+        weighted: str = "",
+        risk_bound: float = np.inf,
         collision_radius=0.1,
         max_time: int = 300,
     ):
@@ -77,6 +80,7 @@ class CBSDSSolver(CBSSolver):
             disjoint=disjoint,
             weighted=weighted,
             max_time=max_time,
+            risk_bound=risk_bound,
             graph_waypoints=graph_waypoints,
             collision_radius=collision_radius,
         )
@@ -102,8 +106,8 @@ class CBSDSSolver(CBSSolver):
                 root["constraints"],
                 weighted=self.weighted,
             )
-            if agent_path is None:
-                return RuntimeError("No path found for agent {}".format(i))
+            if type(agent_path) is MAPFErrorCodes:
+                raise RuntimeError(MAPFError(MAPFErrorCodes.NO_INIT_PATH, agent_path)["message"])
 
             root["paths"].append(agent_path)
 
@@ -210,4 +214,7 @@ class CBSDSSolver(CBSSolver):
                     logging.debug("Generated: {}".format(self.num_generated))
                     self.num_generated += 1
 
-        return RuntimeError("Timelimit exceeded")
+        if time.time() - self.start_time >= self.max_time:
+            raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED)["message"])
+        else:
+            raise RuntimeError(MAPFError(MAPFErrorCodes.NO_PATH)["message"])

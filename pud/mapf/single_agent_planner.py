@@ -1,26 +1,36 @@
 from __future__ import annotations
+import time
 import heapq
 import logging
-import time
 from networkx import Graph
 from typing import Dict, List, Union
+from pud.mapf.mapf_exceptions import MAPFErrorCodes
+
+
+def compute_cost(path: List[int], graph: Graph, weighted: str = ""):
+    """
+    Compute the cost of the path
+    """
+    cost = 0
+    for i in range(len(path) - 1):
+        cost += float(graph[path[i]][path[i + 1]][weighted]) if len(weighted) > 0 else 1
+    return cost
 
 
 def compute_sum_of_costs(
-    paths: List[List[int]], graph: Graph, weighted: bool = False
+    paths: List[List[int]], graph: Graph, weighted: str = ""
 ) -> float:
     """
     Compute the sum of costs of the paths
     """
     sum_of_costs = 0
     for path in paths:
-        for i in range(len(path) - 1):
-            sum_of_costs += graph[path[i]][path[i + 1]]["weight"] if weighted else 1
+        sum_of_costs += compute_cost(path, graph, weighted)
     return sum_of_costs
 
 
 def compute_heuristics(
-    graph: Graph, goal: int, weighted: bool = False
+    graph: Graph, goal: int, weighted: str = ""
 ) -> Dict[int, float]:
     """
     Compute the heuristic for each node in the graph
@@ -42,9 +52,7 @@ def compute_heuristics(
         for neighbor in graph.neighbors(location):
 
             successor_cost = (
-                cost + graph[location][neighbor]["weight"]
-                if weighted
-                else cost + 1
+                cost + float(graph[location][neighbor][weighted]) if len(weighted) > 0 else cost + 1
             )
             successor_location = neighbor
             successor = {"location": successor_location, "cost": successor_cost}
@@ -177,14 +185,26 @@ def is_constrained_with_ds(
         for constraint in constraint_table[timestep]:
             if constraint_agent == constraint["agent_id"]:
                 if len(constraint["location"]) == 1:
-                    if constraint["positive"] and next_location != constraint["location"][0]:
+                    if (
+                        constraint["positive"]
+                        and next_location != constraint["location"][0]
+                    ):
                         return True
-                    elif not constraint["positive"] and next_location == constraint["location"][0]:
+                    elif (
+                        not constraint["positive"]
+                        and next_location == constraint["location"][0]
+                    ):
                         return True
                 else:
-                    if constraint["positive"] and constraint["location"] != [current_location, next_location]:
+                    if constraint["positive"] and constraint["location"] != [
+                        current_location,
+                        next_location,
+                    ]:
                         return True
-                    if not constraint["positive"] and constraint["location"] == [current_location, next_location]:
+                    if not constraint["positive"] and constraint["location"] == [
+                        current_location,
+                        next_location,
+                    ]:
                         return True
     else:
         for t in range(timestep + 1, max_timestep + 1):
@@ -194,9 +214,15 @@ def is_constrained_with_ds(
 
                 if constraint_agent == constraint["agent_id"]:
                     if len(constraint["location"]) == 1:
-                        if constraint["positive"] and current_location != constraint["location"][0]:
+                        if (
+                            constraint["positive"]
+                            and current_location != constraint["location"][0]
+                        ):
                             return True
-                        elif not constraint["positive"] and current_location == constraint["location"][0]:
+                        elif (
+                            not constraint["positive"]
+                            and current_location == constraint["location"][0]
+                        ):
                             return True
     return False
 
@@ -227,6 +253,21 @@ class Node:
         return self.g_value + self.h_value < other.g_value + other.h_value
 
 
+class RiskNode(Node):
+    def __init__(self, location, g_value, h_value, parent, timestep, risk):
+        self.risk = risk
+        super().__init__(location, g_value, h_value, parent, timestep)
+
+    def __lt__(self, other):
+        if self.g_value + self.h_value == other.g_value + other.h_value:
+            if self.risk == other.risk:
+                if self.h_value == other.h_value:
+                    return self.timestep < other.timestep
+                return self.h_value < other.h_value
+            return self.risk < other.risk
+        return self.g_value + self.h_value < other.g_value + other.h_value
+
+
 def a_star(
     agent_id: int,
     graph: Graph,
@@ -234,13 +275,15 @@ def a_star(
     goal: int,
     heuristics: Dict[int, float],
     constraints,
-    weighted: bool = False,
-    max_iterations: int = 100000,
+    weighted: str = "",
     max_time: int = 300,
-) -> Union[List[int], None]:
+) -> Union[List[int], MAPFErrorCodes]:
 
     open_list = []
     closed_list = {}
+
+    if start not in heuristics:
+        return MAPFErrorCodes.START_GOAL_DISCONNECT
 
     h_value = heuristics[start]
     constraint_table = build_constraint_table(constraints, agent_id)
@@ -255,13 +298,11 @@ def a_star(
 
     # Add self-loops
     for node in graph.nodes:
-        graph.add_edge(node, node, weight=0)
+        graph.add_edge(node, node, weight=0, cost=0)
 
-    iterations = 0
     start_time = time.time()
-    while len(open_list) != 0 and iterations < max_iterations:
+    while len(open_list) != 0 and time.time() - start_time < max_time:
 
-        iterations += 1
         logging.debug(f"Size of open List: {len(open_list)}")
         current_node = heapq.heappop(open_list)[3]
         logging.debug(f"Current Node: {current_node.location}")
@@ -284,7 +325,9 @@ def a_star(
                 )
             else:
                 successor_gadd = (
-                    graph[current_node.location][successor_location]["weight"] if weighted else 1
+                    float(graph[current_node.location][successor_location][weighted])
+                    if len(weighted) > 0
+                    else 1
                 )
                 successor = Node(
                     successor_location,
@@ -308,7 +351,7 @@ def a_star(
                     successor.g_value + successor.h_value
                     < existing_node.g_value + existing_node.h_value
                 ):
-                    logging.debug(f"Updating node {successor.location}")
+                    # logging.debug(f"Updating node {successor.location}")
                     closed_list[(successor.location, successor.timestep)] = successor
                     heapq.heappush(
                         open_list,
@@ -320,7 +363,7 @@ def a_star(
                         ),
                     )
             else:
-                logging.debug(f"Adding node {successor.location}")
+                # logging.debug(f"Adding node {successor.location}")
                 closed_list[(successor.location, successor.timestep)] = successor
                 heapq.heappush(
                     open_list,
@@ -332,12 +375,10 @@ def a_star(
                     ),
                 )
 
-        loop_time = time.time() - start_time
-        if loop_time > max_time:
-            logging.debug(f"Exceeded max time of {max_time}")
-            return None
-
-    return None
+    if time.time() - start_time > max_time:
+        return MAPFErrorCodes.TIMELIMIT_REACHED
+    else:
+        return MAPFErrorCodes.NO_PATH
 
 
 def a_star_with_ds(
@@ -347,7 +388,7 @@ def a_star_with_ds(
     goal: int,
     heuristics: Dict[int, float],
     constraints,
-    weighted: bool = False,
+    weighted: str = "",
     max_time: int = 300,
 ):
     start_time = time.time()
@@ -357,8 +398,11 @@ def a_star_with_ds(
 
     num_expanded = 0
     num_generated = 0
-
     max_constraints = 0
+
+    if start not in heuristics:
+        return MAPFErrorCodes.START_GOAL_DISCONNECT
+
     h_value = heuristics[start]
     constraint_table = build_constraint_table_with_ds(constraints, agent_id)
     if constraint_table.keys():
@@ -368,7 +412,13 @@ def a_star_with_ds(
     if root.location == goal:
         if root.timestep <= max_constraints:
             if not is_constrained_with_ds(
-                goal, goal, root.timestep, max_constraints, constraint_table, agent_id, goal=True
+                goal,
+                goal,
+                root.timestep,
+                max_constraints,
+                constraint_table,
+                agent_id,
+                goal=True,
             ):
                 max_constraints = 0
 
@@ -382,7 +432,7 @@ def a_star_with_ds(
 
     # Add self-loops
     for node in graph.nodes:
-        graph.add_edge(node, node, weight=0)
+        graph.add_edge(node, node, weight=0, cost=0)
 
     while len(open_list) != 0 and time.time() - start_time < max_time:
 
@@ -390,7 +440,13 @@ def a_star_with_ds(
         num_expanded += 1
 
         if current_node.location == goal and not is_constrained_with_ds(
-            goal, goal, current_node.timestep, max_constraints, constraint_table, agent_id, goal=True
+            goal,
+            goal,
+            current_node.timestep,
+            max_constraints,
+            constraint_table,
+            agent_id,
+            goal=True,
         ):
             return extract_path(current_node)
 
@@ -407,7 +463,9 @@ def a_star_with_ds(
                 )
             else:
                 successor_gadd = (
-                    graph[current_node.location][successor_location]["weight"] if weighted else 1
+                    float(graph[current_node.location][successor_location][weighted])
+                    if len(weighted) > 0
+                    else 1
                 )
                 successor = Node(
                     successor_location,
@@ -434,7 +492,7 @@ def a_star_with_ds(
                     < existing_node.g_value + existing_node.h_value
                     and successor.g_value < existing_node.g_value
                 ):
-                    logging.debug(f"Updating node {successor.location}")
+                    # logging.debug(f"Updating node {successor.location}")
                     closed_list[(successor.location, successor.timestep)] = successor
                     heapq.heappush(
                         open_list,
@@ -448,7 +506,7 @@ def a_star_with_ds(
                     )
                     num_generated += 1
             else:
-                logging.debug(f"Adding node {successor.location}")
+                # logging.debug(f"Adding node {successor.location}")
                 closed_list[(successor.location, successor.timestep)] = successor
                 heapq.heappush(
                     open_list,
@@ -462,4 +520,176 @@ def a_star_with_ds(
                 )
                 num_generated += 1
 
-    return None
+    if time.time() - start_time > max_time:
+        return MAPFErrorCodes.TIMELIMIT_REACHED
+    else:
+        return MAPFErrorCodes.NO_PATH
+
+
+def risk_budgeted_a_star_with_ds(
+    agent_id: int,
+    graph: Graph,
+    start: int,
+    goal: int,
+    heuristics: Dict[int, float],
+    constraints,
+    risk_budget: float,
+    weighted: str = "",
+    max_time: int = 300,
+):
+    start_time = time.time()
+
+    open_list = []
+    closed_list = {}
+
+    num_expanded = 0
+    num_generated = 0
+    max_constraints = 0
+
+    if start not in heuristics:
+        return MAPFErrorCodes.START_GOAL_DISCONNECT
+
+    h_value = heuristics[start]
+    constraint_table = build_constraint_table_with_ds(constraints, agent_id)
+    if constraint_table.keys():
+        max_constraints = max(constraint_table.keys())
+
+    root = RiskNode(start, 0, h_value, None, 0, 0)
+    if root.location == goal:
+        if root.timestep <= max_constraints:
+            if not is_constrained_with_ds(
+                goal,
+                goal,
+                root.timestep,
+                max_constraints,
+                constraint_table,
+                agent_id,
+                goal=True,
+            ):
+                max_constraints = 0
+
+    heapq.heappush(
+        open_list,
+        (
+            root.g_value + root.h_value,
+            root.risk,
+            root.h_value,
+            root.location,
+            num_generated,
+            root,
+        ),
+    )
+    num_generated += 1
+
+    closed_list[(root.location, root.timestep)] = root
+
+    # Add self-loops
+    for node in graph.nodes:
+        graph.add_edge(node, node, weight=0, cost=0)
+
+    while len(open_list) != 0 and time.time() - start_time < max_time:
+
+        current_node = heapq.heappop(open_list)[-1]
+        num_expanded += 1
+
+        # If we have reached the goal and the goal is not constrained and the risk is within the budget
+        if (
+            current_node.location == goal
+            and not is_constrained_with_ds(
+                goal,
+                goal,
+                current_node.timestep,
+                max_constraints,
+                constraint_table,
+                agent_id,
+                goal=True,
+            )
+            and current_node.risk <= risk_budget
+        ):
+            return extract_path(current_node)
+
+        for neighbor in graph.neighbors(current_node.location):
+            successor_location = neighbor
+
+            if successor_location == current_node.location:
+                successor_risk = current_node.risk
+                successor = RiskNode(
+                    successor_location,
+                    current_node.g_value + 1,
+                    current_node.h_value,
+                    current_node,
+                    current_node.timestep + 1,
+                    successor_risk,
+                )
+            else:
+                successor_gadd = (
+                    float(graph[current_node.location][successor_location][weighted])
+                    if len(weighted) > 0
+                    else 1
+                )
+
+                successor_risk = current_node.risk + float(graph[current_node.location][successor_location]["cost"])
+                if successor_risk > risk_budget:
+                    continue
+
+                successor = RiskNode(
+                    successor_location,
+                    current_node.g_value + successor_gadd,
+                    heuristics[successor_location],
+                    current_node,
+                    current_node.timestep + 1,
+                    successor_risk,
+                )
+
+            if is_constrained_with_ds(
+                current_node.location,
+                successor.location,
+                successor.timestep,
+                max_constraints,
+                constraint_table,
+                agent_id,
+            ):
+                continue
+
+            if (successor.location, successor.timestep) in closed_list:
+                existing_node = closed_list[(successor.location, successor.timestep)]
+                if (
+                    successor.g_value + successor.h_value
+                    <= existing_node.g_value + existing_node.h_value
+                    and successor.g_value <= existing_node.g_value
+                    and successor.risk < existing_node.risk
+                ):
+                    # logging.debug(f"Updating node {successor.location}")
+                    closed_list[(successor.location, successor.timestep)] = successor
+                    heapq.heappush(
+                        open_list,
+                        (
+                            successor.g_value + successor.h_value,
+                            successor.risk,
+                            successor.h_value,
+                            successor.location,
+                            num_generated,
+                            successor,
+                        ),
+                    )
+                    num_generated += 1
+            else:
+                # logging.debug(f"Adding node {successor.location}")
+                closed_list[(successor.location, successor.timestep)] = successor
+                heapq.heappush(
+                    open_list,
+                    (
+                        successor.g_value + successor.h_value,
+                        successor.risk,
+                        successor.h_value,
+                        successor.location,
+                        num_generated,
+                        successor,
+                    ),
+                )
+                num_generated += 1
+
+    if time.time() - start_time > max_time:
+        return MAPFErrorCodes.TIMELIMIT_REACHED
+    else:
+        return MAPFErrorCodes.NO_PATH

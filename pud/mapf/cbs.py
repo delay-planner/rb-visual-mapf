@@ -6,6 +6,7 @@ import numpy as np
 from networkx import Graph
 from numpy.typing import NDArray
 from typing import List, Union, Dict
+from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
 from pud.mapf.single_agent_planner import (
     a_star,
     compute_heuristics,
@@ -202,13 +203,17 @@ class CBSSolver(object):
         goals: List[int],
         disjoint: bool = False,
         seed: Union[int, None] = None,
-        weighted: bool = False,
+        weighted: str = "",
+        risk_bound: float = np.inf,
         collision_radius=0.1,
         max_time: int = 300,
     ):
 
         if seed is not None:
             random.seed(seed)
+
+        assert risk_bound == np.inf, "Risk bound is not supported in CBS"
+
         self.graph = graph
         self.goals = goals
         self.max_time = max_time
@@ -216,6 +221,7 @@ class CBSSolver(object):
         self.weighted = weighted
         self.disjoint = disjoint
         self.num_agents = len(starts)
+        self.risk_bound = risk_bound
         self.graph_waypoints = graph_waypoints
         self.collision_radius = collision_radius
 
@@ -250,8 +256,9 @@ class CBSSolver(object):
                 root["constraints"],
                 weighted=self.weighted,
             )
-            if agent_path is None:
-                raise RuntimeError("No path found for agent {}".format(i))
+
+            if type(agent_path) is MAPFErrorCodes:
+                raise RuntimeError(MAPFError(MAPFErrorCodes.NO_INIT_PATH, agent_path)["message"])
 
             root["paths"].append(agent_path)
 
@@ -301,10 +308,8 @@ class CBSSolver(object):
                 )
 
                 skip = False
-                if agent_path is None:
-                    raise RuntimeError(
-                        "No path found for agent {}".format(constraint["agent_id"])
-                    )
+                if type(agent_path) is MAPFErrorCodes:
+                    raise RuntimeError(MAPFError(MAPFErrorCodes.NO_CONSTRAINED_PATH, agent_path)["message"])
                 else:
                     successor["paths"][constraint["agent_id"]] = agent_path
                     if constraint["positive"]:
@@ -369,4 +374,7 @@ class CBSSolver(object):
                         logging.debug("Generated: {}".format(self.num_generated))
                         self.num_generated += 1
 
-        raise RuntimeError("Timelimit exceeded")
+        if time.time() - self.start_time > self.max_time:
+            raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED)["message"])
+        else:
+            raise RuntimeError(MAPFError(MAPFErrorCodes.NO_PATH)["message"])

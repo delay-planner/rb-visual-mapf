@@ -6,6 +6,8 @@ import numpy as np
 import networkx as nx
 from pud.mapf.cbs import CBSSolver
 from pud.mapf.cbs_ds import CBSDSSolver
+from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
+from pud.mapf.single_agent_planner import compute_sum_of_costs
 
 
 class BasePolicy:
@@ -76,8 +78,8 @@ class SearchPolicy(BasePolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -147,7 +149,7 @@ class SearchPolicy(BasePolicy):
             for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
-                    g.add_edge(i, j, weight=length)
+                    g.add_edge(i, j, weight=float(length))
         self.g = g
 
     def get_pairwise_dist_to_rb(self, state, masked=True):
@@ -202,9 +204,9 @@ class SearchPolicy(BasePolicy):
             zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
         ):
             if dist_from_start < self.max_search_steps:
-                planning_graph.add_edge(start_id, i, weight=dist_from_start)
+                planning_graph.add_edge(start_id, i, weight=float(dist_from_start))
             if dist_to_goal < self.max_search_steps:
-                planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
+                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal))
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
             rb_to_goal_dist < self.max_search_steps
@@ -219,9 +221,9 @@ class SearchPolicy(BasePolicy):
             self.stats["path_planning_attempts"] += 1
             graph_search_start = time.perf_counter()
 
-            if self.weighted_path_planning:
+            if len(self.weighted_path_planning) > 0:
                 path = nx.shortest_path(
-                    g2, source="start", target="goal", weight="weight"
+                    g2, source="start", target="goal", weight=self.weighted_path_planning
                 )
             else:
                 path = nx.shortest_path(g2, source="start", target="goal")
@@ -333,8 +335,8 @@ class ConstrainedSearchPolicy(SearchPolicy):
         max_cost_limit=1.0,
         dist_aggregate="min",
         cost_aggregate="max",
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -380,7 +382,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
                 cost = pcost_combined[i, j]
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps and cost < self.max_cost_limit:
-                    g.add_edge(i, j, weight=length)
+                    g.add_edge(i, j, weight=float(length), cost=float(cost))
         self.g = g
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
@@ -445,9 +447,9 @@ class ConstrainedSearchPolicy(SearchPolicy):
             dist_from_start, cost_from_start = from_start
             dist_to_goal, cost_to_goal = to_goal
             if dist_from_start < self.max_search_steps and cost_from_start < self.max_cost_limit:
-                planning_graph.add_edge(start_id, i, weight=dist_from_start)
+                planning_graph.add_edge(start_id, i, weight=float(dist_from_start), cost=float(cost_from_start))
             if dist_to_goal < self.max_search_steps and cost_to_goal < self.max_cost_limit:
-                planning_graph.add_edge(i, goal_id, weight=dist_to_goal)
+                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal), cost=float(cost_to_goal))
 
         if (
             not np.any(start_to_rb_dist < self.max_search_steps)
@@ -469,8 +471,8 @@ class VisualSearchPolicy(SearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -583,8 +585,8 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
         max_cost_limit=1.0,
         dist_aggregate="min",
         cost_aggregate="max",
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -616,10 +618,11 @@ class MultiAgentSearchPolicy(SearchPolicy):
         radius=0.1,
         aggregate="min",
         open_loop=False,
+        risk_bound=np.inf,
         max_search_steps=7,
         disjoint_split=False,
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -637,6 +640,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
         )
         self.radius = radius
         self.n_agents = n_agents
+        self.risk_bound = risk_bound
         self.disjoint_split = disjoint_split
 
     def get_closest_waypoints(self, state):
@@ -674,7 +678,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
 
     def construct_augmented_planning_graph(self, starts, goals):
         planning_graph = self.g.copy()
-        logging.debug("Initial graph size = ", self.g.number_of_nodes())
+        logging.debug("Initial graph size = {}".format(planning_graph.number_of_nodes()))
 
         num_nodes = self.rb_vec.shape[0] - 1
 
@@ -710,22 +714,38 @@ class MultiAgentSearchPolicy(SearchPolicy):
 
         if not self.disjoint_split:
             cbs_class = CBSSolver
-        else:
+        elif self.disjoint_split and self.risk_bound == np.inf:
             cbs_class = CBSDSSolver
+        elif self.disjoint_split and self.risk_bound < np.inf:
+            cbs_class = RiskBoundedCBSSolver
+        else:
+            raise NotImplementedError
 
         cbs_solver = cbs_class(
-            graph,
-            augmented_wps,
-            start_ids,
-            goal_ids,
+            graph.copy(),
+            augmented_wps.copy(),
+            start_ids.copy(),
+            goal_ids.copy(),
             weighted=self.weighted_path_planning,
             collision_radius=self.radius,
+            risk_bound=self.risk_bound,
         )
-        solution = cbs_solver.find_paths()
+        try:
+            solution = cbs_solver.find_paths()
+        except RuntimeError as e:
+            # Get the error message from the exception
+            error_message = e.args[0]
+            raise RuntimeError("CBS failed to find a solution. " + error_message["message"])
+
         paths = solution["paths"]  # type: ignore
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution["cost"]))  # type: ignore
+            print(
+                "Accumulated risk of solution: {}".format(
+                    compute_sum_of_costs(solution["paths"], graph, "cost")  # type: ignore
+                )
+            )
             print("Number of expanded nodes: {}".format(cbs_solver.num_expanded))
             print("Number of generated nodes: {}".format(cbs_solver.num_generated))
             print("Printing the paths")
@@ -758,6 +778,8 @@ class MultiAgentSearchPolicy(SearchPolicy):
         self.goal_ids = goal_ids
         self.start_ids = start_ids
         self.nodes_to_agents_maps = nodes_to_agents_maps
+
+        cbs_class = None
 
     def get_current_waypoints(self):
         augmented_waypoints = []
@@ -909,13 +931,14 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
         pcost=None,
         radius=0.1,
         open_loop=False,
+        risk_bound=np.inf,
         max_search_steps=7,
         max_cost_limit=1.0,
         dist_aggregate="min",
         disjoint_split=False,
         cost_aggregate="max",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
+        weighted_path_planning="",
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -928,6 +951,7 @@ class ConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, MultiAgentSearc
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,
+            risk_bound=risk_bound,
             disjoint_split=disjoint_split,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
@@ -950,10 +974,11 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         radius=0.1,
         aggregate="min",
         open_loop=False,
+        risk_bound=np.inf,
         max_search_steps=7,
         disjoint_split=False,
+        weighted_path_planning="",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -965,6 +990,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             n_agents=n_agents,
             aggregate=aggregate,
             open_loop=open_loop,
+            risk_bound=risk_bound,
             disjoint_split=disjoint_split,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
@@ -1044,8 +1070,12 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
 
         if not self.disjoint_split:
             cbs_class = CBSSolver
-        else:
+        elif self.disjoint_split and self.risk_bound == np.inf:
             cbs_class = CBSDSSolver
+        elif self.disjoint_split and self.risk_bound < np.inf:
+            cbs_class = RiskBoundedCBSSolver
+        else:
+            raise NotImplementedError
 
         cbs_solver = cbs_class(
             graph,
@@ -1054,12 +1084,24 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             goal_ids,
             weighted=self.weighted_path_planning,
             collision_radius=self.radius,
+            risk_bound=self.risk_bound
         )
-        solution = cbs_solver.find_paths()
+        try:
+            solution = cbs_solver.find_paths()
+        except RuntimeError as e:
+            # Get the error message from the exception
+            error_message = e.args[0]
+            raise RuntimeError("CBS failed to find a solution. " + error_message['message'])
+
         paths = solution["paths"]  # type: ignore
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution["cost"]))  # type: ignore
+            print(
+                "Accumulated risk of solution: {}".format(
+                    compute_sum_of_costs(solution["paths"], graph, "cost")  # type: ignore
+                )
+            )
             print("Number of expanded nodes: {}".format(cbs_solver.num_expanded))
             print("Number of generated nodes: {}".format(cbs_solver.num_generated))
             print("Printing the paths")
@@ -1280,13 +1322,14 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
         ckpts=None,
         radius=0.1,
         open_loop=False,
+        risk_bound=np.inf,
         max_search_steps=7,
         max_cost_limit=1.0,
         disjoint_split=False,
         dist_aggregate="min",
         cost_aggregate="max",
         no_waypoint_hopping=False,
-        weighted_path_planning=False,
+        weighted_path_planning="",
         waypoint_consistency_cutoff=5.0,
         **kwargs,
     ):
@@ -1299,6 +1342,7 @@ class VisualConstrainedMultiAgentSearchPolicy(ConstrainedSearchPolicy, VisualMul
             radius=radius,
             n_agents=n_agents,
             open_loop=open_loop,
+            risk_bound=risk_bound,
             disjoint_split=disjoint_split,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
@@ -1398,8 +1442,8 @@ class SparseSearchPolicy(SearchPolicy):
         while neighbors_added < len(start_to_rb_dist):
             i = sorted_start_indices[neighbors_added]
             j = sorted_goal_indices[neighbors_added]
-            planning_graph.add_edge("start", i, weight=start_to_rb_dist[i])
-            planning_graph.add_edge(j, "goal", weight=rb_to_goal_dist[j])
+            planning_graph.add_edge("start", i, weight=float(start_to_rb_dist[i]))
+            planning_graph.add_edge(j, "goal", weight=float(rb_to_goal_dist[j]))
             try:
                 nx.shortest_path(planning_graph, source="start", target="goal")
                 break
@@ -1439,10 +1483,10 @@ class SparseSearchPolicy(SearchPolicy):
                     # "start" + str(idx), i, weight=start_to_rb_dist[i]
                     num_nodes + 1,
                     i,
-                    weight=start_to_rb_dist[i],
+                    weight=float(start_to_rb_dist[i]),
                 )
                 # planning_graph.add_edge(j, "goal" + str(idx), weight=rb_to_goal_dist[j])
-                planning_graph.add_edge(j, num_nodes + 2, weight=rb_to_goal_dist[j])
+                planning_graph.add_edge(j, num_nodes + 2, weight=float(rb_to_goal_dist[j]))
                 nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
                 nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
                 try:

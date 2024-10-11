@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+from argparse import ArgumentParser
 
 
 def extract_single_agent_metrics(records, search_based=(False, None)):
@@ -65,6 +66,7 @@ def extract_multi_agent_metrics(records, num_agents, search_based=(False, None))
                     mean_steps.append(np.mean(steps))
                     mean_rewards.append(np.mean(rewards))
                     mean_cumulative_costs.append(np.max(cumulative_costs))
+                    # mean_cumulative_costs.append(np.mean(cumulative_costs))
             continue
         for i in range(num_agents):
             successes.append(record[i]["success"])
@@ -79,6 +81,7 @@ def extract_multi_agent_metrics(records, num_agents, search_based=(False, None))
             mean_steps.append(np.mean(steps))
             mean_rewards.append(np.mean(rewards))
             mean_cumulative_costs.append(np.max(cumulative_costs))
+            # mean_cumulative_costs.append(np.mean(cumulative_costs))
 
     # if search_based[0]:
     #     if fallback_num != 0:
@@ -110,6 +113,12 @@ def means_and_stddevs(metrics, num_agents):
         constrained_search_ds_uc = [
             metric[key] for metric in metrics["constrained_search_disjoint_uc"]
         ]
+        constrained_search_risk_bounded_ds = [
+            metric[key] for metric in metrics["constrained_search_risk_bounded_disjoint"]
+        ]
+        constrained_search_risk_bounded_ds_uc = [
+            metric[key] for metric in metrics["constrained_search_risk_bounded_disjoint_uc"]
+        ]
 
     unconstrained_cc_mean = np.mean(unconstrained_cc)
     unconstrained_search_cc_mean = np.mean(unconstrained_search_cc)
@@ -121,6 +130,12 @@ def means_and_stddevs(metrics, num_agents):
         unconstrained_search_ds_cc_mean = np.mean(unconstrained_search_ds_cc)
         constrained_search_ds_cc_means = [np.mean(metric) for metric in constrained_search_ds_cc]
         constrained_search_ds_uc_means = [np.mean(metric) for metric in constrained_search_ds_uc]
+        constrained_search_risk_bounded_ds_means = [
+            np.mean(metric) for metric in constrained_search_risk_bounded_ds
+        ]
+        constrained_search_risk_bounded_ds_uc_means = [
+            np.mean(metric) for metric in constrained_search_risk_bounded_ds_uc
+        ]
 
     unconstrained_cc_stddev = np.std(unconstrained_cc)
     unconstrained_search_cc_stddev = np.std(unconstrained_search_cc)
@@ -132,6 +147,12 @@ def means_and_stddevs(metrics, num_agents):
         unconstrained_search_ds_cc_stddev = np.std(unconstrained_search_ds_cc)
         constrained_search_ds_cc_stddevs = [np.std(metric) for metric in constrained_search_ds_cc]
         constrained_search_ds_uc_stddevs = [np.std(metric) for metric in constrained_search_ds_uc]
+        constrained_search_risk_bounded_ds_stddevs = [
+            np.std(metric) for metric in constrained_search_risk_bounded_ds
+        ]
+        constrained_search_risk_bounded_ds_uc_stddevs = [
+            np.std(metric) for metric in constrained_search_risk_bounded_ds_uc
+        ]
 
     unconstrained_sr = metrics["unconstrained"]["success_rate"]
     unconstrained_search_sr = metrics["unconstrained_search"]["success_rate"]
@@ -146,6 +167,12 @@ def means_and_stddevs(metrics, num_agents):
         ]
         constrained_search_ds_uc_sr = [
             metric["success_rate"] for metric in metrics["constrained_search_disjoint_uc"]
+        ]
+        constrained_search_risk_bounded_ds_sr = [
+            metric["success_rate"] for metric in metrics["constrained_search_risk_bounded_disjoint"]
+        ]
+        constrained_search_risk_bounded_ds_uc_sr = [
+            metric["success_rate"] for metric in metrics["constrained_search_risk_bounded_disjoint_uc"]
         ]
 
     edge_cost_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
@@ -186,9 +213,17 @@ def means_and_stddevs(metrics, num_agents):
             print(f"Constrained Search Disjoint UC ({edge_cost_factors[idx]})\t: "
                   f"{metric:.2f} +/- {constrained_search_ds_uc_stddevs[idx]:.2f} "
                   f"({constrained_search_ds_uc_sr[idx]:.2f})")
+        for idx, metric in enumerate(constrained_search_risk_bounded_ds_means):
+            print(f"Constrained Search Risk Bounded Disjoint ({edge_cost_factors[idx]})\t: "
+                  f"{metric:.2f} +/- {constrained_search_risk_bounded_ds_stddevs[idx]:.2f} "
+                  f"({constrained_search_risk_bounded_ds_sr[idx]:.2f})")
+        for idx, metric in enumerate(constrained_search_risk_bounded_ds_uc_means):
+            print(f"Constrained Search Risk Bounded Disjoint UC ({edge_cost_factors[idx]})\t: "
+                  f"{metric:.2f} +/- {constrained_search_risk_bounded_ds_uc_stddevs[idx]:.2f} "
+                  f"({constrained_search_risk_bounded_ds_uc_sr[idx]:.2f})")
 
 
-def collect_metrics(basedir, problem_type, n_agents):
+def collect_metrics(basedir, problem_type, n_agents, fallback=True):
 
     if n_agents == 1:
         local_basedir = basedir / "single_agent" / problem_type
@@ -211,15 +246,15 @@ def collect_metrics(basedir, problem_type, n_agents):
 
         unconstrained_metrics = extract_single_agent_metrics(unconstrained_records)
         unconstrained_search_metrics = extract_single_agent_metrics(
-            unconstrained_search_records, (True, unconstrained_records)
+            unconstrained_search_records, (fallback, unconstrained_records)
         )
         constrained_metrics = extract_single_agent_metrics(constrained_records)
         constrained_search_factored_metrics = [
-            extract_single_agent_metrics(csr, (True, constrained_records))
+            extract_single_agent_metrics(csr, (fallback, constrained_records))
             for csr in constrained_search_factored_records
         ]
         constrained_search_factored_metrics_cc = [
-            extract_single_agent_metrics(csr, (True, constrained_records))
+            extract_single_agent_metrics(csr, (fallback, constrained_records))
             for csr in constrained_search_factored_records_cc
         ]
 
@@ -258,6 +293,10 @@ def collect_metrics(basedir, problem_type, n_agents):
             local_basedir / f"constrained_search_ds_factored_records_{n_agents}_uc.npy",
             allow_pickle=True,
         )
+        constrained_search_risk_bounded_ds_factored_records = np.load(
+            local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}_uc.npy",
+            allow_pickle=True,
+        )
         constrained_search_factored_records_cc = np.load(
             local_basedir / f"constrained_search_factored_records_{n_agents}.npy",
             allow_pickle=True,
@@ -266,32 +305,44 @@ def collect_metrics(basedir, problem_type, n_agents):
             local_basedir / f"constrained_search_ds_factored_records_{n_agents}.npy",
             allow_pickle=True,
         )
+        constrained_search_risk_bounded_ds_factored_records_cc = np.load(
+            local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}.npy",
+            allow_pickle=True,
+        )
 
         unconstrained_metrics = extract_multi_agent_metrics(
             unconstrained_records, n_agents
         )
         unconstrained_search_metrics = extract_multi_agent_metrics(
-            unconstrained_search_records, n_agents, (True, unconstrained_records)
+            unconstrained_search_records, n_agents, (fallback, unconstrained_records)
         )
         unconstrained_search_ds_metrics = extract_multi_agent_metrics(
-            unconstrained_search_ds_records, n_agents, (True, unconstrained_records)
+            unconstrained_search_ds_records, n_agents, (fallback, unconstrained_records)
         )
         constrained_metrics = extract_multi_agent_metrics(constrained_records, n_agents)
         constrained_search_factored_metrics = [
-            extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_factored_records
         ]
         constrained_search_ds_factored_metrics = [
-            extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_ds_factored_records
         ]
+        constrained_search_risk_bounded_ds_factored_metrics = [
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
+            for csr in constrained_search_risk_bounded_ds_factored_records
+        ]
         constrained_search_factored_metrics_cc = [
-            extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_factored_records_cc
         ]
         constrained_search_ds_factored_metrics_cc = [
-            extract_multi_agent_metrics(csr, n_agents, (True, constrained_records))
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_ds_factored_records_cc
+        ]
+        constrained_search_risk_bounded_ds_factored_metrics_cc = [
+            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
+            for csr in constrained_search_risk_bounded_ds_factored_records_cc
         ]
 
         return means_and_stddevs(
@@ -304,12 +355,19 @@ def collect_metrics(basedir, problem_type, n_agents):
                 "constrained_search_disjoint_uc": constrained_search_ds_factored_metrics,
                 "constrained_search": constrained_search_factored_metrics_cc,
                 "constrained_search_disjoint": constrained_search_ds_factored_metrics_cc,
+                "constrained_search_risk_bounded_disjoint_uc": constrained_search_risk_bounded_ds_factored_metrics,
+                "constrained_search_risk_bounded_disjoint": constrained_search_risk_bounded_ds_factored_metrics_cc,
             },
             n_agents,
         )
 
 
 if __name__ == "__main__":
+
+    parser = ArgumentParser()
+    parser.add_argument("--fallback", action="store_true", default=False)
+
+    args = parser.parse_args()
 
     num_agents = [1, 5, 10, 20]
     problem_types = ["easy", "medium", "hard"]
@@ -335,7 +393,7 @@ if __name__ == "__main__":
                 print(f"\tProblem Type: {problem_type}")
                 print("-" * 50)
                 try:
-                    collect_metrics(basedir, problem_type, n_agent)
+                    collect_metrics(basedir, problem_type, n_agent, fallback=args.fallback)
                 except FileNotFoundError:
                     import traceback
                     traceback.print_exc()

@@ -7,7 +7,7 @@ agents=(1 5 10 20)
 constrained_ckpt_file=$4
 unconstrained_ckpt_file=$3
 problem_types=("hard" "medium" "easy")
-method_types=("unconstrained" "constrained" "unconstrained_search" "constrained_search" "unconstrained_search_ds" "constrained_search_ds")
+method_types=("unconstrained" "constrained" "unconstrained_search" "constrained_search" "unconstrained_search_ds" "constrained_search_ds" "risk_bounded_constrained_search_ds")
 
 env_options=("centerdot" "sc2_staging_08" "sc0_staging_20" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15")
 if [[ ! " ${env_options[@]} " =~ " ${env} " ]]; then
@@ -34,7 +34,7 @@ collect_trajectories() {
         echo "Script crashed with exit code $EXIT_CODE. Restarting..." >&2
     sleep 1
     done
-    if [ $method_type == "constrained_search" ] || [ $method_type == "constrained_search_ds" ]; then
+    if [ $method_type == "constrained_search" ] || [ $method_type == "constrained_search_ds" ] || [ $method_type == "risk_bounded_constrained_search_ds" ]; then
         printf "%*s\n" 50 | tr ' ' '*'
         echo "Method type: ${method_type} with unconstrained checkpoint"
         printf "%*s\n" 50 | tr ' ' '*'
