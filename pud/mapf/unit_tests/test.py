@@ -5,7 +5,7 @@ from pud.mapf.single_agent_planner import compute_cost
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     filename = "pud/mapf/unit_tests/test_cbs_input.txt"
 
     f = open(
