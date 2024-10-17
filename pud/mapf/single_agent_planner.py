@@ -76,6 +76,33 @@ def compute_heuristics(
     return heuristics
 
 
+def compute_heuristics_v2(graph: Graph, goal: int, weighted: str = ""):
+    """
+    Compute the heuristic for each node in the graph
+    """
+    graph = graph.to_undirected()
+    open_list = [(0, goal)]
+    heuristics = {goal: 0}
+    closed_list = set()
+
+    while open_list:
+        cost, location = heapq.heappop(open_list)
+
+        if location in closed_list:
+            continue
+        closed_list.add(location)
+
+        for neighbor in graph.neighbors(location):
+            edge_cost = float(graph[location][neighbor][weighted]) if weighted else 1
+            successor_cost = cost + edge_cost
+
+            if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
+                heuristics[neighbor] = successor_cost  # type: ignore
+                heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
+
+    return heuristics
+
+
 def build_constraint_table(
     constraints: List[Dict], agent_id: int
 ) -> Dict[int, List[Dict]]:
@@ -688,6 +715,8 @@ def risk_budgeted_a_star_with_ds(
                     ),
                 )
                 num_generated += 1
+
+        del current_node
 
     if time.time() - start_time > max_time:
         return MAPFErrorCodes.TIMELIMIT_REACHED

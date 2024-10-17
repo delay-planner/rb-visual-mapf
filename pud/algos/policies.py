@@ -729,6 +729,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             weighted=self.weighted_path_planning,
             collision_radius=self.radius,
             risk_bound=self.risk_bound,
+            max_time=1000*len(start_ids)
         )
         try:
             solution = cbs_solver.find_paths()

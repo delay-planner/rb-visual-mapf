@@ -10,10 +10,15 @@ from numpy.typing import NDArray
 from pud.mapf.cbs import detect_collisions, disjoint_split, get_location
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
 from pud.mapf.single_agent_planner import (
+    RiskNode,
     a_star_with_ds,
+    build_constraint_table_with_ds,
     compute_cost,
     compute_heuristics,
+    compute_heuristics_v2,
     compute_sum_of_costs,
+    extract_path,
+    is_constrained_with_ds,
     risk_budgeted_a_star_with_ds,
 )
 
@@ -80,7 +85,7 @@ class RiskBoundedCBSSolver(object):
         goals: List[int],
         risk_bound: float,
         weighted: str = "",
-        max_time: int = 300,
+        max_time: int = 600,
         collision_radius=0.1,
         disjoint: bool = True,
         seed: Union[int, None] = None,
@@ -106,8 +111,8 @@ class RiskBoundedCBSSolver(object):
         self.collision_radius = collision_radius
 
         self.open_list = []
-        self.distance_heuristics = []
         self.cost_heuristics = []
+        self.distance_heuristics = []
         for goal in self.goals:
             self.distance_heuristics.append(
                 compute_heuristics(self.graph.copy(), goal, weighted="")
@@ -128,6 +133,10 @@ class RiskBoundedCBSSolver(object):
 
         self.budget_allocator = self.budget_allocator_cls(self.graph, self.risk_bound)
 
+        # Add self-loops
+        for node in self.graph.nodes:
+            self.graph.add_edge(node, node, weight=0, cost=0)
+
     def min_feasible_cost(self, agent, constraints):
         agent_path = a_star_with_ds(
             agent,
@@ -137,12 +146,13 @@ class RiskBoundedCBSSolver(object):
             self.cost_heuristics[agent],
             constraints,
             weighted="cost",
-            max_time=100,
+            max_time=self.max_time // self.num_agents,
         )
         if type(agent_path) is MAPFErrorCodes:
             return agent_path
         else:
-            return compute_cost(agent_path, self.graph, "cost")  # type: ignore
+            risk_value = compute_cost(agent_path, self.graph, "cost")  # type: ignore
+            return risk_value
 
     def reallocate_risk(self, node, failings_agents):
         passing_agents = [i for i in range(self.num_agents) if i not in failings_agents]
@@ -203,7 +213,7 @@ class RiskBoundedCBSSolver(object):
                 self.distance_heuristics[i],
                 root["constraints"],
                 weighted=self.weighted,
-                max_time=100,
+                max_time=self.max_time // self.num_agents,
             )
             if type(agent_path) is MAPFErrorCodes:
                 raise RuntimeError(MAPFError(MAPFErrorCodes.NO_INIT_PATH, agent_path)["message"])
@@ -235,16 +245,12 @@ class RiskBoundedCBSSolver(object):
 
             if not all(astar_success):
                 for i in range(self.num_agents):
-                    agent_path = risk_budgeted_a_star_with_ds(
+                    agent_path = self.risk_budgeted_a_star_with_ds(
                         i,
-                        self.graph,
-                        self.starts[i],
-                        self.goals[i],
-                        self.distance_heuristics[i],
                         current_node["constraints"],
                         current_node["risk_allocation"][i],
                         weighted=self.weighted,
-                        max_time=100,
+                        max_time=self.max_time // self.num_agents,
                     )
                     if type(agent_path) is not MAPFErrorCodes:
                         astar_success[i] = True
@@ -280,16 +286,12 @@ class RiskBoundedCBSSolver(object):
                             successor["constraints"].append(c)
 
                     constraint_agent = constraint["agent_id"]
-                    agent_path = risk_budgeted_a_star_with_ds(
+                    agent_path = self.risk_budgeted_a_star_with_ds(
                         constraint_agent,
-                        self.graph,
-                        self.starts[constraint_agent],
-                        self.goals[constraint_agent],
-                        self.distance_heuristics[constraint_agent],
                         successor["constraints"],
                         current_node["risk_allocation"][constraint_agent],
                         weighted=self.weighted,
-                        max_time=100,
+                        max_time=self.max_time // self.num_agents,
                     )
 
                     if type(agent_path) is not MAPFErrorCodes:
@@ -322,16 +324,12 @@ class RiskBoundedCBSSolver(object):
                                 if agent == constraint_agent:
                                     continue
 
-                                agent_path = risk_budgeted_a_star_with_ds(
+                                agent_path = self.risk_budgeted_a_star_with_ds(
                                     agent,
-                                    self.graph,
-                                    self.starts[agent],
-                                    self.goals[agent],
-                                    self.distance_heuristics[agent],
                                     successor["constraints"],
                                     current_node["risk_allocation"][agent],
                                     weighted=self.weighted,
-                                    max_time=100,
+                                    max_time=self.max_time // self.num_agents,
                                 )
                                 if agent_path is None:
                                     skip = True
@@ -385,3 +383,159 @@ class RiskBoundedCBSSolver(object):
             raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED))
         else:
             raise RuntimeError(MAPFError(MAPFErrorCodes.NO_PATH))
+
+    def risk_budgeted_a_star_with_ds(self, agent_id: int, constraints, risk_budget: float, weighted: str = "", max_time: int = 300):
+        start_time = time.time()
+
+        open_list = []
+        closed_list = {}
+
+        num_expanded = 0
+        num_generated = 0
+        max_constraints = 0
+
+        if self.starts[agent_id] not in self.distance_heuristics[agent_id]:
+            return MAPFErrorCodes.START_GOAL_DISCONNECT
+
+        h_value = self.distance_heuristics[agent_id][self.starts[agent_id]]
+        constraint_table = build_constraint_table_with_ds(constraints, agent_id)
+        if constraint_table.keys():
+            max_constraints = max(constraint_table.keys())
+
+        root = RiskNode(self.starts[agent_id], 0, h_value, None, 0, 0)
+        if root.location == self.goals[agent_id]:
+            if root.timestep <= max_constraints:
+                if not is_constrained_with_ds(
+                    self.goals[agent_id],
+                    self.goals[agent_id],
+                    root.timestep,
+                    max_constraints,
+                    constraint_table,
+                    agent_id,
+                    goal=True,
+                ):
+                    max_constraints = 0
+
+        heapq.heappush(
+            open_list,
+            (
+                root.g_value + root.h_value,
+                root.risk,
+                root.h_value,
+                root.location,
+                num_generated,
+                root,
+            ),
+        )
+        num_generated += 1
+
+        closed_list[(root.location, root.timestep)] = root
+
+        while len(open_list) != 0 and time.time() - start_time < max_time:
+
+            current_node = heapq.heappop(open_list)[-1]
+            num_expanded += 1
+
+            # If we have reached the goal and the goal is not constrained and the risk is within the budget
+            if (
+                current_node.location == self.goals[agent_id]
+                and not is_constrained_with_ds(
+                    self.goals[agent_id],
+                    self.goals[agent_id],
+                    current_node.timestep,
+                    max_constraints,
+                    constraint_table,
+                    agent_id,
+                    goal=True,
+                )
+                and current_node.risk <= risk_budget
+            ):
+                return extract_path(current_node)
+
+            for neighbor in self.graph.neighbors(current_node.location):
+                successor_location = neighbor
+
+                if successor_location == current_node.location:
+                    successor_risk = current_node.risk
+                    successor = RiskNode(
+                        successor_location,
+                        current_node.g_value + 1,
+                        current_node.h_value,
+                        current_node,
+                        current_node.timestep + 1,
+                        successor_risk,
+                    )
+                else:
+                    successor_gadd = (
+                        float(self.graph[current_node.location][successor_location][weighted])
+                        if len(weighted) > 0
+                        else 1
+                    )
+
+                    successor_risk = current_node.risk + float(self.graph[current_node.location][successor_location]["cost"])
+                    if successor_risk > risk_budget:
+                        continue
+
+                    successor = RiskNode(
+                        successor_location,
+                        current_node.g_value + successor_gadd,
+                        self.distance_heuristics[agent_id][successor_location],
+                        current_node,
+                        current_node.timestep + 1,
+                        successor_risk,
+                    )
+
+                if is_constrained_with_ds(
+                    current_node.location,
+                    successor.location,
+                    successor.timestep,
+                    max_constraints,
+                    constraint_table,
+                    agent_id,
+                ):
+                    continue
+
+                if (successor.location, successor.timestep) in closed_list:
+                    existing_node = closed_list[(successor.location, successor.timestep)]
+                    if (
+                        successor.g_value + successor.h_value
+                        <= existing_node.g_value + existing_node.h_value
+                        and successor.g_value <= existing_node.g_value
+                        and successor.risk < existing_node.risk
+                    ):
+                        # logging.debug(f"Updating node {successor.location}")
+                        closed_list[(successor.location, successor.timestep)] = successor
+                        heapq.heappush(
+                            open_list,
+                            (
+                                successor.g_value + successor.h_value,
+                                successor.risk,
+                                successor.h_value,
+                                successor.location,
+                                num_generated,
+                                successor,
+                            ),
+                        )
+                        num_generated += 1
+                else:
+                    # logging.debug(f"Adding node {successor.location}")
+                    closed_list[(successor.location, successor.timestep)] = successor
+                    heapq.heappush(
+                        open_list,
+                        (
+                            successor.g_value + successor.h_value,
+                            successor.risk,
+                            successor.h_value,
+                            successor.location,
+                            num_generated,
+                            successor,
+                        ),
+                    )
+                    num_generated += 1
+
+            del current_node
+
+        if time.time() - start_time > max_time:
+            return MAPFErrorCodes.TIMELIMIT_REACHED
+        else:
+            return MAPFErrorCodes.NO_PATH
