@@ -1,3 +1,4 @@
+import time
 import logging
 import numpy as np
 import networkx as nx
@@ -5,7 +6,7 @@ from pud.mapf.single_agent_planner import compute_cost
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     filename = "pud/mapf/unit_tests/test_cbs_input.txt"
 
     f = open(
@@ -104,16 +105,18 @@ if __name__ == "__main__":
 
     graph_waypoints = np.array(graph_waypoints)
 
+    start = time.time()
     solver = RiskBoundedCBSSolver(
         G,
         graph_waypoints,
         start_ids,
         goal_ids,
-        risk_bound=51,
+        risk_bound=52,
         seed=0,
         collision_radius=0.0
     )
     solution = solver.find_paths()
+    print("Time taken: {}".format(time.time() - start))
     paths = solution["paths"]  # type: ignore
     print(paths)
 
