@@ -270,6 +270,7 @@ class RiskBoundedCBSSolver(object):
                 ):
                     violating_agents.append(agent)
 
+        logging.debug("Violating agents are {}".format(violating_agents))
         return violating_agents
 
     def find_paths(self):
@@ -332,6 +333,7 @@ class RiskBoundedCBSSolver(object):
 
             # Recompute the paths for the agents with updated risk-allocation
             if not all(agent_failure_status):
+                logging.debug("Computing paths for agents that are within risk-budget")
                 for agent in range(self.num_agents):
                     agent_path = self.risk_budgeted_a_star_with_ds(
                         agent,
@@ -373,6 +375,7 @@ class RiskBoundedCBSSolver(object):
 
                 for constraint in constraints:
 
+                    logging.debug("Tackling constraint {}".format(constraint))
                     # One branch of the CBS tree
                     successor = {
                         "cost": 0,
@@ -465,6 +468,7 @@ class RiskBoundedCBSSolver(object):
                                     logging.debug(
                                         "Generated: {}".format(self.num_generated)
                                     )
+                                    logging.debug("{}".format(successor))
                                     self.num_generated += 1
                                 else:
                                     # If the reallocation of the risk is not successful then we cannot find a solution
@@ -497,6 +501,7 @@ class RiskBoundedCBSSolver(object):
                                     ),
                                 )
                                 logging.debug("Generated: {}".format(self.num_generated))
+                                logging.debug("{}".format(successor))
                                 self.num_generated += 1
                     else:
                         # If the path is not found for the conflicting agent within its risk allocation
@@ -530,6 +535,7 @@ class RiskBoundedCBSSolver(object):
                             )
                             logging.debug("Constraint agent's path not found so reallocated risk")
                             logging.debug("Generated: {}".format(self.num_generated))
+                            logging.debug("{}".format(successor))
                             self.num_generated += 1
                         else:
                             # If the reallocation of the risk is not successful then we cannot find a solution from
@@ -570,6 +576,7 @@ class RiskBoundedCBSSolver(object):
                         ),
                     )
                     logging.debug("Generated: {}".format(self.num_generated))
+                    logging.debug("{}".format(current_node))
                     self.num_generated += 1
 
                     logging.info(
@@ -762,6 +769,10 @@ class RiskBoundedCBSSolver(object):
     ):
         start_time = time.time()
 
+        logging.debug("\nComputing path for agent {}".format(agent_id))
+        logging.debug("Risk budget allocated is {}".format(risk_budget))
+        logging.debug("Constraints applied are {}\n".format(constraints))
+
         open_list = []
         closed_list = {}
 
@@ -776,6 +787,8 @@ class RiskBoundedCBSSolver(object):
         constraint_table = build_constraint_table_with_ds(constraints, agent_id)
         if constraint_table.keys():
             max_constraints = max(constraint_table.keys())
+
+        logging.debug("\nConstraint table is {}".format(constraint_table))
 
         root = RiskNode(self.starts[agent_id], 0, h_value, None, 0, 0)
         if root.location == self.goals[agent_id]:
