@@ -460,6 +460,8 @@ class RiskBoundedCBSSolver(object):
                                             agent_failure_status
                                         ),
                                     )
+                                    logging.debug("Violating agents paths not found so reallocated risk")
+                                    logging.debug("Violating agents: {}".format(failing_violating_agents))
                                     logging.debug(
                                         "Generated: {}".format(self.num_generated)
                                     )
@@ -526,6 +528,7 @@ class RiskBoundedCBSSolver(object):
                                     agent_failure_status
                                 ),
                             )
+                            logging.debug("Constraint agent's path not found so reallocated risk")
                             logging.debug("Generated: {}".format(self.num_generated))
                             self.num_generated += 1
                         else:
@@ -686,7 +689,7 @@ class RiskBoundedCBSSolver(object):
                     if not cost_h:
                         h_val = self.distance_heuristics[agent_id][successor_location]
                     else:
-                        self.cost_heuristics[agent_id][successor_location]
+                        h_val = self.cost_heuristics[agent_id][successor_location]
                     successor = Node(
                         successor_location,
                         current_node.g_value + successor_gadd,
