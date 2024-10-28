@@ -49,8 +49,30 @@ if __name__ == "__main__":
 
     f.close()
 
+    risky_nodes = []
     for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
         node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
+        if boolean_map[node_x, node_y]:
+            potential_neighbors = [
+                (node_x - 1, node_y),
+                (node_x + 1, node_y),
+                (node_x, node_y - 1),
+                (node_x, node_y + 1),
+            ]
+            for unsafe_neighbor in potential_neighbors:
+                if (
+                    unsafe_neighbor[0] >= 0
+                    and unsafe_neighbor[0] < boolean_map.shape[0]
+                    and unsafe_neighbor[1] >= 0
+                    and unsafe_neighbor[1] < boolean_map.shape[1]
+                    and not boolean_map[unsafe_neighbor[0], unsafe_neighbor[1]]
+                ):
+                    risky_nodes.append(unsafe_neighbor[0] * boolean_map.shape[1] + unsafe_neighbor[1])
+
+    for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
+        node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
+        if boolean_map[node_x, node_y]:
+            continue
         graph_waypoints.append([node_x, node_y])
         potential_neighbors = [
             (node_x - 1, node_y),
@@ -67,32 +89,16 @@ if __name__ == "__main__":
                 and neighbor[1] < boolean_map.shape[1]
                 and not boolean_map[neighbor[0], neighbor[1]]
             ):
-                # Check if the neighbor's neighbor is blocked
-                neighbor_potential_neighbors = [
-                    (neighbor[0] - 1, neighbor[1]),
-                    (neighbor[0] + 1, neighbor[1]),
-                    (neighbor[0], neighbor[1] - 1),
-                    (neighbor[0], neighbor[1] + 1),
-                ]
-                blocked = False
-                for neighbor_neighbor in neighbor_potential_neighbors:
-                    if (
-                        neighbor_neighbor[0] >= 0
-                        and neighbor_neighbor[0] < boolean_map.shape[0]
-                        and neighbor_neighbor[1] >= 0
-                        and neighbor_neighbor[1] < boolean_map.shape[1]
-                        and boolean_map[neighbor_neighbor[0], neighbor_neighbor[1]]
-                    ):
-                        blocked = True
-                        break
-
-                if not blocked:
+                if node in risky_nodes or neighbor[0] * boolean_map.shape[1] + neighbor[1] in risky_nodes:
                     G.add_edge(
-                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=1
+                        node,
+                        neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                        weight=1,
+                        cost=1
                     )
                 else:
                     G.add_edge(
-                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=2
+                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=0
                     )
 
     start_ids, goal_ids = [], []
@@ -104,16 +110,21 @@ if __name__ == "__main__":
         goal_ids.append(goal_node)
 
     graph_waypoints = np.array(graph_waypoints)
+    risky_nodes = list(set(risky_nodes))
 
     start = time.time()
     solver = RiskBoundedCBSSolver(
         G,
+        np.array(risky_nodes),
         graph_waypoints,
         start_ids,
         goal_ids,
-        risk_bound=52,
+        risk_bound=4,
         seed=0,
-        collision_radius=0.0
+        collision_radius=0.0,
+        max_time=10000,
+        use_experience=True,
+        use_cardinality=True
     )
     solution = solver.find_paths()
     print("Time taken: {}".format(time.time() - start))
@@ -121,7 +132,7 @@ if __name__ == "__main__":
     print(paths)
 
     for idx, path in enumerate(paths):
-        print("Cost of path for agent {}: {}".format(idx, compute_cost(path, G, "cost")))
+        print("Cost of path for agent {}: {}".format(idx, solver.compute_cost(path, "cost")))
 
     # assertTrue(len(paths) == 5)  # type: ignore
     # assertTrue(solution["cost"] == 41)  # type: ignore

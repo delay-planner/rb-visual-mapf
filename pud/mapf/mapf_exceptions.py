@@ -25,6 +25,8 @@ def MAPFError(error_code, low_level_code=None):
         message = "Start and goal are disconnected."
     elif error_code == MAPFErrorCodes.INVALID_BUDGET_ALLOCATER:
         message = "Invalid budget allocator."
+    elif error_code == MAPFErrorCodes.BUDGET_MISMATCH:
+        message = "Budget mismatch."
 
     if low_level_code is not None:
         if low_level_code == MAPFErrorCodes.NO_PATH:

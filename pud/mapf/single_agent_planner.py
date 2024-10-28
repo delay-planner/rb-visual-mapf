@@ -46,7 +46,7 @@ def compute_heuristics(graph: Graph, goal: int, weighted: str = ""):
         closed_list.add(location)
 
         for neighbor in graph.neighbors(location):
-            edge_cost = float(graph[location][neighbor][weighted]) if weighted else 1
+            edge_cost = float(graph[location][neighbor][weighted]) if len(weighted) > 0 else 1
             successor_cost = cost + edge_cost
 
             if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
