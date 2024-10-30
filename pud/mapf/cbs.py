@@ -1,196 +1,49 @@
+import os
+import time
 import heapq
 import random
 import logging
-import time
-import numpy as np
+import networkx as nx
+from pathlib import Path
 from networkx import Graph
+from typing import List, Dict
+import numpy as np
 from numpy.typing import NDArray
-from typing import List, Union, Dict
+from pud.mapf.single_agent_planner import AStar
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
-from pud.mapf.single_agent_planner import (
-    a_star,
-    compute_heuristics,
-    compute_sum_of_costs,
-)
+from pud.mapf.utils import detect_collisions, get_location, standard_split, disjoint_split
 
 
-def location_collision(path1: List[int], path2: List[int], timestep: int):
-
-    position1 = get_location(path1, timestep)
-    position2 = get_location(path2, timestep)
-
-    if position1 == position2:
-        return [position1], timestep, "vertex"
-    if timestep < len(path1) - 1:
-        next_position1 = get_location(path1, timestep + 1)
-        next_position2 = get_location(path2, timestep + 1)
-        if position1 == next_position2 and position2 == next_position1:
-            return [position1, next_position1], timestep + 1, "edge"
-
-    return None
-
-
-def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray, radius: float = 0.1):
-    if (
-        np.linalg.norm(
-            graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
-        )
-        <= radius
+class CBSNode(object):
+    def __init__(
+        self,
+        id: int,
+        cost: float,
+        paths: List[List[int]],
+        collisions: List[Dict],
+        constraints: List[Dict],
     ):
-        return [path1[timestep]], timestep, "vertex"
+        self.id = id
+        self.cost = cost
+        self.paths = paths
+        self.collisions = collisions
+        self.constraints = constraints
 
-    if timestep < len(path1) - 1:
-        if (
-            np.linalg.norm(
-                graph_waypoints[path1[timestep]]
-                - graph_waypoints[path2[timestep + 1]]
-            )
-            <= radius
-            and np.linalg.norm(
-                graph_waypoints[path1[timestep + 1]]
-                - graph_waypoints[path2[timestep]]
-            )
-            <= radius
-        ):
-            return (
-                [path1[timestep], path1[timestep + 1]],
-                timestep + 1,
-                "edge",
-            )
+    def __lt__(self, other):
+        if self.cost == other.cost:
+            if len(self.collisions) == len(other.collisions):
+                return self.id < other.id
+            return len(self.collisions) < len(other.collisions)
+        return self.cost < other.cost
 
-    return None
-
-
-def detect_collision(
-    pathA: List[int], pathB: List[int], graph_waypoints: NDArray, collision_radius=0.1
-):
-
-    path1 = pathA.copy()
-    path2 = pathB.copy()
-    if len(path1) >= len(path2):
-        short_path = path2
-        long_path = path1
-    else:
-        short_path = path1
-        long_path = path2
-
-    for _ in range(len(long_path) - len(short_path)):
-        short_path.append(short_path[-1])
-
-    for timestep in range(len(path1)):
-        collided = None
-        if collision_radius > 0:
-            collided = radius_collision(path1, path2, timestep, graph_waypoints, collision_radius)
-        else:
-            collided = location_collision(path1, path2, timestep)
-
-        if collided is not None:
-            return collided
-
-    return None
-
-
-def detect_collisions(
-    paths: List[List[int]], graph_waypoints: NDArray, collision_radius=0.1
-) -> List[Dict]:
-    agg_collisions = []
-    for i in range(len(paths)):
-        for j in range(i + 1, len(paths)):
-            collisions = detect_collision(
-                paths[i], paths[j], graph_waypoints, collision_radius
-            )
-            if collisions is not None:
-                agg_collisions.append(
-                    {
-                        "agent_A": i,
-                        "agent_B": j,
-                        "location": collisions[0],
-                        "timestep": collisions[1],
-                        "type": collisions[2],
-                    }
-                )
-    return agg_collisions
-
-
-def standard_split(collision: Dict) -> List[Dict]:
-    constraints = []
-
-    if collision["type"] == "vertex":
-        constraints.append(
-            {
-                "agent_id": collision["agent_A"],
-                "location": collision["location"],
-                "timestep": collision["timestep"],
-                "positive": False,
-                "final": False,
-            }
+    def copy(self):
+        return CBSNode(
+            id=self.id,
+            cost=self.cost,
+            paths=self.paths.copy(),
+            collisions=self.collisions.copy(),
+            constraints=self.constraints.copy(),
         )
-        constraints.append(
-            {
-                "agent_id": collision["agent_B"],
-                "location": collision["location"],
-                "timestep": collision["timestep"],
-                "positive": False,
-                "final": False,
-            }
-        )
-    elif collision["type"] == "edge":
-        constraints.append(
-            {
-                "agent_id": collision["agent_A"],
-                "location": collision["location"],
-                "timestep": collision["timestep"],
-                "positive": False,
-                "final": False,
-            }
-        )
-        constraints.append(
-            {
-                "agent_id": collision["agent_B"],
-                "location": list(reversed(collision["location"])),
-                "timestep": collision["timestep"],
-                "positive": False,
-                "final": False,
-            }
-        )
-
-    return constraints
-
-
-def disjoint_split(collision: Dict) -> List[Dict]:
-    agents = [collision["agent_A"], collision["agent_B"]]
-    agent_choice = random.randint(0, 1)
-    agent = agents[agent_choice]
-    location = (
-        collision["location"]
-        if agent_choice == 0
-        else list(reversed(collision["location"]))
-    )
-    return [
-        {
-            "agent_id": agent,
-            "location": location,
-            "timestep": collision["timestep"],
-            "positive": True,
-            "final": False,
-        },
-        {
-            "agent_id": agent,
-            "location": location,
-            "timestep": collision["timestep"],
-            "positive": False,
-            "final": False,
-        },
-    ]
-
-
-def get_location(path, timestep):
-    if timestep < 0:
-        return path[0]
-    elif timestep < len(path):
-        return path[timestep]
-    else:
-        return path[-1]
 
 
 class CBSSolver(object):
@@ -198,181 +51,353 @@ class CBSSolver(object):
     def __init__(
         self,
         graph: Graph,
-        graph_waypoints: NDArray,
-        starts: List[int],
         goals: List[int],
-        disjoint: bool = False,
-        seed: Union[int, None] = None,
-        weighted: str = "",
-        risk_bound: float = np.inf,
-        collision_radius=0.1,
-        max_time: int = 300,
+        starts: List[int],
+        graph_waypoints: NDArray,
+        config: Dict,
     ):
 
-        if seed is not None:
-            random.seed(seed)
+        self.problem_config = config
 
-        assert risk_bound == np.inf, "Risk bound is not supported in CBS"
+        if config["seed"] is not None:
+            random.seed(config["seed"])
+        else:
+            random.seed(0)
 
         self.graph = graph
-        self.goals = goals
-        self.max_time = max_time
-        self.starts = starts
-        self.weighted = weighted
-        self.disjoint = disjoint
-        self.num_agents = len(starts)
-        self.risk_bound = risk_bound
         self.graph_waypoints = graph_waypoints
-        self.collision_radius = collision_radius
 
-        self.open_list = []
-        self.heuristics = []
-        for goal in self.goals:
-            self.heuristics.append(
-                compute_heuristics(self.graph, goal, weighted=self.weighted)
-            )
+        self.goals = goals
+        self.starts = starts
+        self.num_agents = len(starts)
 
         self.num_expanded = 0
         self.num_generated = 0
 
-    def find_paths(self) -> List[List[int]]:
+        self.logdir = config["logdir"]
+        if not os.path.exists(self.logdir):
+            os.makedirs(self.logdir)
+
+        self.max_time = config["max_time"]
+        self.splitter = config["split_strategy"]
+        self.use_experience = config["use_experience"]
+        self.use_cardinality = config["use_cardinality"]
+        self.collision_radius = config["collision_radius"]
+
+        self.risk_attribute = config["risk_attribute"]
+        assert (
+            len(nx.get_edge_attributes(self.graph, self.risk_attribute)) > 0
+        ), "Risk attribute {} not found in the graph".format(self.risk_attribute)
+
+        self.open_list = []
+
+        self.splitter_function = None
+        if self.splitter == "standard":
+            self.splitter_function = standard_split
+        elif self.splitter == "disjoint":
+            self.splitter_function = disjoint_split
+        else:
+            raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_SPLITTER))
+
+        # Add self-loops
+        for node in self.graph.nodes:
+            # ASSUMPTION 1: The cost of waiting at a node is the minimum risk of reaching this node from its neighbors
+            min_cost = np.inf
+            for neighbor in self.graph.neighbors(node):
+                min_cost = min(
+                    min_cost, self.graph[node][neighbor][self.risk_attribute]
+                )
+            self.graph.add_edge(node, node, step=0, cost=min_cost)
+
+        # Use for debugging purposes
+        self.search_tree = nx.DiGraph()
+
+        self.single_agent_planners = {}
+        for agent in range(self.num_agents):
+            self.single_agent_planners[agent] = AStar(
+                config=config,
+                agent_id=agent,
+                graph=self.graph,
+                goal=goals[agent],
+                start=starts[agent],
+            )
+
+    def compute_cost(self, path: List[int], risk: bool = False) -> float:
+        cost = 0.0
+        for i in range(len(path) - 1):
+            cost += self.graph[path[i]][path[i + 1]][self.risk_attribute] if risk else 1
+        return cost
+
+    def compute_sum_of_costs(self, paths: List[List[int]], risk: bool = False) -> float:
+        sum_of_costs = 0
+        for path in paths:
+            sum_of_costs += self.compute_cost(path, risk)
+        return sum_of_costs
+
+    def push_node(self, cbs_node: CBSNode) -> None:
+        heapq.heappush(
+            self.open_list,
+            (cbs_node.cost, len(cbs_node.collisions), cbs_node),
+        )
+
+        self.search_tree.add_node(
+            cbs_node.id,
+            label="{}->{}".format(cbs_node.id, cbs_node.cost),
+            cost=cbs_node.cost,
+            paths=str(cbs_node.paths),
+            collisions=len(cbs_node.collisions),
+        )
+
+        self.num_generated += 1
+        if self.num_generated % 10 == 0:
+            self.save_search_tree()
+
+    def extract_violating_agents(
+        self, successor: CBSNode, constraint: Dict
+    ) -> List[int]:
+
+        violating_agents = []
+        for agent in range(self.num_agents):
+
+            if agent == constraint["agent_id"]:
+                continue
+
+            current_location = get_location(
+                successor.paths[agent], constraint["timestep"]
+            )
+            previous_location = get_location(
+                successor.paths[agent],
+                constraint["timestep"] - 1,
+            )
+
+            if len(constraint["location"]) == 1:
+                if constraint["location"][0] == current_location:
+                    violating_agents.append(agent)
+            else:
+                successor_path_location = [
+                    previous_location,
+                    current_location,
+                ]
+                if (
+                    constraint["location"] == successor_path_location[::-1]
+                    or constraint["location"][0] == successor_path_location[0]
+                    or constraint["location"][1] == successor_path_location[1]
+                ):
+                    violating_agents.append(agent)
+
+        logging.debug("Violating agents are {}".format(violating_agents))
+        return violating_agents
+
+    def save_search_tree(self) -> None:
+        filepath = Path(self.logdir) / f"search_tree_step_{self.num_generated}.dot"
+        nx.drawing.nx_pydot.write_dot(self.search_tree, filepath)
+        logging.info(f"Search tree saved to {filepath}")
+
+    def choose_collision(self, cbs_node: CBSNode) -> Dict:
+        if self.use_cardinality:
+            collision_types = self.classify_collisions(cbs_node)
+            if "cardinal" in collision_types:
+                return cbs_node.collisions[collision_types.index("cardinal")]
+            elif "semi-cardinal" in collision_types:
+                return cbs_node.collisions[collision_types.index("semi-cardinal")]
+        collision = random.choice(cbs_node.collisions)
+        return collision
+
+    def classify_collisions(self, cbs_node: CBSNode) -> List[str]:
+        collision_types = []
+        for collision in cbs_node.collisions:
+            collision_type = self.classify_collision(cbs_node, collision)
+            collision_types.append(collision_type)
+        return collision_types
+
+    def classify_collision(self, cbs_node: CBSNode, collision: Dict) -> str:
+        cardinality = "non-cardinal"
+
+        constraints = standard_split(collision)
+        for constraint in cbs_node.constraints:
+            if constraint not in constraints:
+                constraints.append(constraint)
+
+        agent_A = collision["agent_A"]
+        alternative_path_A = self.single_agent_planners[agent_A].find_path(
+            constraints=constraints,
+            experience=cbs_node.paths[agent_A] if self.use_experience else None,
+            max_time=self.max_time // self.num_agents,
+        )
+
+        if type(alternative_path_A) is MAPFErrorCodes:
+            error_code = alternative_path_A
+            logging.debug(MAPFError(error_code)["message"])
+        else:
+            if len(alternative_path_A) > len(cbs_node.paths[agent_A]):  # type: ignore
+                cardinality = "semi-cardinal"
+
+        agent_B = collision["agent_B"]
+        alternative_path_B = self.single_agent_planners[agent_B].find_path(
+            constraints=constraints,
+            experience=cbs_node.paths[agent_B] if self.use_experience else None,
+            max_time=self.max_time // self.num_agents,
+        )
+
+        if type(alternative_path_B) is MAPFErrorCodes:
+            error_code = alternative_path_B
+            logging.debug(MAPFError(error_code)["message"])
+        else:
+            if len(alternative_path_B) > len(cbs_node.paths[agent_B]):  # type: ignore
+                if cardinality == "semi-cardinal":
+                    cardinality = "cardinal"
+                else:
+                    cardinality = "semi-cardinal"
+
+        return cardinality
+
+    def find_paths(self) -> CBSNode:
         self.start_time = time.time()
         logging.debug("Finding paths using CBS Solver")
-        root = {
-            "cost": 0,
-            "paths": [],
-            "collisions": [],
-            "constraints": [],
-        }
 
-        for i in range(self.num_agents):
-            logging.debug("Computing paths for agent {}".format(i))
-            agent_path = a_star(
-                i,
-                self.graph,
-                self.starts[i],
-                self.goals[i],
-                self.heuristics[i],
-                root["constraints"],
-                weighted=self.weighted,
+        root = CBSNode(
+            id=0,
+            cost=0,
+            paths=[],
+            collisions=[],
+            constraints=[],
+        )
+
+        for agent_id in range(self.num_agents):
+            agent_path = self.single_agent_planners[agent_id].find_path(
+                constraints=root.constraints,
+                experience=None,
+                max_time=self.max_time // self.num_agents
             )
 
             if type(agent_path) is MAPFErrorCodes:
-                raise RuntimeError(MAPFError(MAPFErrorCodes.NO_INIT_PATH, agent_path)["message"])
+                error_code = agent_path
+                raise RuntimeError(MAPFError(MAPFErrorCodes.NO_INIT_PATH, error_code)["message"])
 
-            root["paths"].append(agent_path)
+            root.paths.append(agent_path)
 
-        root["cost"] = compute_sum_of_costs(root["paths"], self.graph, weighted=self.weighted)
-        root["collisions"] = detect_collisions(
-            root["paths"], self.graph_waypoints, self.collision_radius
+        root.cost = self.compute_sum_of_costs(root.paths)
+        root.collisions = detect_collisions(
+            root.paths, self.graph_waypoints, self.collision_radius
         )
-
-        heapq.heappush(
-            self.open_list,
-            (root["cost"], len(root["collisions"]), self.num_generated, root),
-        )
-        logging.debug("Generated: {}".format(self.num_generated))
-        self.num_generated += 1
+        self.push_node(root)
 
         while len(self.open_list) > 0 and time.time() - self.start_time < self.max_time:
-            id, current_node = heapq.heappop(self.open_list)[2:]
-            logging.debug("Expanded: {}".format(id))
+
+            current_node = heapq.heappop(self.open_list)[-1]
+
+            logging.debug("Current node ID {}".format(current_node.id))
             self.num_expanded += 1
 
-            if len(current_node["collisions"]) == 0:
+            if len(current_node.collisions) == 0:
                 return current_node
 
-            collision = random.choice(current_node["collisions"])
-            constraints = (
-                disjoint_split(collision)
-                if self.disjoint
-                else standard_split(collision)
-            )
+            collision = self.choose_collision(current_node)
+            constraints = self.splitter_function(collision)  # type: ignore
 
             for constraint in constraints:
-                successor = {
-                    "cost": 0,
-                    "paths": current_node["paths"].copy(),
-                    "collisions": [],
-                    "constraints": [*current_node["constraints"], constraint],
-                }
 
-                agent_path = a_star(
-                    constraint["agent_id"],
-                    self.graph,
-                    self.starts[constraint["agent_id"]],
-                    self.goals[constraint["agent_id"]],
-                    self.heuristics[constraint["agent_id"]],
-                    successor["constraints"],
-                    weighted=self.weighted,
+                logging.debug("Tackling constraint {}".format(constraint))
+                successor = CBSNode(
+                    id=self.num_generated,
+                    cost=0,
+                    paths=current_node.paths.copy(),
+                    collisions=[],
+                    constraints=[constraint],
+                )
+
+                for old_constraint in current_node.constraints:
+                    if old_constraint not in successor.constraints:
+                        successor.constraints.append(old_constraint)
+
+                constraint_agent = constraint["agent_id"]
+                agent_path = self.single_agent_planners[constraint_agent].find_path(
+                    constraints=successor.constraints,
+                    experience=current_node.paths[constraint_agent] if self.use_experience else None,
+                    max_time=self.max_time // self.num_agents
                 )
 
                 skip = False
                 if type(agent_path) is MAPFErrorCodes:
-                    raise RuntimeError(MAPFError(MAPFErrorCodes.NO_CONSTRAINED_PATH, agent_path)["message"])
+                    error_code = agent_path
+                    logging.debug("Constraint agent failed to find a path. So skipping it")
+                    changes = "+" if constraint["positive"] else "-"
+                    changes += "C = ({}, {}, {}) not satisfied".format(
+                        constraint["agent_id"],
+                        constraint["location"],
+                        constraint["timestep"],
+                    )
+                    changes += "\n|C| = {}".format(len(successor.collisions))
+                    self.search_tree.add_node(
+                        successor.id,
+                        label="Constraint agent path not found",
+                        color="red"
+                    )
+                    self.search_tree.add_edge(
+                        current_node.id, successor.id, label=changes
+                    )
+                    self.num_generated += 1
                 else:
-                    successor["paths"][constraint["agent_id"]] = agent_path
+                    successor.paths[constraint_agent] = agent_path
+
                     if constraint["positive"]:
-                        violating_agents = []
-                        if len(constraint["location"]) == 1:
-                            for agent in range(self.num_agents):
-                                if (
-                                    constraint["location"][0]
-                                    == get_location(successor["paths"]["agent"], constraint["timestep"])
-                                ):
-                                    violating_agents.append(agent)
-                        else:
-                            for agent in range(self.num_agents):
-                                successor_path_location = [
-                                    get_location(successor["paths"][agent], constraint["timestep"] - 1),
-                                    get_location(successor["paths"][agent], constraint["timestep"])
-                                ]
-                                if (
-                                    constraint["location"] == successor_path_location
-                                    or constraint["location"][0] == successor_path_location[0]
-                                    or constraint["location"][1] == successor_path_location[1]
-                                ):
-                                    violating_agents.append(agent)
+
+                        violating_agents = self.extract_violating_agents(
+                            successor, constraint
+                        )
 
                         for agent in violating_agents:
-                            constraint_copy = constraint.copy()
-                            constraint_copy["agent_id"] = agent
-                            constraint_copy["positive"] = False
-                            successor["constraints"].append(constraint_copy)
-                            agent_path = a_star(
-                                agent,
-                                self.graph,
-                                self.starts[agent],
-                                self.goals[agent],
-                                self.heuristics[agent],
-                                successor["constraints"],
-                                weighted=self.weighted,
+                            if agent == constraint_agent:
+                                continue
+
+                            agent_path = self.single_agent_planners[agent].find_path(
+                                constraints=successor.constraints,
+                                experience=current_node.paths[agent] if self.use_experience else None,
+                                max_time=self.max_time // self.num_agents
                             )
 
-                            if agent_path is None:
+                            if type(agent_path) is MAPFErrorCodes:
+                                error_code = agent_path
+                                logging.debug("Violating agent {} failed to find a path. So skipping it".format(agent))
+                                changes = "+" if constraint["positive"] else "-"
+                                changes += "C = ({}, {}, {}) not satisfied".format(
+                                    constraint["agent_id"],
+                                    constraint["location"],
+                                    constraint["timestep"],
+                                )
+                                changes += "\n|C| = {}".format(len(successor.collisions))
+                                self.search_tree.add_node(
+                                    successor.id,
+                                    label="Violating agent path not found",
+                                    color="red"
+                                )
+                                self.search_tree.add_edge(
+                                    current_node.id, successor.id, label=changes
+                                )
+                                self.num_generated += 1
                                 skip = True
                                 break
                             else:
-                                successor["paths"][agent] = agent_path
+                                successor.paths[agent] = agent_path
 
                     if not skip:
-                        successor["collisions"] = detect_collisions(
-                            successor["paths"], self.graph_waypoints, self.collision_radius
+                        successor.collisions = detect_collisions(
+                            successor.paths, self.graph_waypoints, self.collision_radius
                         )
-                        successor["cost"] = compute_sum_of_costs(
-                            successor["paths"], self.graph
+                        successor.cost = self.compute_sum_of_costs(successor.paths)
+                        self.push_node(successor)
+
+                        changes = "+" if constraint["positive"] else "-"
+                        changes += "C = ({}, {}, {}) satisfied".format(
+                            constraint["agent_id"],
+                            constraint["location"],
+                            constraint["timestep"],
                         )
-                        heapq.heappush(
-                            self.open_list,
-                            (
-                                successor["cost"],
-                                len(successor["collisions"]),
-                                self.num_generated,
-                                successor,
-                            ),
+                        changes += "\n|C| = {}".format(len(successor.collisions))
+                        self.search_tree.add_edge(
+                            current_node.id, successor.id, label=changes
                         )
                         logging.debug("Generated: {}".format(self.num_generated))
-                        self.num_generated += 1
 
         if time.time() - self.start_time > self.max_time:
             raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED)["message"])

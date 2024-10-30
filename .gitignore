@@ -11,6 +11,7 @@ outputs/
 pud/plots/data/
 pud/plots/old_data/
 pud/plots/figures/
+pud/mapf/unit_tests/logs/
 cc-sorb-venv/
 pud/envs/safe_habitatenv/apsps/
 

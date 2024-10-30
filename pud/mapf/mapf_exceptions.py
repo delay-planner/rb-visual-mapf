@@ -9,6 +9,7 @@ class MAPFErrorCodes(Enum):
     START_GOAL_DISCONNECT = 4
     INVALID_BUDGET_ALLOCATER = 5
     BUDGET_MISMATCH = 6
+    INVALID_SPLITTER = 7
 
 
 def MAPFError(error_code, low_level_code=None):
@@ -27,6 +28,8 @@ def MAPFError(error_code, low_level_code=None):
         message = "Invalid budget allocator."
     elif error_code == MAPFErrorCodes.BUDGET_MISMATCH:
         message = "Budget mismatch."
+    elif error_code == MAPFErrorCodes.INVALID_SPLITTER:
+        message = "Invalid constraint splitter."
 
     if low_level_code is not None:
         if low_level_code == MAPFErrorCodes.NO_PATH:

@@ -2,7 +2,7 @@ import time
 import logging
 import numpy as np
 import networkx as nx
-from pud.mapf.single_agent_planner import compute_cost
+from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 if __name__ == "__main__":
@@ -93,12 +93,12 @@ if __name__ == "__main__":
                     G.add_edge(
                         node,
                         neighbor[0] * boolean_map.shape[1] + neighbor[1],
-                        weight=1,
+                        step=1,
                         cost=1
                     )
                 else:
                     G.add_edge(
-                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=0
+                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], step=1, cost=0
                     )
 
     start_ids, goal_ids = [], []
@@ -110,33 +110,45 @@ if __name__ == "__main__":
         goal_ids.append(goal_node)
 
     graph_waypoints = np.array(graph_waypoints)
-    risky_nodes = list(set(risky_nodes))
+
+    config = {
+        "seed": 0,
+        "max_time": 300,
+        "max_distance": 1,
+        "use_experience": True,
+        "collision_radius": 0.0,
+        "use_cardinality": True,
+        "risk_attribute": "cost",
+        "split_strategy": "disjoint",
+        "budget_allocater": "utility",
+        "edge_attributes": ["step", "cost"],
+        "logdir": "pud/mapf/unit_tests/logs/lcbs",
+    }
 
     start = time.time()
-    solver = RiskBoundedCBSSolver(
-        G,
-        np.array(risky_nodes),
-        graph_waypoints,
-        start_ids,
-        goal_ids,
-        risk_bound=4,
-        seed=0,
-        collision_radius=0.0,
-        max_time=10000,
-        use_experience=True,
-        use_cardinality=True
+    # solver = RiskBoundedCBSSolver(
+    #     graph=G,
+    #     goals=goal_ids,
+    #     starts=start_ids,
+    #     risk_bound=4,
+    #     graph_waypoints=graph_waypoints,
+    #     config=config,
+    # )
+    solver = LagrangianCBSSolver(
+        graph=G,
+        goals=goal_ids,
+        starts=start_ids,
+        lagrangian=1.0,
+        graph_waypoints=graph_waypoints,
+        config=config,
     )
     solution = solver.find_paths()
     print("Time taken: {}".format(time.time() - start))
-    paths = solution["paths"]  # type: ignore
+    paths = solution.paths  # type: ignore
     print(paths)
 
     for idx, path in enumerate(paths):
-        print("Cost of path for agent {}: {}".format(idx, solver.compute_cost(path, "cost")))
-
-    # assertTrue(len(paths) == 5)  # type: ignore
-    # assertTrue(solution["cost"] == 41)  # type: ignore
-    # assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
+        print("Cost of path for agent {}: {}".format(idx, solver.compute_cost(path, risk=True)))
 
     print("Number of expanded nodes: {}".format(solver.num_expanded))
     print("Number of generated nodes: {}".format(solver.num_generated))

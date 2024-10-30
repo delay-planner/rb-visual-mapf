@@ -1,14 +1,16 @@
 import unittest
 import numpy as np
 import networkx as nx
-from pud.mapf.cbs_ds import CBSDSSolver
+from typing import List
+
 from pud.mapf.cbs import CBSSolver, detect_collisions
-from pud.mapf.single_agent_planner import compute_cost
+from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 """
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_cbs_paths
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_cbsds_paths
+python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_lagrangian_cbs_paths
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_risk_bounded_cbs_paths
 """
 
@@ -16,6 +18,12 @@ python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_risk_bounded_cb
 class TestCBSSolver(unittest.TestCase):
     def setUp(self):
         self.filename = "pud/mapf/unit_tests/test_cbs_input.txt"
+
+    def compute_cost(self, path: List[int]) -> float:
+        cost = 0.0
+        for i in range(len(path) - 1):
+            cost += self.G[path[i]][path[i + 1]]["cost"]
+        return cost
 
     def load_problem(self, filename):
         f = open(
@@ -27,8 +35,8 @@ class TestCBSSolver(unittest.TestCase):
         rows = int(rows)
         columns = int(columns)
 
-        self.G = nx.empty_graph(0, create_using=nx.DiGraph)
         self.graph_waypoints = []
+        self.G = nx.empty_graph(0, create_using=nx.DiGraph)
 
         boolean_map = []
         for _ in range(rows):
@@ -43,11 +51,11 @@ class TestCBSSolver(unittest.TestCase):
         boolean_map = np.array(boolean_map)
 
         line = f.readline()
-        self.num_agents = int(line)
+        num_agents = int(line)
 
         starts = []
         goals = []
-        for a in range(self.num_agents):
+        for _ in range(num_agents):
             line = f.readline()
             start_x, start_y, goal_x, goal_y = [int(x) for x in line.split(" ")]
             starts.append((start_x, start_y))
@@ -58,8 +66,30 @@ class TestCBSSolver(unittest.TestCase):
 
         f.close()
 
+        risky_nodes = []
         for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
             node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
+            if boolean_map[node_x, node_y]:
+                potential_neighbors = [
+                    (node_x - 1, node_y),
+                    (node_x + 1, node_y),
+                    (node_x, node_y - 1),
+                    (node_x, node_y + 1),
+                ]
+                for unsafe_neighbor in potential_neighbors:
+                    if (
+                        unsafe_neighbor[0] >= 0
+                        and unsafe_neighbor[0] < boolean_map.shape[0]
+                        and unsafe_neighbor[1] >= 0
+                        and unsafe_neighbor[1] < boolean_map.shape[1]
+                        and not boolean_map[unsafe_neighbor[0], unsafe_neighbor[1]]
+                    ):
+                        risky_nodes.append(unsafe_neighbor[0] * boolean_map.shape[1] + unsafe_neighbor[1])
+
+        for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
+            node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
+            if boolean_map[node_x, node_y]:
+                continue
             self.graph_waypoints.append([node_x, node_y])
             potential_neighbors = [
                 (node_x - 1, node_y),
@@ -76,32 +106,16 @@ class TestCBSSolver(unittest.TestCase):
                     and neighbor[1] < boolean_map.shape[1]
                     and not boolean_map[neighbor[0], neighbor[1]]
                 ):
-                    # Check if the neighbor's neighbor is blocked
-                    neighbor_potential_neighbors = [
-                        (neighbor[0] - 1, neighbor[1]),
-                        (neighbor[0] + 1, neighbor[1]),
-                        (neighbor[0], neighbor[1] - 1),
-                        (neighbor[0], neighbor[1] + 1),
-                    ]
-                    blocked = False
-                    for neighbor_neighbor in neighbor_potential_neighbors:
-                        if (
-                            neighbor_neighbor[0] >= 0
-                            and neighbor_neighbor[0] < boolean_map.shape[0]
-                            and neighbor_neighbor[1] >= 0
-                            and neighbor_neighbor[1] < boolean_map.shape[1]
-                            and boolean_map[neighbor_neighbor[0], neighbor_neighbor[1]]
-                        ):
-                            blocked = True
-                            break
-
-                    if not blocked:
+                    if node in risky_nodes or neighbor[0] * boolean_map.shape[1] + neighbor[1] in risky_nodes:
                         self.G.add_edge(
-                            node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=1
+                            node,
+                            neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                            step=1,
+                            cost=1
                         )
                     else:
                         self.G.add_edge(
-                            node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, cost=2
+                            node, neighbor[0] * boolean_map.shape[1] + neighbor[1], step=1, cost=0
                         )
 
         self.start_ids, self.goal_ids = [], []
@@ -117,13 +131,38 @@ class TestCBSSolver(unittest.TestCase):
     def test_cbs_paths(self):
         self.load_problem(self.filename)
         self.graph_waypoints = np.array(self.graph_waypoints)
-        solver = CBSSolver(self.G, self.graph_waypoints, self.start_ids, self.goal_ids, seed=0, collision_radius=0.0)
+
+        config = {
+            "seed": 0,
+            "max_time": 100,
+            "max_distance": 1,
+            "use_experience": True,
+            "collision_radius": 0.0,
+            "use_cardinality": True,
+            "risk_attribute": "cost",
+            "edge_attributes": ["step"],
+            "split_strategy": "standard",
+            "logdir": "pud/mapf/unit_tests/logs/cbs",
+        }
+
+        solver = CBSSolver(
+            graph=self.G,
+            config=config,
+            goals=self.goal_ids,
+            starts=self.start_ids,
+            graph_waypoints=self.graph_waypoints,
+        )
         solution = solver.find_paths()
-        paths = solution["paths"]  # type: ignore
-        print(paths)
+        paths = solution.paths  # type: ignore
+        accumulated_risk = 0
+        for idx, path in enumerate(paths):
+            agent_risk = self.compute_cost(path)
+            accumulated_risk += agent_risk
+            print("Cost of path for agent {}: {}".format(idx, agent_risk))
+        print("Cost of solution: {}".format(solution.cost))
+        print("Accumulated Risk: {}".format(accumulated_risk))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(solution["cost"] == 41)  # type: ignore
         self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
 
         print("Number of expanded nodes: {}".format(solver.num_expanded))
@@ -132,17 +171,40 @@ class TestCBSSolver(unittest.TestCase):
     def test_cbsds_paths(self):
         self.load_problem(self.filename)
         self.graph_waypoints = np.array(self.graph_waypoints)
-        solver = CBSDSSolver(self.G, self.graph_waypoints, self.start_ids, self.goal_ids, seed=0, collision_radius=0.0)
+
+        config = {
+            "seed": 0,
+            "max_time": 100,
+            "max_distance": 1,
+            "use_experience": True,
+            "collision_radius": 0.0,
+            "use_cardinality": True,
+            "risk_attribute": "cost",
+            "edge_attributes": ["step"],
+            "split_strategy": "disjoint",
+            "logdir": "pud/mapf/unit_tests/logs/cbsds",
+        }
+
+        solver = CBSSolver(
+            graph=self.G,
+            config=config,
+            goals=self.goal_ids,
+            starts=self.start_ids,
+            graph_waypoints=self.graph_waypoints,
+        )
         solution = solver.find_paths()
-        paths = solution["paths"]  # type: ignore
-        print(paths)
-
+        paths = solution.paths  # type: ignore
+        print("Solution Cost: {}".format(solution.cost))
+        accumulated_risk = 0
         for idx, path in enumerate(paths):
-            print("Cost of path for agent {}: {}".format(idx, compute_cost(path, self.G, "cost")))
+            agent_risk = self.compute_cost(path)
+            accumulated_risk += agent_risk
+            print("Cost of path for agent {}: {}".format(idx, agent_risk))
+        print("Cost of solution: {}".format(solution.cost))
+        print("Accumulated Risk: {}".format(accumulated_risk))
 
-        self.assertTrue(len(paths) == 5)  # type: ignore
-        self.assertTrue(solution["cost"] == 41)  # type: ignore
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
+        self.assertTrue(len(paths) == 5)
+        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
 
         print("Number of expanded nodes: {}".format(solver.num_expanded))
         print("Number of generated nodes: {}".format(solver.num_generated))
@@ -150,28 +212,90 @@ class TestCBSSolver(unittest.TestCase):
     def test_risk_bounded_cbs_paths(self):
         self.load_problem(self.filename)
         self.graph_waypoints = np.array(self.graph_waypoints)
+        config = {
+            "seed": 0,
+            "max_time": 100,
+            "max_distance": 1,
+            "use_experience": True,
+            "collision_radius": 0.0,
+            "use_cardinality": True,
+            "risk_attribute": "cost",
+            "split_strategy": "disjoint",
+            "budget_allocater": "utility",
+            "edge_attributes": ["step", "cost"],
+            "logdir": "pud/mapf/unit_tests/logs/rbcbs",
+        }
+
+        risk_bound = 4
         solver = RiskBoundedCBSSolver(
-            self.G,
-            self.graph_waypoints,
-            self.start_ids,
-            self.goal_ids,
-            risk_bound=53,
-            seed=0,
-            collision_radius=0.0
+            graph=self.G,
+            goals=self.goal_ids,
+            starts=self.start_ids,
+            risk_bound=risk_bound,
+            graph_waypoints=self.graph_waypoints,
+            config=config,
         )
         solution = solver.find_paths()
-        paths = solution["paths"]  # type: ignore
+        paths = solution.paths  # type: ignore
         print(paths)
 
+        accumulated_risk = 0
         for idx, path in enumerate(paths):
-            print("Cost of path for agent {}: {}".format(idx, compute_cost(path, self.G, "cost")))
-
-        self.assertTrue(len(paths) == 5)  # type: ignore
-        self.assertTrue(solution["cost"] == 41)  # type: ignore
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
+            agent_risk = self.compute_cost(path)
+            accumulated_risk += agent_risk
+            print("Cost of path for agent {}: {}".format(idx, agent_risk))
+        print("Cost of solution: {}".format(solution.cost))
+        print("Accumulated Risk: {}".format(accumulated_risk))
 
         print("Number of expanded nodes: {}".format(solver.num_expanded))
         print("Number of generated nodes: {}".format(solver.num_generated))
+
+        self.assertTrue(len(paths) == 5)  # type: ignore
+        self.assertTrue(accumulated_risk <= risk_bound)  # type: ignore
+        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
+
+    def test_lagrangian_cbs_paths(self):
+        self.load_problem(self.filename)
+        self.graph_waypoints = np.array(self.graph_waypoints)
+        config = {
+            "seed": 0,
+            "max_time": 100,
+            "max_distance": 1,
+            "use_experience": True,
+            "collision_radius": 0.0,
+            "use_cardinality": True,
+            "risk_attribute": "cost",
+            "split_strategy": "disjoint",
+            "edge_attributes": ["step", "cost"],
+            "logdir": "pud/mapf/unit_tests/logs/lcbs",
+        }
+
+        lagrangian = 1.0
+        solver = LagrangianCBSSolver(
+            graph=self.G,
+            config=config,
+            goals=self.goal_ids,
+            starts=self.start_ids,
+            lagrangian=lagrangian,
+            graph_waypoints=self.graph_waypoints,
+        )
+        solution = solver.find_paths()
+        paths = solution.paths  # type: ignore
+        print(paths)
+
+        accumulated_risk = 0
+        for idx, path in enumerate(paths):
+            agent_risk = self.compute_cost(path)
+            accumulated_risk += agent_risk
+            print("Cost of path for agent {}: {}".format(idx, agent_risk))
+        print("Cost of solution: {}".format(solution.cost))
+        print("Accumulated Risk: {}".format(accumulated_risk))
+
+        print("Number of expanded nodes: {}".format(solver.num_expanded))
+        print("Number of generated nodes: {}".format(solver.num_generated))
+
+        self.assertTrue(len(paths) == 5)  # type: ignore
+        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
 
 
 if __name__ == "__main__":
