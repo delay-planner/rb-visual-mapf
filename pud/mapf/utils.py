@@ -1,3 +1,4 @@
+import heapq
 import random
 import numpy as np
 from typing import List, Dict
@@ -20,7 +21,13 @@ def location_collision(path1: List[int], path2: List[int], timestep: int):
     return None
 
 
-def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray, radius: float = 0.1):
+def radius_collision(
+    path1: List[int],
+    path2: List[int],
+    timestep: int,
+    graph_waypoints: NDArray,
+    radius: float = 0.1,
+):
     if (
         np.linalg.norm(
             graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep]]
@@ -32,13 +39,11 @@ def radius_collision(path1: List[int], path2: List[int], timestep: int, graph_wa
     if timestep < len(path1) - 1:
         if (
             np.linalg.norm(
-                graph_waypoints[path1[timestep]]
-                - graph_waypoints[path2[timestep + 1]]
+                graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep + 1]]
             )
             <= radius
             and np.linalg.norm(
-                graph_waypoints[path1[timestep + 1]]
-                - graph_waypoints[path2[timestep]]
+                graph_waypoints[path1[timestep + 1]] - graph_waypoints[path2[timestep]]
             )
             <= radius
         ):
@@ -70,7 +75,9 @@ def detect_collision(
     for timestep in range(len(path1)):
         collided = None
         if collision_radius > 0:
-            collided = radius_collision(path1, path2, timestep, graph_waypoints, collision_radius)
+            collided = radius_collision(
+                path1, path2, timestep, graph_waypoints, collision_radius
+            )
         else:
             collided = location_collision(path1, path2, timestep)
 
@@ -181,3 +188,62 @@ def get_location(path, timestep):
         return path[timestep]
     else:
         return path[-1]
+
+
+# Functions and Classes used by Multi-Objective CBS
+
+
+class PrioritySet(object):
+    def __init__(self):
+        self.set = set()
+        self.heap = []
+
+    def add(self, priority, item):
+        if item not in self.set:
+            self.set.add(item)
+            heapq.heappush(self.heap, (priority, item))
+
+    def pop(self):
+        priority, item = heapq.heappop(self.heap)
+        while item not in self.set:
+            priority, item = heapq.heappop(self.heap)
+        self.set.remove(item)
+        return priority, item
+
+    def size(self):
+        return len(self.set)
+
+    def has(self, item):
+        return item in self.set
+
+    def remove(self, item):
+        if item not in self.set:
+            return False
+        self.set.remove(item)
+        return True
+
+
+def less_dominant(vecA: NDArray, vecB: NDArray):
+    # return np.all(vecA <= vecB)
+    exist_strictly_less = False
+    for idx in range(len(vecA)):
+        if vecA[idx] > vecB[idx] + 1e-6:
+            return False
+        else:
+            if vecA[idx] < vecB[idx] - 1e-6:
+                exist_strictly_less = True
+    return exist_strictly_less
+
+
+def equal(vecA: NDArray, vecB: NDArray):
+    # return np.all(vecA == vecB)
+    for idx in range(len(vecA)):
+        if abs(vecA[idx] - vecB[idx]) > 1e-6:
+            return False
+    return True
+
+
+def dominate_or_equal(vecA: NDArray, vecB: NDArray):
+    if less_dominant(vecA, vecB) or equal(vecA, vecB):
+        return True
+    return False

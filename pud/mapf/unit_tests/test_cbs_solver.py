@@ -5,11 +5,13 @@ from typing import List
 
 from pud.mapf.cbs import CBSSolver, detect_collisions
 from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
+from pud.mapf.mocbs import MultiObjectiveCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 """
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_cbs_paths
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_cbsds_paths
+python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_mocbs_paths
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_lagrangian_cbs_paths
 python pud/mapf/unit_tests/test_cbs_solver.py TestCBSSolver.test_risk_bounded_cbs_paths
 """
@@ -84,7 +86,10 @@ class TestCBSSolver(unittest.TestCase):
                         and unsafe_neighbor[1] < boolean_map.shape[1]
                         and not boolean_map[unsafe_neighbor[0], unsafe_neighbor[1]]
                     ):
-                        risky_nodes.append(unsafe_neighbor[0] * boolean_map.shape[1] + unsafe_neighbor[1])
+                        risky_nodes.append(
+                            unsafe_neighbor[0] * boolean_map.shape[1]
+                            + unsafe_neighbor[1]
+                        )
 
         for node in range(boolean_map.shape[0] * boolean_map.shape[1]):
             node_x, node_y = node // boolean_map.shape[1], node % boolean_map.shape[1]
@@ -106,16 +111,23 @@ class TestCBSSolver(unittest.TestCase):
                     and neighbor[1] < boolean_map.shape[1]
                     and not boolean_map[neighbor[0], neighbor[1]]
                 ):
-                    if node in risky_nodes or neighbor[0] * boolean_map.shape[1] + neighbor[1] in risky_nodes:
+                    if (
+                        node in risky_nodes
+                        or neighbor[0] * boolean_map.shape[1] + neighbor[1]
+                        in risky_nodes
+                    ):
                         self.G.add_edge(
                             node,
                             neighbor[0] * boolean_map.shape[1] + neighbor[1],
                             step=1,
-                            cost=1
+                            cost=1,
                         )
                     else:
                         self.G.add_edge(
-                            node, neighbor[0] * boolean_map.shape[1] + neighbor[1], step=1, cost=0
+                            node,
+                            neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                            step=1,
+                            cost=0,
                         )
 
         self.start_ids, self.goal_ids = [], []
@@ -140,6 +152,7 @@ class TestCBSSolver(unittest.TestCase):
             "collision_radius": 0.0,
             "use_cardinality": True,
             "risk_attribute": "cost",
+            "tree_save_frequency": 100,
             "edge_attributes": ["step"],
             "split_strategy": "standard",
             "logdir": "pud/mapf/unit_tests/logs/cbs",
@@ -180,6 +193,7 @@ class TestCBSSolver(unittest.TestCase):
             "collision_radius": 0.0,
             "use_cardinality": True,
             "risk_attribute": "cost",
+            "tree_save_frequency": 100,
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
             "logdir": "pud/mapf/unit_tests/logs/cbsds",
@@ -220,6 +234,7 @@ class TestCBSSolver(unittest.TestCase):
             "collision_radius": 0.0,
             "use_cardinality": True,
             "risk_attribute": "cost",
+            "tree_save_frequency": 100,
             "split_strategy": "disjoint",
             "budget_allocater": "utility",
             "edge_attributes": ["step", "cost"],
@@ -265,6 +280,7 @@ class TestCBSSolver(unittest.TestCase):
             "collision_radius": 0.0,
             "use_cardinality": True,
             "risk_attribute": "cost",
+            "tree_save_frequency": 100,
             "split_strategy": "disjoint",
             "edge_attributes": ["step", "cost"],
             "logdir": "pud/mapf/unit_tests/logs/lcbs",
@@ -297,8 +313,63 @@ class TestCBSSolver(unittest.TestCase):
         self.assertTrue(len(paths) == 5)  # type: ignore
         self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
 
+    def test_mocbs_paths(self):
+        self.load_problem(self.filename)
+        self.graph_waypoints = np.array(self.graph_waypoints)
+        config = {
+            "seed": 0,
+            "max_time": 100,
+            "max_distance": 1,
+            "use_experience": False,
+            "collision_radius": 0.0,
+            "use_cardinality": False,
+            "risk_attribute": "cost",
+            "tree_save_frequency": 1000,
+            "split_strategy": "disjoint",
+            "edge_attributes": ["step", "cost"],
+            "logdir": "pud/mapf/unit_tests/logs/mocbs",
+        }
+
+        solver = MultiObjectiveCBSSolver(
+            graph=self.G,
+            goals=self.goal_ids,
+            starts=self.start_ids,
+            graph_waypoints=self.graph_waypoints,
+            config=config,
+        )
+        all_paths, all_cost_vectors, success = solver.find_paths()
+        if success:
+            keys = all_paths.keys()
+            path_risks = np.zeros(len(all_paths))
+            for idx, id in enumerate(all_paths):
+                for path in all_paths[id]:
+                    path_risks[idx] += self.compute_cost(path)
+            best_path_idx = np.argmin(path_risks)
+            best_path_key = list(keys)[best_path_idx]
+            paths = all_paths[best_path_key]
+            for idx, path in enumerate(paths):
+                agent_risk = self.compute_cost(path)
+                print("Cost of path for agent {}: {}".format(idx, agent_risk))
+            print(
+                "Cost of solution: {}".format(
+                    all_cost_vectors[best_path_key][
+                        config["edge_attributes"].index("step")
+                    ]
+                )
+            )
+            print("Accumulated risk: {}".format(np.min(path_risks)))
+        else:
+            print("No solution found")
+
+        print("Number of expanded nodes: {}".format(solver.num_expanded))
+        print("Number of generated nodes: {}".format(solver.num_generated))
+
+        self.assertTrue(len(paths) == 5)  # type: ignore
+        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])  # type: ignore
+
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO)
     unittest.main()

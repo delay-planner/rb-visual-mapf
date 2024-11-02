@@ -83,6 +83,7 @@ class CBSSolver(object):
         self.use_experience = config["use_experience"]
         self.use_cardinality = config["use_cardinality"]
         self.collision_radius = config["collision_radius"]
+        self.tree_save_frequency = config["tree_save_frequency"]
 
         self.risk_attribute = config["risk_attribute"]
         assert (
@@ -149,7 +150,7 @@ class CBSSolver(object):
         )
 
         self.num_generated += 1
-        if self.num_generated % 10 == 0:
+        if self.num_generated % self.tree_save_frequency == 0:
             self.save_search_tree()
 
     def extract_violating_agents(
@@ -290,6 +291,15 @@ class CBSSolver(object):
             self.num_expanded += 1
 
             if len(current_node.collisions) == 0:
+                self.search_tree.add_node(
+                    current_node.id,
+                    label="{}->{}".format(current_node.id, current_node.cost),
+                    color="green",
+                    cost=current_node.cost,
+                    paths=str(current_node.paths),
+                    collisions=len(current_node.collisions),
+                )
+                self.save_search_tree()
                 return current_node
 
             collision = self.choose_collision(current_node)

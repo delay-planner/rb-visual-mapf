@@ -254,7 +254,7 @@ class RiskBoundedCBSSolver(CBSSolver):
         )
 
         self.num_generated += 1
-        if self.num_generated % 10 == 0:
+        if self.num_generated % self.tree_save_frequency == 0:
             self.save_search_tree()
 
     def classify_collision(self, cbs_node: RiskBoundedCBSNode, collision: Dict) -> str:
