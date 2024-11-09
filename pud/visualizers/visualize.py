@@ -93,6 +93,13 @@ def visualize_buffer(rb_vec, eval_env, outpath=""):
     _, ax = plt.subplots(figsize=(6, 6))
     ax = plot_walls(eval_env.walls, ax=ax)
     ax.scatter(rb_vec[:, 0], rb_vec[:, 1])
+    cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    cbar = plt.colorbar(cmap, ax=ax, orientation="vertical", fraction=0.01, pad=0.04)
+    cbar.ax.tick_params(size=0)
+    cbar.set_ticks([0, 1, 2])
     plt.title(f"Replay Buffer (Size: {rb_vec.shape[0]})", fontsize=24)
     plt.savefig(outpath, dpi=300) if len(outpath) > 0 else plt.show()
 
@@ -150,6 +157,13 @@ def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpa
     _, ax = plt.subplots(figsize=(6, 6))
     plot_walls(eval_env.walls, ax)
     ax.scatter(*rb_vec.T)
+    cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    cbar = plt.colorbar(cmap, ax=ax, orientation="vertical", fraction=0.01, pad=0.04)
+    cbar.ax.tick_params(size=0)
+    cbar.set_ticks([0, 1, 2])
 
     pdist_combined = np.max(pdist, axis=0)
     for i, s_i in enumerate(rb_vec):
@@ -174,6 +188,14 @@ def visualize_cost_graph(rb_vec, eval_env, pcost, cost_limit, outpath="", edges_
     plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
     ax.scatter(rb_vec[:, 0], rb_vec[:, 1])
 
+    cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    cbar = plt.colorbar(cmap, ax=ax, orientation="vertical", fraction=0.01, pad=0.04)
+    cbar.ax.tick_params(size=0)
+    cbar.set_ticks([0, 1, 2])
+
     pbar = tqdm(total=len(rb_vec))
     for i, s_i in enumerate(rb_vec):
         for count, j in enumerate(np.argsort(pcost_combined[i])):
@@ -195,6 +217,13 @@ def visualize_combined_graph(rb_vec, eval_env, pdist, pcost, cost_limit, cutoff=
     _, ax = plt.subplots()
     ax.scatter(*rb_vec.T)
     ax = plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
+    cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    cbar = plt.colorbar(cmap, ax=ax, orientation="vertical", fraction=0.01, pad=0.04)
+    cbar.ax.tick_params(size=0)
+    cbar.set_ticks([0, 1, 2])
 
     pbar = tqdm(total=len(rb_vec))
     pdist_combined = np.max(pdist, axis=0)
@@ -274,6 +303,13 @@ def visualize_combined_graph_ensemble(
                 if count < edges_to_display and pdist[col_index, i, j] < cutoff and pcost[col_index, i, j] < cost_limit:
                     s_j = rb_vec[j]
                     ax[col_index].plot([s_i[0], s_j[0]], [s_i[1], s_j[1]], c="g", alpha=0.4)
+        cmap = ax[col_index].imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
+        ax[col_index].set_xticks([])
+        ax[col_index].set_yticks([])
+
+    cbar = plt.colorbar(cmap, ax=ax, orientation="vertical", fraction=0.01, pad=0.04)
+    cbar.ax.tick_params(size=0)
+    cbar.set_ticks([0, 1, 2])
 
     plt.suptitle("Combined Graph Ensemble", fontsize=24)
     plt.savefig(outpath, dpi=300) if len(outpath) > 0 else plt.show()

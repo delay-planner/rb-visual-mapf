@@ -5,7 +5,6 @@ import logging
 import numpy as np
 import networkx as nx
 from pud.mapf.cbs import CBSSolver
-from pud.mapf.cbs_ds import CBSDSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 from pud.mapf.single_agent_planner import compute_sum_of_costs
 
@@ -149,7 +148,7 @@ class SearchPolicy(BasePolicy):
             for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
-                    g.add_edge(i, j, weight=float(length))
+                    g.add_edge(i, j, weight=float(length), step=1.0)
         self.g = g
 
     def get_pairwise_dist_to_rb(self, state, masked=True):
@@ -204,9 +203,9 @@ class SearchPolicy(BasePolicy):
             zip(start_to_rb_dist.flatten(), rb_to_goal_dist.flatten())
         ):
             if dist_from_start < self.max_search_steps:
-                planning_graph.add_edge(start_id, i, weight=float(dist_from_start))
+                planning_graph.add_edge(start_id, i, weight=float(dist_from_start), step=1.0)
             if dist_to_goal < self.max_search_steps:
-                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal))
+                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal), step=1.0)
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
             rb_to_goal_dist < self.max_search_steps
@@ -382,7 +381,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
                 cost = pcost_combined[i, j]
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps and cost < self.max_cost_limit:
-                    g.add_edge(i, j, weight=float(length), cost=float(cost))
+                    g.add_edge(i, j, weight=float(length), step=1.0, cost=float(cost))
         self.g = g
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
@@ -447,9 +446,9 @@ class ConstrainedSearchPolicy(SearchPolicy):
             dist_from_start, cost_from_start = from_start
             dist_to_goal, cost_to_goal = to_goal
             if dist_from_start < self.max_search_steps and cost_from_start < self.max_cost_limit:
-                planning_graph.add_edge(start_id, i, weight=float(dist_from_start), cost=float(cost_from_start))
+                planning_graph.add_edge(start_id, i, weight=float(dist_from_start), step=1.0, cost=float(cost_from_start))
             if dist_to_goal < self.max_search_steps and cost_to_goal < self.max_cost_limit:
-                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal), cost=float(cost_to_goal))
+                planning_graph.add_edge(i, goal_id, weight=float(dist_to_goal), step=1.0, cost=float(cost_to_goal))
 
         if (
             not np.any(start_to_rb_dist < self.max_search_steps)
@@ -712,24 +711,35 @@ class MultiAgentSearchPolicy(SearchPolicy):
         for _, (start, goal) in enumerate(zip(starts, goals)):
             augmented_wps = np.vstack([augmented_wps, start, goal])
 
+        config = {
+            "seed": 0,
+            "max_time": 1000*len(start_ids),
+            "max_distance": 1,
+            "use_experience": True,
+            "collision_radius": self.radius,
+            "use_cardinality": True,
+            "risk_attribute": "cost",
+            "tree_save_frequency": 100,
+            "edge_attributes": ["step"],
+            "split_strategy": "standard",
+            "logdir": "pud/mapf/unit_tests/logs/cbs",
+        }
         if not self.disjoint_split:
             cbs_class = CBSSolver
         elif self.disjoint_split and self.risk_bound == np.inf:
-            cbs_class = CBSDSSolver
-        elif self.disjoint_split and self.risk_bound < np.inf:
-            cbs_class = RiskBoundedCBSSolver
+            cbs_class = CBSSolver
+        # elif self.disjoint_split and self.risk_bound < np.inf:
+            # cbs_class = RiskBoundedCBSSolver
         else:
             raise NotImplementedError
 
         cbs_solver = cbs_class(
-            graph.copy(),
-            augmented_wps.copy(),
-            start_ids.copy(),
-            goal_ids.copy(),
-            weighted=self.weighted_path_planning,
-            collision_radius=self.radius,
-            risk_bound=self.risk_bound,
-            max_time=1000*len(start_ids)
+            graph=graph.copy(),
+            graph_waypoints=augmented_wps.copy(),
+            starts=start_ids.copy(),
+            goals=goal_ids.copy(),
+            # risk_bound=self.risk_bound,
+            config=config,
         )
         try:
             solution = cbs_solver.find_paths()

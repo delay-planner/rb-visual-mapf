@@ -553,12 +553,6 @@ class RiskBudgetedAStar(AStar):
             successor_gadd = self.graph[current_node.location][neighbor_location][
                 edge_attribute
             ]
-            if edge_attribute == "cost":
-                # This ensures that the agent gives more priority to the cost of the edge
-                successor_gadd *= 3 * self.max_distance
-                # This ensures that the agent makes progress even when the edge attribute is zero
-                successor_gadd += 1
-
             successor_risk = (
                 current_node.risk
                 + self.graph[current_node.location][neighbor_location]["cost"]
@@ -861,11 +855,322 @@ class MultiObjectiveNode(object):
                     return self.id < other.id
                 return self.location < other.location
             return bool(np.all(self.h_vector < other.h_vector))
-        return bool(np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector))
+        return bool(
+            np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector)
+        )
+
+
+class BiObjectiveAStar(object):
+    def __init__(
+        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+    ):
+        self.goal = goal
+        self.start = start
+        self.agent_id = agent_id
+
+        self.graph = graph
+
+        self.num_expanded = 0
+        self.num_generated = 0
+
+        self.splitter = config["split_strategy"]
+        self.cost_dim = len(config["edge_attributes"])
+        self.edge_attributes = config["edge_attributes"]
+
+        self.open_list = PrioritySet()
+        self.best_secondary_gs = {}  # location -> g_2_min
+
+        self.solution_nodes = []
+
+        self.heuristic = {}
+        for edge_attribute in self.edge_attributes:
+            self.heuristic[edge_attribute] = compute_heuristics(
+                self.graph, self.goal, edge_attribute
+            )
+
+    def get_frontier_key(self, state: MultiObjectiveNode) -> float:
+        return state.location
+
+    def get_heuristic(self, location: int) -> NDArray:
+        heuristic = np.zeros(self.cost_dim)
+        for idx, edge_attribute in enumerate(self.edge_attributes):
+            heuristic[idx] = self.heuristic[edge_attribute][location]
+        return heuristic
+
+    def reset(self) -> None:
+        self.num_expanded = 0
+        self.num_generated = 0
+        self.open_list = PrioritySet()
+        self.best_secondary_gs = {}
+
+        self.start_state = MultiObjectiveNode(
+            id=self.num_generated,
+            location=self.start,
+            g_vector=np.zeros(self.cost_dim),
+            h_vector=self.get_heuristic(self.start),
+            parent=None,
+        )
+        self.num_generated += 1
+        self.goal_state = MultiObjectiveNode(
+            id=self.num_generated,
+            location=self.goal,
+            g_vector=np.ones(self.cost_dim) * np.inf,
+            h_vector=self.get_heuristic(self.goal),
+            parent=None,
+        )
+
+        goal_key = self.get_frontier_key(self.goal_state)
+        start_key = self.get_frontier_key(self.start_state)
+        self.best_secondary_gs[goal_key] = np.inf
+        self.best_secondary_gs[start_key] = np.inf
+
+    def find_path(self, max_time: int = 300):
+        start_time = time.time()
+        self.reset()
+
+        f_value = self.start_state.g_vector + self.start_state.h_vector
+        priority_key = tuple(f_value), self.start_state
+        self.open_list.add(priority_key, self.start_state.id)
+
+        while self.open_list.size() != 0 and time.time() - start_time < max_time:
+            priority_key, current_node_id = self.open_list.pop()
+
+            current_node = priority_key[-1]
+            current_node_key = self.get_frontier_key(current_node)
+            self.num_expanded += 1
+
+            if (
+                current_node_key in self.best_secondary_gs
+                and current_node.g_vector[-1]
+                >= self.best_secondary_gs[current_node_key]
+            ) or (
+                current_node.g_vector[-1] + current_node.h_vector[-1]
+                >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
+            ):
+                continue
+
+            self.best_secondary_gs[current_node_key] = current_node.g_vector[-1]
+
+            if current_node.location == self.goal_state.location:
+                self.solution_nodes.append(current_node)
+                continue
+
+            for neighbor in self.graph.neighbors(current_node.location):
+                successor_gadd_vector = []
+                for edge_attribute in self.edge_attributes:
+                    successor_gadd_vector.append(
+                        self.graph[current_node.location][neighbor][edge_attribute]
+                    )
+                if current_node.location == neighbor:
+                    successor_gadd_vector[self.edge_attributes.index("step")] += 1
+                successor = MultiObjectiveNode(
+                    id=self.num_generated,
+                    location=neighbor,
+                    g_vector=current_node.g_vector + np.array(successor_gadd_vector),
+                    h_vector=self.get_heuristic(neighbor),
+                    parent=current_node,
+                )
+
+                successor_key = self.get_frontier_key(successor)
+                if (
+                    successor_key in self.best_secondary_gs
+                    and successor.g_vector[-1] >= self.best_secondary_gs[successor_key]
+                ) or (
+                    successor.g_vector[-1] + successor.h_vector[-1]
+                    >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
+                ):
+                    continue
+
+                successor_priority_key = (
+                    tuple(successor.g_vector + successor.h_vector),
+                    successor,
+                )
+                self.open_list.add(successor_priority_key, successor.id)
+                self.num_generated += 1
+
+        paths = {}
+        cost_vectors = {}
+        for node in self.solution_nodes:
+            path = []
+            current_node = node
+            cost_vectors[node.id] = node.g_vector
+            while current_node is not None:
+                path.append(current_node.location)
+                current_node = current_node.parent
+            path.reverse()
+            paths[node.id] = path
+
+        return paths, cost_vectors
+
+
+class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
+    def __init__(
+        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+    ):
+        super().__init__(graph, agent_id, start, goal, config)
+
+    def reset(self):
+        self.num_expanded = 0
+        self.num_generated = 0
+        self.open_list = PrioritySet()
+        self.closed_list = {}
+        self.best_secondary_gs = {}
+
+        self.solution_nodes = set()
+
+        self.start_state = MultiObjectiveSpaceTimeNode(
+            id=self.num_generated,
+            location=self.start,
+            g_vector=np.zeros(self.cost_dim),
+            h_vector=self.get_heuristic(self.start),
+            parent=None,
+            timestep=0,
+        )
+        self.num_generated += 1
+
+        self.goal_state = MultiObjectiveSpaceTimeNode(
+            id=self.num_generated,
+            location=self.goal,
+            g_vector=np.ones(self.cost_dim) * np.inf,
+            h_vector=self.get_heuristic(self.goal),
+            parent=None,
+            timestep=0,
+        )
+        self.num_generated += 1
+
+        goal_key = self.get_frontier_key(self.goal_state)
+        start_key = self.get_frontier_key(self.start_state)
+        self.best_secondary_gs[goal_key] = np.inf
+        self.best_secondary_gs[start_key] = np.inf
+
+        for node in self.graph:
+            self.best_secondary_gs[node] = np.inf
+
+    def find_path(
+        self, constraints: List[Dict], max_time: int = 300
+    ) -> Tuple[Dict, Dict]:
+        start_time = time.time()
+        self.reset()
+
+        if self.splitter == "standard":
+            constraint_table = build_constraint_table(constraints, self.agent_id)
+        elif self.splitter == "disjoint":
+            constraint_table = build_constraint_table_with_ds(
+                constraints, self.agent_id
+            )
+
+        max_constraint = 0
+        if constraint_table.keys():
+            max_constraint = max(constraint_table.keys())
+
+        f_value = self.start_state.g_vector + self.start_state.h_vector
+        priority_key = tuple(f_value), self.start_state
+        self.open_list.add(priority_key, self.start_state.id)
+        self.closed_list[self.start_state.id] = self.start_state
+
+        while self.open_list.size() != 0 and time.time() - start_time < max_time:
+            priority_key, current_node_id = self.open_list.pop()
+
+            current_node = priority_key[-1]
+            current_node_key = self.get_frontier_key(current_node)
+            self.num_expanded += 1
+
+            if (
+                current_node_key in self.best_secondary_gs
+                and current_node.g_vector[-1]
+                >= self.best_secondary_gs[current_node_key]
+            ) or (
+                current_node.g_vector[-1] + current_node.h_vector[-1]
+                >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
+            ):
+                continue
+
+            self.best_secondary_gs[current_node_key] = current_node.g_vector[-1]
+
+            if current_node.location == self.goal and not is_constrained_with_ds(
+                self.goal,
+                self.goal,
+                current_node.timestep,
+                max_constraint,
+                constraint_table,
+                self.agent_id,
+                goal=True,
+            ):
+                self.solution_nodes.add(current_node.id)
+                temporary_set = copy.deepcopy(self.solution_nodes)
+                for goal_state_id in temporary_set:
+                    if goal_state_id == current_node.id:
+                        continue
+                    goal_state = self.closed_list[goal_state_id]
+                    if goal_state.g_vector[-1] >= current_node.g_vector[-1]:
+                        self.solution_nodes.remove(goal_state_id)
+                continue
+
+            for neighbor in self.graph.neighbors(current_node.location):
+                successor_gadd_vector = []
+                for edge_attribute in self.edge_attributes:
+                    successor_gadd_vector.append(
+                        self.graph[current_node.location][neighbor][edge_attribute]
+                    )
+                if current_node.location == neighbor:
+                    successor_gadd_vector[self.edge_attributes.index("step")] += 1
+
+                successor = MultiObjectiveSpaceTimeNode(
+                    id=self.num_generated,
+                    location=neighbor,
+                    g_vector=current_node.g_vector + np.array(successor_gadd_vector),
+                    h_vector=self.get_heuristic(neighbor),
+                    parent=current_node,
+                    timestep=current_node.timestep + 1,
+                )
+
+                if is_constrained_with_ds(
+                    current_node.location,
+                    successor.location,
+                    successor.timestep,
+                    max_constraint,
+                    constraint_table,
+                    self.agent_id,
+                ):
+                    continue
+
+                successor_key = self.get_frontier_key(successor)
+                if (
+                    successor_key in self.best_secondary_gs
+                    and successor.g_vector[-1] >= self.best_secondary_gs[successor_key]
+                ) or (
+                    successor.g_vector[-1] + successor.h_vector[-1]
+                    >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
+                ):
+                    continue
+
+                successor_priority_key = (
+                    tuple(successor.g_vector + successor.h_vector),
+                    successor,
+                )
+                self.open_list.add(successor_priority_key, successor.id)
+                self.closed_list[successor.id] = successor
+                self.num_generated += 1
+
+        paths = {}
+        cost_vectors = {}
+        for node_id in self.solution_nodes:
+            path = []
+            current_node = self.closed_list[node_id]
+            cost_vectors[node_id] = current_node.g_vector
+            while current_node is not None:
+                path.append(current_node.location)
+                current_node = current_node.parent
+            path.reverse()
+            paths[node_id] = path
+
+        return paths, cost_vectors
 
 
 class MultiObjectiveAStar(object):
-    def __init__(self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict):
+    def __init__(
+        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+    ):
         self.goal = goal
         self.start = start
         self.agent_id = agent_id
@@ -922,7 +1227,10 @@ class MultiObjectiveAStar(object):
             return False
         for existing_state_id in self.frontier_map[goal_state_key]:
             existing_state = self.closed_list[existing_state_id]
-            if dominate_or_equal(existing_state.g_vector + existing_state.h_vector, state.g_vector + state.h_vector):
+            if dominate_or_equal(
+                existing_state.g_vector + existing_state.h_vector,
+                state.g_vector + state.h_vector,
+            ):
                 return True
             if dominate_or_equal(existing_state.g_vector, state.g_vector):
                 return True
@@ -1072,11 +1380,15 @@ class MultiObjectiveSpaceTimeNode(MultiObjectiveNode):
                     return self.location < other.location
                 return self.timestep < other.timestep
             return bool(np.all(self.h_vector < other.h_vector))
-        return bool(np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector))
+        return bool(
+            np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector)
+        )
 
 
 class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
-    def __init__(self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict):
+    def __init__(
+        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+    ):
         super().__init__(graph, agent_id, start, goal, config)
         self.goal_states = set()
 
@@ -1118,7 +1430,10 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
             if existing_state_id == state.id:
                 continue
             existing_state = self.closed_list[existing_state_id]
-            if dominate_or_equal(existing_state.g_vector + existing_state.h_vector, state.g_vector + state.h_vector):
+            if dominate_or_equal(
+                existing_state.g_vector + existing_state.h_vector,
+                state.g_vector + state.h_vector,
+            ):
                 return True
             if dominate_or_equal(existing_state.g_vector, state.g_vector):
                 return True
@@ -1127,7 +1442,10 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
     def filter_goal_state(self, state: MultiObjectiveSpaceTimeNode) -> bool:
         for goal_state_id in self.goal_states:
             goal_state = self.closed_list[goal_state_id]
-            if dominate_or_equal(goal_state.g_vector + goal_state.h_vector, state.g_vector + state.h_vector):
+            if dominate_or_equal(
+                goal_state.g_vector + goal_state.h_vector,
+                state.g_vector + state.h_vector,
+            ):
                 return True
             if dominate_or_equal(goal_state.g_vector, state.g_vector):
                 return True
@@ -1164,7 +1482,9 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
             paths[goal_state_id] = path
         return paths
 
-    def find_path(self, constraints: List[Dict], max_time: int = 300) -> Tuple[Dict, Dict]:
+    def find_path(
+        self, constraints: List[Dict], max_time: int = 300
+    ) -> Tuple[Dict, Dict]:
         start_time = time.time()
         self.reset()
 
