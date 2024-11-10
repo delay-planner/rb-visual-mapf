@@ -833,31 +833,19 @@ class LagrangianAStar(AStar):
         return successor
 
 
-class MultiObjectiveNode(object):
-    def __init__(
-        self,
-        id: int,
-        location: int,
-        g_vector: NDArray,
-        h_vector: NDArray,
-        parent: MultiObjectiveNode | None,
-    ):
-        self.id = id
-        self.g_vector = g_vector
-        self.h_vector = h_vector
-        self.location = location
-        self.parent = parent
+class FrontierBiObjective(object):
+    def __init__(self):
+        self.node_ids = set()
+        self.g2min = np.inf
 
-    def __lt__(self, other: MultiObjectiveNode) -> bool:
-        if np.all(self.g_vector + self.h_vector == other.g_vector + other.h_vector):
-            if np.all(self.h_vector == other.h_vector):
-                if self.location == other.location:
-                    return self.id < other.id
-                return self.location < other.location
-            return bool(np.all(self.h_vector < other.h_vector))
-        return bool(
-            np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector)
-        )
+    def check(self, cost_vector: NDArray) -> bool:
+        if self.g2min <= cost_vector[-1]:
+            return True
+        return False
+
+    def update(self, node: MultiObjectiveNode) -> None:
+        self.g2min = node.g_vector[-1]
+        self.node_ids.add(node.id)
 
 
 class BiObjectiveAStar(object):
@@ -878,9 +866,10 @@ class BiObjectiveAStar(object):
         self.edge_attributes = config["edge_attributes"]
 
         self.open_list = PrioritySet()
-        self.best_secondary_gs = {}  # location -> g_2_min
+        self.closed_list = {}
 
-        self.solution_nodes = []
+        self.solutions = FrontierBiObjective()
+        self.id_to_frontier_map = {}
 
         self.heuristic = {}
         for edge_attribute in self.edge_attributes:
@@ -888,20 +877,23 @@ class BiObjectiveAStar(object):
                 self.graph, self.goal, edge_attribute
             )
 
-    def get_frontier_key(self, state: MultiObjectiveNode) -> float:
-        return state.location
-
     def get_heuristic(self, location: int) -> NDArray:
         heuristic = np.zeros(self.cost_dim)
         for idx, edge_attribute in enumerate(self.edge_attributes):
             heuristic[idx] = self.heuristic[edge_attribute][location]
         return heuristic
 
-    def reset(self) -> None:
+    def get_frontier_key(self, state: MultiObjectiveNode) -> Tuple[int, int]:
+        return state.location, state.timestep
+
+    def reset(self):
         self.num_expanded = 0
         self.num_generated = 0
         self.open_list = PrioritySet()
-        self.best_secondary_gs = {}
+        self.closed_list = {}
+
+        self.solutions = FrontierBiObjective()
+        self.id_to_frontier_map = {}
 
         self.start_state = MultiObjectiveNode(
             id=self.num_generated,
@@ -909,142 +901,37 @@ class BiObjectiveAStar(object):
             g_vector=np.zeros(self.cost_dim),
             h_vector=self.get_heuristic(self.start),
             parent=None,
+            timestep=0,
         )
         self.num_generated += 1
+
         self.goal_state = MultiObjectiveNode(
             id=self.num_generated,
             location=self.goal,
             g_vector=np.ones(self.cost_dim) * np.inf,
             h_vector=self.get_heuristic(self.goal),
             parent=None,
-        )
-
-        goal_key = self.get_frontier_key(self.goal_state)
-        start_key = self.get_frontier_key(self.start_state)
-        self.best_secondary_gs[goal_key] = np.inf
-        self.best_secondary_gs[start_key] = np.inf
-
-    def find_path(self, max_time: int = 300):
-        start_time = time.time()
-        self.reset()
-
-        f_value = self.start_state.g_vector + self.start_state.h_vector
-        priority_key = tuple(f_value), self.start_state
-        self.open_list.add(priority_key, self.start_state.id)
-
-        while self.open_list.size() != 0 and time.time() - start_time < max_time:
-            priority_key, current_node_id = self.open_list.pop()
-
-            current_node = priority_key[-1]
-            current_node_key = self.get_frontier_key(current_node)
-            self.num_expanded += 1
-
-            if (
-                current_node_key in self.best_secondary_gs
-                and current_node.g_vector[-1]
-                >= self.best_secondary_gs[current_node_key]
-            ) or (
-                current_node.g_vector[-1] + current_node.h_vector[-1]
-                >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
-            ):
-                continue
-
-            self.best_secondary_gs[current_node_key] = current_node.g_vector[-1]
-
-            if current_node.location == self.goal_state.location:
-                self.solution_nodes.append(current_node)
-                continue
-
-            for neighbor in self.graph.neighbors(current_node.location):
-                successor_gadd_vector = []
-                for edge_attribute in self.edge_attributes:
-                    successor_gadd_vector.append(
-                        self.graph[current_node.location][neighbor][edge_attribute]
-                    )
-                if current_node.location == neighbor:
-                    successor_gadd_vector[self.edge_attributes.index("step")] += 1
-                successor = MultiObjectiveNode(
-                    id=self.num_generated,
-                    location=neighbor,
-                    g_vector=current_node.g_vector + np.array(successor_gadd_vector),
-                    h_vector=self.get_heuristic(neighbor),
-                    parent=current_node,
-                )
-
-                successor_key = self.get_frontier_key(successor)
-                if (
-                    successor_key in self.best_secondary_gs
-                    and successor.g_vector[-1] >= self.best_secondary_gs[successor_key]
-                ) or (
-                    successor.g_vector[-1] + successor.h_vector[-1]
-                    >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
-                ):
-                    continue
-
-                successor_priority_key = (
-                    tuple(successor.g_vector + successor.h_vector),
-                    successor,
-                )
-                self.open_list.add(successor_priority_key, successor.id)
-                self.num_generated += 1
-
-        paths = {}
-        cost_vectors = {}
-        for node in self.solution_nodes:
-            path = []
-            current_node = node
-            cost_vectors[node.id] = node.g_vector
-            while current_node is not None:
-                path.append(current_node.location)
-                current_node = current_node.parent
-            path.reverse()
-            paths[node.id] = path
-
-        return paths, cost_vectors
-
-
-class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
-    def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
-    ):
-        super().__init__(graph, agent_id, start, goal, config)
-
-    def reset(self):
-        self.num_expanded = 0
-        self.num_generated = 0
-        self.open_list = PrioritySet()
-        self.closed_list = {}
-        self.best_secondary_gs = {}
-
-        self.solution_nodes = set()
-
-        self.start_state = MultiObjectiveSpaceTimeNode(
-            id=self.num_generated,
-            location=self.start,
-            g_vector=np.zeros(self.cost_dim),
-            h_vector=self.get_heuristic(self.start),
-            parent=None,
             timestep=0,
         )
         self.num_generated += 1
 
-        self.goal_state = MultiObjectiveSpaceTimeNode(
-            id=self.num_generated,
-            location=self.goal,
-            g_vector=np.ones(self.cost_dim) * np.inf,
-            h_vector=self.get_heuristic(self.goal),
-            parent=None,
-            timestep=0,
-        )
-        self.num_generated += 1
+    def frontier_check(self, current_node: MultiObjectiveNode) -> bool:
+        current_node_key = self.get_frontier_key(current_node)
+        if current_node_key in self.id_to_frontier_map:
+            return self.id_to_frontier_map[current_node_key].check(current_node.g_vector)
+        return False
 
-        goal_key = self.get_frontier_key(self.goal_state)
-        start_key = self.get_frontier_key(self.start_state)
-        self.best_secondary_gs[goal_key] = np.inf
-        self.best_secondary_gs[start_key] = np.inf
+    def solution_check(self, current_node: MultiObjectiveNode) -> bool:
+        if len(self.solutions.node_ids) == 0:
+            return False
+        f_value = current_node.g_vector + current_node.h_vector
+        return self.solutions.check(f_value)
 
-        for node in self.graph:
-            self.best_secondary_gs[node] = np.inf
+    def update_frontier(self, node: MultiObjectiveNode) -> None:
+        node_key = self.get_frontier_key(node)
+        if node_key not in self.id_to_frontier_map:
+            self.id_to_frontier_map[node_key] = FrontierBiObjective()
+        self.id_to_frontier_map[node_key].update(node)
 
     def find_path(
         self, constraints: List[Dict], max_time: int = 300
@@ -1072,20 +959,10 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
             priority_key, current_node_id = self.open_list.pop()
 
             current_node = priority_key[-1]
-            current_node_key = self.get_frontier_key(current_node)
             self.num_expanded += 1
 
-            if (
-                current_node_key in self.best_secondary_gs
-                and current_node.g_vector[-1]
-                >= self.best_secondary_gs[current_node_key]
-            ) or (
-                current_node.g_vector[-1] + current_node.h_vector[-1]
-                >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
-            ):
+            if self.frontier_check(current_node) or self.solution_check(current_node):
                 continue
-
-            self.best_secondary_gs[current_node_key] = current_node.g_vector[-1]
 
             if current_node.location == self.goal and not is_constrained_with_ds(
                 self.goal,
@@ -1096,15 +973,9 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
                 self.agent_id,
                 goal=True,
             ):
-                self.solution_nodes.add(current_node.id)
-                temporary_set = copy.deepcopy(self.solution_nodes)
-                for goal_state_id in temporary_set:
-                    if goal_state_id == current_node.id:
-                        continue
-                    goal_state = self.closed_list[goal_state_id]
-                    if goal_state.g_vector[-1] >= current_node.g_vector[-1]:
-                        self.solution_nodes.remove(goal_state_id)
-                continue
+                self.solutions.update(current_node)
+
+            self.update_frontier(current_node)
 
             for neighbor in self.graph.neighbors(current_node.location):
                 successor_gadd_vector = []
@@ -1115,7 +986,7 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
                 if current_node.location == neighbor:
                     successor_gadd_vector[self.edge_attributes.index("step")] += 1
 
-                successor = MultiObjectiveSpaceTimeNode(
+                successor = MultiObjectiveNode(
                     id=self.num_generated,
                     location=neighbor,
                     g_vector=current_node.g_vector + np.array(successor_gadd_vector),
@@ -1134,14 +1005,7 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
                 ):
                     continue
 
-                successor_key = self.get_frontier_key(successor)
-                if (
-                    successor_key in self.best_secondary_gs
-                    and successor.g_vector[-1] >= self.best_secondary_gs[successor_key]
-                ) or (
-                    successor.g_vector[-1] + successor.h_vector[-1]
-                    >= self.best_secondary_gs[self.get_frontier_key(self.goal_state)]
-                ):
+                if self.frontier_check(successor):
                     continue
 
                 successor_priority_key = (
@@ -1154,7 +1018,7 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
 
         paths = {}
         cost_vectors = {}
-        for node_id in self.solution_nodes:
+        for node_id in self.solutions.node_ids:
             path = []
             current_node = self.closed_list[node_id]
             cost_vectors[node_id] = current_node.g_vector
@@ -1165,6 +1029,37 @@ class BiObjectiveSpaceTimeAStar(BiObjectiveAStar):
             paths[node_id] = path
 
         return paths, cost_vectors
+
+
+class MultiObjectiveNode(object):
+    def __init__(
+        self,
+        id: int,
+        location: int,
+        g_vector: NDArray,
+        h_vector: NDArray,
+        parent: MultiObjectiveNode | None,
+        timestep: int,
+    ):
+        self.id = id
+        self.g_vector = g_vector
+        self.h_vector = h_vector
+        self.location = location
+        self.parent = parent
+        self.timestep = timestep
+
+    def __lt__(self, other: MultiObjectiveNode) -> bool:
+        if np.all(self.g_vector + self.h_vector == other.g_vector + other.h_vector):
+            if np.all(self.h_vector == other.h_vector):
+                if self.timestep == other.timestep:
+                    if self.location == other.location:
+                        return self.id < other.id
+                    return self.location < other.location
+                return self.timestep < other.timestep
+            return bool(np.all(self.h_vector < other.h_vector))
+        return bool(
+            np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector)
+        )
 
 
 class MultiObjectiveAStar(object):
@@ -1188,26 +1083,57 @@ class MultiObjectiveAStar(object):
         self.closed_list = {}
         self.frontier_map = {}
 
+        self.goal_states = set()
+
         self.heuristic = {}
         for edge_attribute in self.edge_attributes:
             self.heuristic[edge_attribute] = compute_heuristics(
                 self.graph, self.goal, edge_attribute
             )
 
-    def get_frontier_key(self, state: MultiObjectiveNode) -> float:
-        return state.location
-
     def get_heuristic(self, location: int) -> NDArray:
-        heuristic = np.zeros(self.cost_dim)
+        h_val = np.zeros(self.cost_dim)
         for idx, edge_attribute in enumerate(self.edge_attributes):
-            heuristic[idx] = self.heuristic[edge_attribute][location]
-        return heuristic
+            h_val[idx] = self.heuristic[edge_attribute][location]
+        return h_val
 
-    def push_node(self, node: MultiObjectiveNode) -> None:
-        f_value = np.sum(node.g_vector + node.h_vector)
-        self.open_list.add((f_value, np.sum(node.h_vector), node), node.id)
-        self.add_to_frontier(node)
+    def get_frontier_key(self, state: MultiObjectiveNode) -> Tuple[int, int]:
+        return (state.location, state.timestep)
+
+    def reset(self):
+        self.num_expanded = 0
+        self.num_generated = 0
+        self.open_list = PrioritySet()
+        self.closed_list = {}
+        self.frontier_map = {}
+
+        self.goal_states = set()
+
+        self.start_state = MultiObjectiveNode(
+            id=self.num_generated,
+            location=self.start,
+            g_vector=np.zeros(self.cost_dim),
+            h_vector=self.get_heuristic(self.start),
+            parent=None,
+            timestep=0,
+        )
         self.num_generated += 1
+        self.goal_state = MultiObjectiveNode(
+            id=1,
+            location=self.goal,
+            g_vector=np.ones(self.cost_dim) * np.inf,
+            h_vector=self.get_heuristic(self.goal),
+            parent=None,
+            timestep=0,
+        )
+        self.num_generated += 1
+
+    def filter_state(self, state: MultiObjectiveNode) -> bool:
+        if self.filter_frontier_state(state):
+            return True
+        if self.filter_goal_state(state):
+            return True
+        return False
 
     def filter_frontier_state(self, state: MultiObjectiveNode) -> bool:
         state_key = self.get_frontier_key(state)
@@ -1216,16 +1142,6 @@ class MultiObjectiveAStar(object):
         for existing_state_id in self.frontier_map[state_key]:
             if existing_state_id == state.id:
                 continue
-            existing_state = self.closed_list[existing_state_id]
-            if dominate_or_equal(existing_state.g_vector, state.g_vector):
-                return True
-        return False
-
-    def filter_goal_state(self, state: MultiObjectiveNode) -> bool:
-        goal_state_key = self.get_frontier_key(self.goal_state)
-        if goal_state_key not in self.frontier_map:
-            return False
-        for existing_state_id in self.frontier_map[goal_state_key]:
             existing_state = self.closed_list[existing_state_id]
             if dominate_or_equal(
                 existing_state.g_vector + existing_state.h_vector,
@@ -1236,47 +1152,22 @@ class MultiObjectiveAStar(object):
                 return True
         return False
 
-    def filter_state(self, state: MultiObjectiveNode) -> bool:
-        if self.filter_frontier_state(state):
-            return True
-        if self.filter_goal_state(state):
-            return True
-        return False
-
-    def pruning(self, state: MultiObjectiveNode) -> bool:
-        state_key = self.get_frontier_key(state)
-        if state_key not in self.frontier_map:
-            return False
-        for existing_state_id in self.frontier_map[state_key]:
-            if existing_state_id == state.id:
-                continue
-            existing_state = self.closed_list[existing_state_id]
-            if dominate_or_equal(existing_state.g_vector, state.g_vector):
+    def filter_goal_state(self, state: MultiObjectiveNode) -> bool:
+        for goal_state_id in self.goal_states:
+            goal_state = self.closed_list[goal_state_id]
+            if dominate_or_equal(
+                goal_state.g_vector + goal_state.h_vector,
+                state.g_vector + state.h_vector,
+            ):
+                return True
+            if dominate_or_equal(goal_state.g_vector, state.g_vector):
                 return True
         return False
 
-    def reset(self) -> None:
-        self.num_expanded = 0
-        self.num_generated = 0
-        self.open_list = PrioritySet()
-        self.closed_list = {}
-        self.frontier_map = {}
-
-        self.start_state = MultiObjectiveNode(
-            id=self.num_generated,
-            location=self.start,
-            g_vector=np.zeros(self.cost_dim),
-            h_vector=self.get_heuristic(self.start),
-            parent=None,
-        )
-        self.num_generated += 1
-        self.goal_state = MultiObjectiveNode(
-            id=1,
-            location=self.goal,
-            g_vector=np.ones(self.cost_dim) * np.inf,
-            h_vector=self.get_heuristic(self.goal),
-            parent=None,
-        )
+    def push_node(self, node: MultiObjectiveNode) -> None:
+        f_value = np.sum(node.g_vector + node.h_vector)
+        self.open_list.add((f_value, np.sum(node.h_vector), node), node.id)
+        self.add_to_frontier(node)
         self.num_generated += 1
 
     def add_to_frontier(self, state: MultiObjectiveNode) -> None:
@@ -1302,165 +1193,7 @@ class MultiObjectiveAStar(object):
                 self.frontier_map[state_key].remove(existing_state_id)
                 self.open_list.remove(existing_state_id)
 
-    def reconstruct_paths(self) -> Dict:
-        paths = {}
-        goal_state_key = self.get_frontier_key(self.goal_state)
-        if goal_state_key not in self.frontier_map:
-            return paths
-        for goal_state_id in self.frontier_map[goal_state_key]:
-            goal_state = self.closed_list[goal_state_id]
-            path = []
-            current_state = goal_state
-            while current_state is not None:
-                path.append(current_state.location)
-                current_state = current_state.parent
-            path.reverse()
-            paths[goal_state_id] = path
-        return paths
-
-    def find_path(self, max_time: int = 300):
-        start_time = time.time()
-        self.reset()
-        self.push_node(self.start_state)
-
-        while self.open_list.size() != 0 and time.time() - start_time < max_time:
-            _, current_node_id = self.open_list.pop()
-            current_node = self.closed_list[current_node_id]
-            self.num_expanded += 1
-
-            if self.filter_state(current_node):
-                continue
-
-            for neighbor in self.graph.neighbors(current_node.location):
-                successor_gadd_vector = []
-                for edge_attribute in self.edge_attributes:
-                    successor_gadd_vector.append(
-                        self.graph[current_node.location][neighbor][edge_attribute]
-                    )
-                successor = MultiObjectiveNode(
-                    id=self.num_generated,
-                    location=neighbor,
-                    g_vector=current_node.g_vector + np.array(successor_gadd_vector),
-                    h_vector=self.get_heuristic(neighbor),
-                    parent=current_node,
-                )
-
-                if self.filter_state(successor):
-                    continue
-
-                if not self.pruning(successor):
-                    self.push_node(successor)
-
-        paths = self.reconstruct_paths()
-        cost_vectors = {}
-        for id, _ in paths.items():
-            cost_vectors[id] = self.closed_list[id].g_vector
-        return paths, cost_vectors
-
-
-class MultiObjectiveSpaceTimeNode(MultiObjectiveNode):
-    def __init__(
-        self,
-        id: int,
-        location: int,
-        g_vector: NDArray,
-        h_vector: NDArray,
-        parent: MultiObjectiveSpaceTimeNode | None,
-        timestep: int,
-    ):
-        super().__init__(id, location, g_vector, h_vector, parent)
-        self.timestep = timestep
-
-    def __lt__(self, other: MultiObjectiveSpaceTimeNode) -> bool:
-        if np.all(self.g_vector + self.h_vector == other.g_vector + other.h_vector):
-            if np.all(self.h_vector == other.h_vector):
-                if self.timestep == other.timestep:
-                    if self.location == other.location:
-                        return self.id < other.id
-                    return self.location < other.location
-                return self.timestep < other.timestep
-            return bool(np.all(self.h_vector < other.h_vector))
-        return bool(
-            np.all(self.g_vector + self.h_vector < other.g_vector + other.h_vector)
-        )
-
-
-class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
-    def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
-    ):
-        super().__init__(graph, agent_id, start, goal, config)
-        self.goal_states = set()
-
-        self.heuristic = {}
-        for edge_attribute in self.edge_attributes:
-            self.heuristic[edge_attribute] = compute_heuristics(
-                self.graph, self.goal, edge_attribute
-            )
-
-    def reset(self):
-        super().reset()
-        self.num_generated = 0
-        self.goal_states = set()
-
-        self.start_state = MultiObjectiveSpaceTimeNode(
-            id=self.num_generated,
-            location=self.start,
-            g_vector=np.zeros(self.cost_dim),
-            h_vector=self.get_heuristic(self.start),
-            parent=None,
-            timestep=0,
-        )
-        self.num_generated += 1
-        self.goal_state = MultiObjectiveSpaceTimeNode(
-            id=1,
-            location=self.goal,
-            g_vector=np.ones(self.cost_dim) * np.inf,
-            h_vector=self.get_heuristic(self.goal),
-            parent=None,
-            timestep=0,
-        )
-        self.num_generated += 1
-
-    def filter_frontier_state(self, state: MultiObjectiveSpaceTimeNode) -> bool:
-        state_key = self.get_frontier_key(state)
-        if state_key not in self.frontier_map:
-            return False
-        for existing_state_id in self.frontier_map[state_key]:
-            if existing_state_id == state.id:
-                continue
-            existing_state = self.closed_list[existing_state_id]
-            if dominate_or_equal(
-                existing_state.g_vector + existing_state.h_vector,
-                state.g_vector + state.h_vector,
-            ):
-                return True
-            if dominate_or_equal(existing_state.g_vector, state.g_vector):
-                return True
-        return False
-
-    def filter_goal_state(self, state: MultiObjectiveSpaceTimeNode) -> bool:
-        for goal_state_id in self.goal_states:
-            goal_state = self.closed_list[goal_state_id]
-            if dominate_or_equal(
-                goal_state.g_vector + goal_state.h_vector,
-                state.g_vector + state.h_vector,
-            ):
-                return True
-            if dominate_or_equal(goal_state.g_vector, state.g_vector):
-                return True
-        return False
-
-    def get_heuristic(self, location: int) -> NDArray:
-        h_val = np.zeros(self.cost_dim)
-        for idx, edge_attribute in enumerate(self.edge_attributes):
-            h_val[idx] = self.heuristic[edge_attribute][location]
-        return h_val
-
-    def get_frontier_key(self, state: MultiObjectiveSpaceTimeNode) -> Tuple[int, int]:
-        return (state.location, state.timestep)
-
-    def refine_reached_goals(self, state: MultiObjectiveSpaceTimeNode) -> None:
+    def refine_reached_goals(self, state: MultiObjectiveNode) -> None:
         temporary_set = copy.deepcopy(self.goal_states)
         for goal_state_id in temporary_set:
             if goal_state_id == state.id:
@@ -1468,6 +1201,18 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
             goal_state = self.closed_list[goal_state_id]
             if dominate_or_equal(state.g_vector, goal_state.g_vector):
                 self.goal_states.remove(goal_state_id)
+
+    def pruning(self, state: MultiObjectiveNode) -> bool:
+        state_key = self.get_frontier_key(state)
+        if state_key not in self.frontier_map:
+            return False
+        for existing_state_id in self.frontier_map[state_key]:
+            if existing_state_id == state.id:
+                continue
+            existing_state = self.closed_list[existing_state_id]
+            if dominate_or_equal(existing_state.g_vector, state.g_vector):
+                return True
+        return False
 
     def reconstruct_paths(self) -> Dict:
         paths = {}
@@ -1528,7 +1273,7 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
                     )
                 if current_node.location == neighbor:
                     successor_gadd_vector[self.edge_attributes.index("step")] += 1
-                successor = MultiObjectiveSpaceTimeNode(
+                successor = MultiObjectiveNode(
                     id=self.num_generated,
                     location=neighbor,
                     g_vector=current_node.g_vector + np.array(successor_gadd_vector),
@@ -1557,4 +1302,278 @@ class MultiObjectiveSpaceTimeAStar(MultiObjectiveAStar):
         cost_vectors = {}
         for id, _ in paths.items():
             cost_vectors[id] = self.closed_list[id].g_vector
+        return paths, cost_vectors
+
+
+class FrontierLinear(object):
+    def __init__(self):
+        self.node_gs = {}  # Node ID -> g_vector
+
+    def check(self, cost_vector: NDArray) -> bool:
+        for _, node_gs in self.node_gs.items():
+            if dominate_or_equal(node_gs, cost_vector):
+                return True
+        return False
+
+    def dr_check(self, cost_vector: NDArray) -> bool:
+        for _, node_gs in self.node_gs.items():
+            if dominate_or_equal(node_gs[1:], cost_vector[1:]):
+                return True
+        return False
+
+    def remove(self, cost_vector: NDArray) -> bool:
+        for node_id, node_gs in self.node_gs.items():
+            if np.all(node_gs == cost_vector):
+                self.node_gs.pop(node_id)
+                return True
+        return False
+
+    def add(self, node_id: int, cost_vector: NDArray) -> None:
+        self.node_gs[node_id] = cost_vector
+
+    def filter(self, cost_vector: NDArray) -> set:
+        deleted_ids = set()
+        node_gs_copy = copy.deepcopy(self.node_gs)
+        for node_id, node_gs in self.node_gs.items():
+            if dominate_or_equal(cost_vector, node_gs):
+                node_gs_copy.pop(node_id)
+            deleted_ids.add(node_id)
+        self.node_gs = node_gs_copy
+        return deleted_ids
+
+    def update(self, node: MultiObjectiveNode) -> set:
+        deleted_ids = self.filter(node.g_vector)
+        self.add(node.id, node.g_vector)
+        return deleted_ids
+
+
+class NAMultiObjectiveAStar(object):
+    def __init__(self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict):
+        self.goal = goal
+        self.start = start
+        self.agent_id = agent_id
+
+        self.graph = graph
+
+        self.num_expanded = 0
+        self.num_generated = 0
+
+        self.splitter = config["split_strategy"]
+        self.cost_dim = len(config["edge_attributes"])
+        self.edge_attributes = config["edge_attributes"]
+
+        self.open_list = PrioritySet()
+        self.closed_list = {}
+
+        self.open_gs = {}
+        self.closed_gs = {}
+
+        self.goal_states = set()
+
+        self.heuristic = {}
+        for edge_attribute in self.edge_attributes:
+            self.heuristic[edge_attribute] = compute_heuristics(
+                self.graph, self.goal, edge_attribute
+            )
+
+    def reset(self):
+        self.num_expanded = 0
+        self.num_generated = 0
+
+        self.open_list = PrioritySet()
+        self.closed_list = {}
+
+        self.open_gs = {}
+        self.closed_gs = {}
+
+        self.goal_states = set()
+
+        self.start_state = MultiObjectiveNode(
+            id=self.num_generated,
+            location=self.start,
+            g_vector=np.zeros(self.cost_dim),
+            h_vector=self.get_heuristic(self.start),
+            parent=None,
+            timestep=0,
+        )
+        self.num_generated += 1
+
+        self.goal_state = MultiObjectiveNode(
+            id=self.num_generated,
+            location=self.goal,
+            g_vector=np.ones(self.cost_dim) * np.inf,
+            h_vector=self.get_heuristic(self.goal),
+            parent=None,
+            timestep=0,
+        )
+        self.num_generated += 1
+
+    def get_heuristic(self, location: int) -> NDArray:
+        h_val = np.zeros(self.cost_dim)
+        for idx, edge_attribute in enumerate(self.edge_attributes):
+            h_val[idx] = self.heuristic[edge_attribute][location]
+        return h_val
+
+    def get_frontier_key(self, state: MultiObjectiveNode) -> Tuple[int, int]:
+        return state.location, state.timestep
+
+    def open_gs_to_closed_gs(self, node: MultiObjectiveNode) -> None:
+        node_key = self.get_frontier_key(node)
+        self.open_gs[node_key].remove(node.g_vector)
+
+        if node_key not in self.closed_gs:
+            self.closed_gs[node_key] = FrontierLinear()
+        self.closed_gs[node_key].add(node.id, node.g_vector)
+
+    def filter_open_list(self, node: MultiObjectiveNode) -> None:
+        temporary_set = copy.deepcopy(self.open_list.set)
+        for open_node_id in self.open_list.set:
+            open_node = self.closed_list[open_node_id]
+            open_node_fval = open_node.g_vector + open_node.h_vector
+            if dominate_or_equal(node.g_vector, open_node_fval):
+                temporary_set.remove(open_node_id)
+        self.open_list.set = temporary_set
+
+    def gs_dominance_check(self, node: MultiObjectiveNode) -> bool:
+        node_key = self.get_frontier_key(node)
+        if node_key in self.open_gs:
+            if self.open_gs[node_key].check(node.g_vector):
+                return True
+        if node_key in self.closed_gs:
+            if self.closed_gs[node_key].dr_check(node.g_vector):
+                return True
+        return False
+
+    def solution_dominance_check(self, cost_vector: NDArray) -> bool:
+        for goal_state_id in self.goal_states:
+            goal_state = self.closed_list[goal_state_id]
+            if dominate_or_equal(goal_state.g_vector[1:], cost_vector[1:]):
+                return True
+        return False
+
+    def filter_open_gs(self, node: MultiObjectiveNode) -> None:
+        node_key = self.get_frontier_key(node)
+
+        deleted_ids = set()
+        if node_key in self.open_gs:
+            deleted_ids = self.open_gs[node_key].update(node)
+        else:
+            self.open_gs[node_key] = FrontierLinear()
+            self.open_gs[node_key].add(node.id, node.g_vector)
+
+        if len(deleted_ids) > 0:
+            counter = 0
+            for open_node_id in self.open_list.set:
+                if open_node_id in deleted_ids:
+                    self.open_list.remove(open_node_id)
+                    counter += 1
+                if counter == len(deleted_ids):
+                    break
+
+        f_value = node.g_vector + node.h_vector
+        priority_key = tuple(f_value), node
+        self.open_list.add(priority_key, node.id)
+        self.closed_list[node.id] = node
+        self.num_generated += 1
+
+    def filter_closed_gs(self, node: MultiObjectiveNode) -> None:
+        node_key = self.get_frontier_key(node)
+        if node_key in self.closed_gs:
+            _ = self.closed_gs[node_key].filter(node.g_vector)
+
+    def find_path(self, constraints: List[Dict], max_time: int = 300):
+        start_time = time.time()
+        self.reset()
+
+        if self.splitter == "standard":
+            constraint_table = build_constraint_table(constraints, self.agent_id)
+        elif self.splitter == "disjoint":
+            constraint_table = build_constraint_table_with_ds(
+                constraints, self.agent_id
+            )
+
+        max_constraint = 0
+        if constraint_table.keys():
+            max_constraint = max(constraint_table.keys())
+
+        f_value = self.start_state.g_vector + self.start_state.h_vector
+        priority_key = tuple(f_value), self.start_state
+        self.open_list.add(priority_key, self.start_state.id)
+        self.closed_list[self.start_state.id] = self.start_state
+        self.open_gs[self.get_frontier_key(self.start_state)] = FrontierLinear()
+        self.open_gs[self.get_frontier_key(self.start_state)].add(
+            self.start_state.id, self.start_state.g_vector
+        )
+
+        while self.open_list.size() != 0 and time.time() - start_time < max_time:
+
+            priority_key, current_node_id = self.open_list.pop()
+            current_node = self.closed_list[current_node_id]
+            self.num_expanded += 1
+
+            self.open_gs_to_closed_gs(current_node)
+
+            if current_node.location == self.goal and not is_constrained_with_ds(
+                self.goal,
+                self.goal,
+                current_node.timestep,
+                max_constraint,
+                constraint_table,
+                self.agent_id,
+                goal=True,
+            ):
+                self.goal_states.add(current_node.id)
+                self.filter_open_list(current_node)
+                continue
+
+            for neighbor in self.graph.neighbors(current_node.location):
+                successor_gadd_vector = []
+                for edge_attribute in self.edge_attributes:
+                    successor_gadd_vector.append(
+                        self.graph[current_node.location][neighbor][edge_attribute]
+                    )
+                if current_node.location == neighbor:
+                    successor_gadd_vector[self.edge_attributes.index("step")] += 1
+
+                successor = MultiObjectiveNode(
+                    id=self.num_generated,
+                    location=neighbor,
+                    g_vector=current_node.g_vector + np.array(successor_gadd_vector),
+                    h_vector=self.get_heuristic(neighbor),
+                    parent=current_node,
+                    timestep=current_node.timestep + 1,
+                )
+
+                if is_constrained_with_ds(
+                    current_node.location,
+                    successor.location,
+                    successor.timestep,
+                    max_constraint,
+                    constraint_table,
+                    self.agent_id,
+                ):
+                    continue
+
+                if self.gs_dominance_check(successor):
+                    continue
+
+                successor_fval = successor.g_vector + successor.h_vector
+                if self.solution_dominance_check(successor_fval):
+                    continue
+
+                self.filter_open_gs(successor)
+                self.filter_closed_gs(successor)
+
+        paths = {}
+        cost_vectors = {}
+        for goal_state_id in self.goal_states:
+            path = []
+            current_node = self.closed_list[goal_state_id]
+            while current_node is not None:
+                path.append(current_node.location)
+                current_node = current_node.parent
+            path.reverse()
+            paths[goal_state_id] = path
+            cost_vectors[goal_state_id] = self.closed_list[goal_state_id].g_vector
+
         return paths, cost_vectors

@@ -6,10 +6,10 @@ from typing import List, Dict
 from numpy.typing import NDArray
 
 from pud.mapf.mocbs import MultiObjectiveCBSSolver
-from pud.mapf.single_agent_planner import BiObjectiveAStar
+from pud.mapf.single_agent_planner import NAMultiObjectiveAStar
 
 
-class BiObjectiveCBSSolver(MultiObjectiveCBSSolver):
+class NAMultiOjectiveCBSSolver(MultiObjectiveCBSSolver):
     def __init__(
         self,
         graph: Graph,
@@ -21,6 +21,6 @@ class BiObjectiveCBSSolver(MultiObjectiveCBSSolver):
         super().__init__(graph, starts, goals, graph_waypoints, config)
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
-            self.single_agent_planners[agent] = BiObjectiveAStar(
+            self.single_agent_planners[agent] = NAMultiObjectiveAStar(
                 graph, agent, starts[agent], goals[agent], config
             )

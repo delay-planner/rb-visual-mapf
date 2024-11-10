@@ -24,10 +24,7 @@ from pud.mapf.utils import (
     less_dominant,
     standard_split,
 )
-from pud.mapf.single_agent_planner import (
-    MultiObjectiveAStar,
-    MultiObjectiveSpaceTimeAStar,
-)
+from pud.mapf.single_agent_planner import MultiObjectiveAStar
 
 
 class MultiObjectiveCBSNode(CBSNode):
@@ -134,24 +131,31 @@ class MultiObjectiveCBSSolver(object):
             self.graph.add_edge(node, node, step=0, cost=min_cost)
 
         self.single_agent_planners = {}
-        self.single_agent_spacetime_planners = {}
         for agent in range(self.num_agents):
             self.single_agent_planners[agent] = MultiObjectiveAStar(
-                graph, agent, starts[agent], goals[agent], config
-            )
-            self.single_agent_spacetime_planners[agent] = MultiObjectiveSpaceTimeAStar(
                 graph, agent, starts[agent], goals[agent], config
             )
 
         # Use for debugging purposes
         self.search_tree = nx.DiGraph()
 
+        self.single_agent_planner_times = []
+        self.single_agent_planner_expansions = []
+
     def init_search_on_demand(self) -> bool:
         self.pareto_individual_paths = {}
 
         for agent in range(self.num_agents):
             self.pareto_individual_paths[agent] = []
-            pareto_paths, _ = self.single_agent_planners[agent].find_path()
+
+            plan_start_time = time.time()
+            pareto_paths, _ = self.single_agent_planners[agent].find_path(constraints=[])
+            plan_end_time = time.time()
+            self.single_agent_planner_times.append(plan_end_time - plan_start_time)
+            self.single_agent_planner_expansions.append(
+                self.single_agent_planners[agent].num_expanded
+            )
+
             for key in pareto_paths:
                 self.pareto_individual_paths[agent].append(pareto_paths[key])
 
@@ -352,7 +356,7 @@ class MultiObjectiveCBSSolver(object):
                 constraints.append(constraint)
 
         agent_A = collision["agent_A"]
-        _, path_A_cost_vectors = self.single_agent_spacetime_planners[
+        _, path_A_cost_vectors = self.single_agent_planners[
             agent_A
         ].find_path(
             constraints=constraints,
@@ -366,7 +370,7 @@ class MultiObjectiveCBSSolver(object):
                 break
 
         agent_B = collision["agent_B"]
-        _, path_B_cost_vectors = self.single_agent_spacetime_planners[
+        _, path_B_cost_vectors = self.single_agent_planners[
             agent_B
         ].find_path(
             constraints=constraints,
@@ -444,12 +448,20 @@ class MultiObjectiveCBSSolver(object):
                         successor.constraints.append(old_constraint)
 
                 constraint_agent = constraint["agent_id"]
-                agent_paths, cost_vectors = self.single_agent_spacetime_planners[
+
+                plan_start_time = time.time()
+                agent_paths, cost_vectors = self.single_agent_planners[
                     constraint_agent
                 ].find_path(
                     constraints=successor.constraints,
                     max_time=self.max_time // self.num_agents,
                 )
+                plan_end_time = time.time()
+                self.single_agent_planner_times.append(plan_end_time - plan_start_time)
+                self.single_agent_planner_expansions.append(
+                    self.single_agent_planners[constraint_agent].num_expanded
+                )
+
                 agent_paths = self.sort_paths_lexicographically(
                     agent_paths, cost_vectors
                 )
@@ -472,12 +484,20 @@ class MultiObjectiveCBSSolver(object):
                             if v_agent == constraint_agent:
                                 continue
 
+                            plan_start_time = time.time()
                             (
                                 v_agent_paths,
                                 v_cost_vectors,
-                            ) = self.single_agent_spacetime_planners[v_agent].find_path(
+                            ) = self.single_agent_planners[v_agent].find_path(
                                 constraints=new_successor.constraints,
                                 max_time=self.max_time // self.num_agents,
+                            )
+                            plan_end_time = time.time()
+                            self.single_agent_planner_times.append(
+                                plan_end_time - plan_start_time
+                            )
+                            self.single_agent_planner_expansions.append(
+                                self.single_agent_planners[v_agent].num_expanded
                             )
 
                             v_agent_paths = self.sort_paths_lexicographically(
