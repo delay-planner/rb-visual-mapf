@@ -98,12 +98,11 @@ class RiskBoundedCBSSolver(CBSSolver):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        risk_bound: float,
         graph_waypoints: NDArray,
         config: Dict,
     ):
         super().__init__(graph, goals, starts, graph_waypoints, config)
-        self.risk_bound = risk_bound
+        self.risk_bound = config["risk_bound"]
         self.budget_allocator = config["budget_allocater"]
 
         # Variables to keep track of the search tree
@@ -244,14 +243,15 @@ class RiskBoundedCBSSolver(CBSSolver):
             ),
         )
 
-        self.search_tree.add_node(
-            cbs_node.id,
-            label="{}->{}".format(cbs_node.id, cbs_node.cost),
-            cost=cbs_node.cost,
-            paths=str(cbs_node.paths),
-            collisions=len(cbs_node.collisions),
-            risk_allocation=str(cbs_node.risk_allocation),
-        )
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            self.search_tree.add_node(
+                cbs_node.id,
+                label="{}->{}".format(cbs_node.id, cbs_node.cost),
+                cost=cbs_node.cost,
+                paths=str(cbs_node.paths),
+                collisions=len(cbs_node.collisions),
+                risk_allocation=str(cbs_node.risk_allocation),
+            )
 
         self.num_generated += 1
         if self.num_generated % self.tree_save_frequency == 0:
@@ -403,7 +403,16 @@ class RiskBoundedCBSSolver(CBSSolver):
                     )
                     if accumulated_risk <= self.risk_bound:
                         # If the accumulated risk is within the risk bound then we have found a solution
-                        self.save_search_tree()
+                        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                            self.search_tree.add_node(
+                                current_node.id,
+                                label="{}->{}".format(current_node.id, current_node.cost),
+                                color="green",
+                                cost=current_node.cost,
+                                paths=str(current_node.paths),
+                                collisions=len(current_node.collisions),
+                            )
+                            self.save_search_tree()
                         return current_node
 
                 # Choose a random conflict and split the CBS tree based on the conflict
@@ -519,37 +528,41 @@ class RiskBoundedCBSSolver(CBSSolver):
                                     self.push_node(
                                         successor, num_agents_allocation_changed
                                     )
-                                    changes = "V = {} +C = ({}, {}, {})".format(
-                                        violating_agents,
-                                        constraint["agent_id"],
-                                        constraint["location"],
-                                        constraint["timestep"],
-                                    )
-                                    self.search_tree.add_edge(
-                                        current_node.id,
-                                        successor.id,
-                                        label=changes,
-                                    )
-                                    logging.debug(
-                                        "Generated: {}".format(self.num_generated)
-                                    )
+
+                                    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                                        changes = "V = {} +C = ({}, {}, {})".format(
+                                            violating_agents,
+                                            constraint["agent_id"],
+                                            constraint["location"],
+                                            constraint["timestep"],
+                                        )
+                                        self.search_tree.add_edge(
+                                            current_node.id,
+                                            successor.id,
+                                            label=changes,
+                                        )
+                                        logging.debug(
+                                            "Generated: {}".format(self.num_generated)
+                                        )
                                 else:
                                     # If the reallocation of the risk is not successful then we cannot find a solution
                                     # from this branch of the CBS tree that satisfies the risk allocation and the
                                     # constraint imposed on it
                                     error_code = new_allocation
                                     logging.debug(MAPFError(error_code)["message"])
-                                    self.search_tree.add_node(
-                                        successor.id,
-                                        label=MAPFError(error_code)["message"],
-                                        color="red",
-                                    )
-                                    self.search_tree.add_edge(
-                                        current_node.id,
-                                        successor.id,
-                                        label="Violating risk reallocation failed",
-                                    )
-                                    self.num_generated += 1
+
+                                    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                                        self.search_tree.add_node(
+                                            successor.id,
+                                            label=MAPFError(error_code)["message"],
+                                            color="red",
+                                        )
+                                        self.search_tree.add_edge(
+                                            current_node.id,
+                                            successor.id,
+                                            label="Violating risk reallocation failed",
+                                        )
+                                        self.num_generated += 1
                                 continue  # TODO: Is this an ideal strategy?
 
                         # If the constraint was positive and all the violating agents were able to find paths
@@ -567,16 +580,17 @@ class RiskBoundedCBSSolver(CBSSolver):
 
                         self.push_node(successor)
 
-                        changes = "+" if constraint["positive"] else "-"
-                        changes += "C = ({}, {}, {}) satisfied".format(
-                            constraint["agent_id"],
-                            constraint["location"],
-                            constraint["timestep"],
-                        )
-                        self.search_tree.add_edge(
-                            current_node.id, successor.id, label=changes
-                        )
-                        logging.debug("Generated: {}".format(self.num_generated))
+                        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                            changes = "+" if constraint["positive"] else "-"
+                            changes += "C = ({}, {}, {}) satisfied".format(
+                                constraint["agent_id"],
+                                constraint["location"],
+                                constraint["timestep"],
+                            )
+                            self.search_tree.add_edge(
+                                current_node.id, successor.id, label=changes
+                            )
+                            logging.debug("Generated: {}".format(self.num_generated))
                     else:
                         # If the path is not found for the conflicting agent within its risk allocation
                         # then we need to recompute the risk allocation for the failing agent and check if
@@ -606,32 +620,36 @@ class RiskBoundedCBSSolver(CBSSolver):
                             successor.risk_allocation = new_allocation
 
                             self.push_node(successor, num_agents_allocation_changed)
-                            changes = "+" if constraint["positive"] else "-"
-                            changes += "C = ({}, {}, {}) not satisfied".format(
-                                constraint["agent_id"],
-                                constraint["location"],
-                                constraint["timestep"],
-                            )
-                            self.search_tree.add_edge(
-                                current_node.id, successor.id, label=changes
-                            )
-                            logging.debug("Generated: {}".format(self.num_generated))
+
+                            if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                                changes = "+" if constraint["positive"] else "-"
+                                changes += "C = ({}, {}, {}) not satisfied".format(
+                                    constraint["agent_id"],
+                                    constraint["location"],
+                                    constraint["timestep"],
+                                )
+                                self.search_tree.add_edge(
+                                    current_node.id, successor.id, label=changes
+                                )
+                                logging.debug("Generated: {}".format(self.num_generated))
                         else:
                             # If the reallocation of the risk is not successful then we cannot find a solution from
                             # this branch of the CBS tree
                             error_code = new_allocation
                             logging.debug(MAPFError(error_code)["message"])
-                            self.search_tree.add_node(
-                                successor.id,
-                                label=MAPFError(error_code)["message"],
-                                color="red",
-                            )
-                            self.search_tree.add_edge(
-                                current_node.id,
-                                successor.id,
-                                label="Constraint agent's risk reallocation failed",
-                            )
-                            self.num_generated += 1
+
+                            if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                                self.search_tree.add_node(
+                                    successor.id,
+                                    label=MAPFError(error_code)["message"],
+                                    color="red",
+                                )
+                                self.search_tree.add_edge(
+                                    current_node.id,
+                                    successor.id,
+                                    label="Constraint agent's risk reallocation failed",
+                                )
+                                self.num_generated += 1
             else:
 
                 # A star call to some agents failed. We need to recompute the risk allocation
@@ -660,11 +678,13 @@ class RiskBoundedCBSSolver(CBSSolver):
                     successor.risk_allocation = new_allocation
 
                     self.push_node(successor, num_agents_allocation_changed)
-                    changes = "RA failure"
-                    self.search_tree.add_edge(
-                        current_node.id, successor.id, label=changes
-                    )
-                    logging.debug("Generated: {}".format(self.num_generated))
+
+                    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                        changes = "RA failure"
+                        self.search_tree.add_edge(
+                            current_node.id, successor.id, label=changes
+                        )
+                        logging.debug("Generated: {}".format(self.num_generated))
                     logging.info(
                         "Risk allocation {}".format(successor.risk_allocation)
                     )
@@ -676,17 +696,19 @@ class RiskBoundedCBSSolver(CBSSolver):
                     successor = current_node.copy()
                     successor.id = self.num_generated
                     logging.debug(MAPFError(error_code)["message"])
-                    self.search_tree.add_node(
-                        successor.id,
-                        label=MAPFError(error_code)["message"],
-                        color="red",
-                    )
-                    self.search_tree.add_edge(
-                        current_node.id,
-                        successor.id,
-                        label="Risk reallocation failed",
-                    )
-                    self.num_generated += 1
+
+                    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                        self.search_tree.add_node(
+                            successor.id,
+                            label=MAPFError(error_code)["message"],
+                            color="red",
+                        )
+                        self.search_tree.add_edge(
+                            current_node.id,
+                            successor.id,
+                            label="Risk reallocation failed",
+                        )
+                        self.num_generated += 1
 
         # If we terminate the search due to timeout the explicitly return the timeout error code
         # otherwise return the no path error code

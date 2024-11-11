@@ -325,6 +325,7 @@ def argument_parser():
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--num_samples", type=int, default=1000)
     parser.add_argument("--problem_set_file", type=str, default="")
+    parser.add_argument("--num_risk_thresholds", type=int, default=5)
     parser.add_argument("--visual", default=False, action="store_true")
     parser.add_argument("--illustration_pb_file", type=str, default="")
     parser.add_argument("--constrained_ckpt_file", type=str, default="")
@@ -366,7 +367,7 @@ def single_unconstrained_policy(
         agent, eval_env, args, config, constrained=False
     )
 
-    unconstrained_records = []
+    unconstrained_records = [[] for _ in range(args.num_risk_thresholds)]
     save_path = basedir / "single_agent" / args.traj_difficulty
     if not save_path.exists():
         save_path.mkdir(parents=True)
@@ -378,64 +379,28 @@ def single_unconstrained_policy(
     start_idx = len(unconstrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
 
-    for _ in range(start_idx, config.num_samples):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-                agent, eval_env, habitat=habitat
-            )
-            unconstrained_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            unconstrained_records.append({})
+        problems = problem_setup[-1].copy()
+        problems = problems[start_idx:]
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        if save:
-            np.save(save_path, unconstrained_records)
+        for _ in range(start_idx, config.num_samples):
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                    agent, eval_env, habitat=habitat
+                )
+                unconstrained_records[risk_threshold].append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                unconstrained_records[risk_threshold].append({})
 
-    if save:
-        np.save(save_path, unconstrained_records)
-    return unconstrained_records
+            if save:
+                np.save(save_path, unconstrained_records)
 
-
-def multi_unconstrained_policy(
-    agent, eval_env, problem_setup, args, config, basedir, save=False
-):
-    habitat = args.visual
-    agent, eval_env = load_agent_and_env(
-        agent, eval_env, args, config, constrained=False
-    )
-
-    unconstrained_records = []
-    save_path = basedir / "multi_agent" / args.traj_difficulty
-    if not save_path.exists():
-        save_path.mkdir(parents=True)
-    save_path = save_path / f"unconstrained_records_{args.num_agents}.npy"
-    if save and Path(save_path).exists():
-        unconstrained_records = np.load(save_path, allow_pickle=True)
-        unconstrained_records = unconstrained_records.tolist()
-
-    start_idx = len(unconstrained_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-            )
-            unconstrained_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            unconstrained_records.append([{} for _ in range(args.num_agents)])
-
-        if save:
-            np.save(save_path, unconstrained_records)
+    # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
+    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        unconstrained_records[risk_threshold] = unconstrained_records[0]
 
     if save:
         np.save(save_path, unconstrained_records)
@@ -450,7 +415,7 @@ def single_unconstrained_search_policy(
         agent, eval_env, args, config, constrained=False
     )
 
-    unconstrained_search_records = []
+    unconstrained_search_records = [[] for _ in range(args.num_risk_thresholds)]
     save_path = basedir / "single_agent" / args.traj_difficulty
     if not save_path.exists():
         save_path.mkdir(parents=True)
@@ -470,9 +435,6 @@ def single_unconstrained_search_policy(
             problem_setup[1].copy(),
             problem_setup[2].copy(),
         )
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     if not habitat:
         search_policy = SearchPolicy(
@@ -488,18 +450,27 @@ def single_unconstrained_search_policy(
             no_waypoint_hopping=True,
         )
 
-    for _ in tqdm(range(start_idx, config.num_samples)):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-                search_policy, eval_env, habitat=habitat
-            )
-            unconstrained_search_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            unconstrained_search_records.append({})
+    for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        problems = problem_setup[-1].copy()
+        problems = problems[start_idx:]
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        if save:
-            np.save(save_path, unconstrained_search_records)
+        for _ in tqdm(range(start_idx, config.num_samples)):
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                    search_policy, eval_env, habitat=habitat
+                )
+                unconstrained_search_records[risk_threshold].append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                unconstrained_search_records[risk_threshold].append({})
+
+            if save:
+                np.save(save_path, unconstrained_search_records)
+
+    # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
+    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
 
     if save:
         np.save(save_path, unconstrained_search_records)
@@ -514,7 +485,7 @@ def multi_unconstrained_search_policy(
         agent, eval_env, args, config, constrained=False
     )
 
-    unconstrained_search_records = []
+    unconstrained_search_records = [[] for _ in range(args.num_risk_thresholds)]
     save_path = basedir / "multi_agent" / args.traj_difficulty
     if not save_path.exists():
         save_path.mkdir(parents=True)
@@ -538,9 +509,6 @@ def multi_unconstrained_search_policy(
             problem_setup[1].copy(),
             problem_setup[2].copy(),
         )
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     if not habitat:
         ma_search_policy = MultiAgentSearchPolicy(
@@ -565,22 +533,31 @@ def multi_unconstrained_search_policy(
             no_waypoint_hopping=True,
         )
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                ma_search_policy,
-                eval_env,
-                args.num_agents,
-                threshold=0.0,
-                habitat=habitat,
-            )
-            unconstrained_search_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            unconstrained_search_records.append([{} for _ in range(args.num_agents)])
+    for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        problems = problem_setup[-1].copy()
+        problems = problems[start_idx:]
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        if save:
-            np.save(save_path, unconstrained_search_records)
+        for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
+                    ma_search_policy,
+                    eval_env,
+                    args.num_agents,
+                    threshold=0.0,
+                    habitat=habitat,
+                )
+                unconstrained_search_records[risk_threshold].append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                unconstrained_search_records[risk_threshold].append([{} for _ in range(args.num_agents)])
+
+            if save:
+                np.save(save_path, unconstrained_search_records)
+
+    # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
+    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
 
     if save:
         np.save(save_path, unconstrained_search_records)
@@ -595,7 +572,7 @@ def single_constrained_policy(
         agent, eval_env, args, config, constrained=True
     )
 
-    constrained_records = []
+    constrained_records = [[] for _ in range(args.num_risk_thresholds)]
     save_path = basedir / "single_agent" / args.traj_difficulty
     if not save_path.exists():
         save_path.mkdir(parents=True)
@@ -607,64 +584,27 @@ def single_constrained_policy(
     start_idx = len(constrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        problems = problem_setup[-1].copy()
+        problems = problems[start_idx:]
+        eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    for _ in range(start_idx, config.num_samples):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-                agent, eval_env, habitat=habitat
-            )
-            constrained_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            constrained_records.append({})
+        for _ in range(start_idx, config.num_samples):
+            try:
+                _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                    agent, eval_env, habitat=habitat
+                )
+                constrained_records[risk_threshold].append(records)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                constrained_records[risk_threshold].append({})
 
-        if save:
-            np.save(save_path, constrained_records)
+            if save:
+                np.save(save_path, constrained_records)
 
-    if save:
-        np.save(save_path, constrained_records)
-    return constrained_records
-
-
-def multi_constrained_policy(
-    agent, eval_env, problem_setup, args, config, basedir, save=False
-):
-    habitat = args.visual
-    agent, eval_env = load_agent_and_env(
-        agent, eval_env, args, config, constrained=True
-    )
-
-    constrained_records = []
-    save_path = basedir / "multi_agent" / args.traj_difficulty
-    if not save_path.exists():
-        save_path.mkdir(parents=True)
-    save_path = save_path / f"constrained_records_{args.num_agents}.npy"
-    if save and Path(save_path).exists():
-        constrained_records = np.load(save_path, allow_pickle=True)
-        constrained_records = constrained_records.tolist()
-
-    start_idx = len(constrained_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        try:
-            _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-                agent, eval_env, args.num_agents, threshold=0.0, habitat=habitat
-            )
-            constrained_records.append(records)
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            constrained_records.append([{} for _ in range(args.num_agents)])
-
-        if save:
-            np.save(save_path, constrained_records)
+    # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
+    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+        constrained_records[risk_threshold] = constrained_records[0]
 
     if save:
         np.save(save_path, constrained_records)

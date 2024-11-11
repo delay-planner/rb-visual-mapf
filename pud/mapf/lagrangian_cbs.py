@@ -13,13 +13,12 @@ class LagrangianCBSSolver(CBSSolver):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        lagrangian: float,
         graph_waypoints: NDArray,
         config: Dict,
     ):
 
         super().__init__(graph, goals, starts, graph_waypoints, config)
-        self.lagrangian = lagrangian
+        self.lagrangian = config["lagrangian"]
 
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
@@ -29,7 +28,7 @@ class LagrangianCBSSolver(CBSSolver):
                 graph=self.graph,
                 goal=goals[agent],
                 start=starts[agent],
-                lagrangian=lagrangian,
+                lagrangian=self.lagrangian,
             )
 
     def compute_cost(self, path: List[int], risk: bool = False) -> float:

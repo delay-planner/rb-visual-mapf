@@ -236,6 +236,7 @@ class TestCBSSolver(unittest.TestCase):
             "seed": 0,
             "max_time": 100,
             "max_distance": 1,
+            "risk_bouned": 4.0,
             "use_experience": True,
             "collision_radius": 0.0,
             "use_cardinality": True,
@@ -247,12 +248,10 @@ class TestCBSSolver(unittest.TestCase):
             "logdir": "pud/mapf/unit_tests/logs/rbcbs",
         }
 
-        risk_bound = 4
         solver = RiskBoundedCBSSolver(
             graph=self.G,
             goals=self.goal_ids,
             starts=self.start_ids,
-            risk_bound=risk_bound,
             graph_waypoints=self.graph_waypoints,
             config=config,
         )
@@ -272,7 +271,7 @@ class TestCBSSolver(unittest.TestCase):
         print("Number of generated nodes: {}".format(solver.num_generated))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(accumulated_risk <= risk_bound)
+        self.assertTrue(accumulated_risk <= config["risk_bound"])
         self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
 
     def test_lagrangian_cbs_paths(self):
@@ -282,6 +281,7 @@ class TestCBSSolver(unittest.TestCase):
             "seed": 0,
             "max_time": 100,
             "max_distance": 1,
+            "lagrangian": 1.0,
             "use_experience": True,
             "collision_radius": 0.0,
             "use_cardinality": True,
@@ -292,13 +292,11 @@ class TestCBSSolver(unittest.TestCase):
             "logdir": "pud/mapf/unit_tests/logs/lcbs",
         }
 
-        lagrangian = 1.0
         solver = LagrangianCBSSolver(
             graph=self.G,
             config=config,
             goals=self.goal_ids,
             starts=self.start_ids,
-            lagrangian=lagrangian,
             graph_waypoints=self.graph_waypoints,
         )
         solution = solver.find_paths()

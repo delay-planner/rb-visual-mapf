@@ -82,9 +82,15 @@ class MultiObjectiveCBSSolver(object):
         self.starts = starts
         self.num_agents = len(starts)
 
-        self.logdir = config["logdir"]
-        if not os.path.exists(self.logdir):
-            os.makedirs(self.logdir)
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            self.logdir = config["logdir"]
+            if not os.path.exists(self.logdir):
+                os.makedirs(self.logdir)
+            self.tree_save_frequency = config["tree_save_frequency"]
+            # Use for debugging purposes
+            self.search_tree = nx.DiGraph()
+        else:
+            self.tree_save_frequency = np.inf
 
         self.edge_attributes = config["edge_attributes"]
         self.cost_dimension = len(self.edge_attributes)
@@ -105,7 +111,6 @@ class MultiObjectiveCBSSolver(object):
         self.splitter = config["split_strategy"]
         self.use_cardinality = config["use_cardinality"]
         self.collision_radius = config["collision_radius"]
-        self.tree_save_frequency = config["tree_save_frequency"]
 
         self.splitter_function = None
         if self.splitter == "standard":
@@ -136,9 +141,6 @@ class MultiObjectiveCBSSolver(object):
                 graph, agent, starts[agent], goals[agent], config
             )
 
-        # Use for debugging purposes
-        self.search_tree = nx.DiGraph()
-
         self.single_agent_planner_times = []
         self.single_agent_planner_expansions = []
 
@@ -149,7 +151,9 @@ class MultiObjectiveCBSSolver(object):
             self.pareto_individual_paths[agent] = []
 
             plan_start_time = time.time()
-            pareto_paths, _ = self.single_agent_planners[agent].find_path(constraints=[])
+            pareto_paths, _ = self.single_agent_planners[agent].find_path(
+                constraints=[]
+            )
             plan_end_time = time.time()
             self.single_agent_planner_times.append(plan_end_time - plan_start_time)
             self.single_agent_planner_expansions.append(
@@ -220,14 +224,16 @@ class MultiObjectiveCBSSolver(object):
         )
 
         if root_node.root == 0:
-            self.search_tree.add_node(
-                root_node.id,
-                label="{}->{}".format(root_node.id, root_node.cost),
-                cost=root_node.cost,
-                cost_vector=str(root_node.cost_vector),
-                paths=str(root_node.paths),
-                collisions=len(root_node.collisions),
-            )
+
+            if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                self.search_tree.add_node(
+                    root_node.id,
+                    label="{}->{}".format(root_node.id, root_node.cost),
+                    cost=root_node.cost,
+                    cost_vector=str(root_node.cost_vector),
+                    paths=str(root_node.paths),
+                    collisions=len(root_node.collisions),
+                )
 
         self.num_generated += 1
         self.roots_generated += 1
@@ -356,9 +362,7 @@ class MultiObjectiveCBSSolver(object):
                 constraints.append(constraint)
 
         agent_A = collision["agent_A"]
-        _, path_A_cost_vectors = self.single_agent_planners[
-            agent_A
-        ].find_path(
+        _, path_A_cost_vectors = self.single_agent_planners[agent_A].find_path(
             constraints=constraints,
             max_time=self.max_time // self.num_agents,
         )
@@ -370,9 +374,7 @@ class MultiObjectiveCBSSolver(object):
                 break
 
         agent_B = collision["agent_B"]
-        _, path_B_cost_vectors = self.single_agent_planners[
-            agent_B
-        ].find_path(
+        _, path_B_cost_vectors = self.single_agent_planners[agent_B].find_path(
             constraints=constraints,
             max_time=self.max_time // self.num_agents,
         )
@@ -411,16 +413,18 @@ class MultiObjectiveCBSSolver(object):
             if len(current_node.collisions) == 0:
                 self.refine_nondominant_goal_nodes(current_node.id)
                 self.nondominant_goal_nodes.add(current_node.id)
-                self.search_tree.add_node(
-                    current_node.id,
-                    label="{}->{}".format(current_node.id, current_node.cost),
-                    color="green",
-                    cost=current_node.cost,
-                    cost_vector=str(current_node.cost_vector),
-                    paths=str(current_node.paths),
-                    collisions=len(current_node.collisions),
-                )
-                self.save_search_tree()
+
+                if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                    self.search_tree.add_node(
+                        current_node.id,
+                        label="{}->{}".format(current_node.id, current_node.cost),
+                        color="green",
+                        cost=current_node.cost,
+                        cost_vector=str(current_node.cost_vector),
+                        paths=str(current_node.paths),
+                        collisions=len(current_node.collisions),
+                    )
+                    self.save_search_tree()
                 continue
 
             if self.filter_goal_node(current_node):
@@ -570,7 +574,11 @@ class MultiObjectiveCBSSolver(object):
                                     "Generated node {}".format(updated_successor.id)
                                 )
 
-                                if updated_successor.root == 0:
+                                if (
+                                    updated_successor.root == 0
+                                    and logging.getLogger().getEffectiveLevel()
+                                    == logging.DEBUG
+                                ):
                                     self.search_tree.add_node(
                                         updated_successor.id,
                                         label="{}->{}".format(
@@ -633,7 +641,11 @@ class MultiObjectiveCBSSolver(object):
                             )
                             logging.debug("Generated node {}".format(new_successor.id))
 
-                            if new_successor.root == 0:
+                            if (
+                                new_successor.root == 0
+                                and logging.getLogger().getEffectiveLevel()
+                                == logging.DEBUG
+                            ):
                                 self.search_tree.add_node(
                                     new_successor.id,
                                     label="{}->{}".format(
@@ -662,7 +674,8 @@ class MultiObjectiveCBSSolver(object):
                     "Generated {} nodes".format(self.num_generated - num_gen_before)
                 )
 
-        self.save_search_tree()
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            self.save_search_tree()
         all_paths = {}
         all_cost_vectors = {}
         for goal_node_id in self.nondominant_goal_nodes:
