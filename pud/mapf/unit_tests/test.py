@@ -2,11 +2,15 @@ import time
 import logging
 import numpy as np
 import networkx as nx
+from pud.mapf.bocbs import BiObjectiveCBSSolver
+from pud.mapf.mocbs import MultiObjectiveCBSSolver
 from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
+from pud.mapf.namocbs import NAMultiOjectiveCBSSolver
+from pud.mapf.path_constrained_cbs import PathConstrainedCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSSolver
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     filename = "pud/mapf/unit_tests/test_cbs_input.txt"
 
     f = open(
@@ -113,16 +117,17 @@ if __name__ == "__main__":
 
     config = {
         "seed": 0,
-        "max_time": 300,
+        "max_time": 100,
         "max_distance": 1,
         "use_experience": True,
         "collision_radius": 0.0,
         "use_cardinality": True,
         "risk_attribute": "cost",
+        "tree_save_frequency": 100,
         "split_strategy": "disjoint",
         "budget_allocater": "utility",
         "edge_attributes": ["step", "cost"],
-        "logdir": "pud/mapf/unit_tests/logs/lcbs",
+        "logdir": "pud/mapf/unit_tests/logs/namocbs",
     }
 
     start = time.time()
@@ -134,21 +139,57 @@ if __name__ == "__main__":
     #     graph_waypoints=graph_waypoints,
     #     config=config,
     # )
-    solver = LagrangianCBSSolver(
+    # solver = LagrangianCBSSolver(
+    #     graph=G,
+    #     goals=goal_ids,
+    #     starts=start_ids,
+    #     lagrangian=1.0,
+    #     graph_waypoints=graph_waypoints,
+    #     config=config,
+    # )
+    # solver = PathConstrainedCBSSolver(
+    #     graph=G,
+    #     goals=goal_ids,
+    #     starts=start_ids,
+    #     risk_budget=4.0,
+    #     graph_waypoints=graph_waypoints,
+    #     config=config,
+    # )
+    # solution = solver.find_paths()
+    # solver = MultiObjectiveCBSSolver(
+    #     graph=G,
+    #     goals=goal_ids,
+    #     starts=start_ids,
+    #     graph_waypoints=graph_waypoints,
+    #     config=config,
+    # )
+    # solver = BiObjectiveCBSSolver(
+    #     graph=G,
+    #     goals=goal_ids,
+    #     starts=start_ids,
+    #     graph_waypoints=graph_waypoints,
+    #     config=config,
+    # )
+    solver = NAMultiOjectiveCBSSolver(
         graph=G,
         goals=goal_ids,
         starts=start_ids,
-        lagrangian=1.0,
         graph_waypoints=graph_waypoints,
         config=config,
     )
-    solution = solver.find_paths()
+    all_paths, all_cost_vectors, success = solver.find_paths()
     print("Time taken: {}".format(time.time() - start))
-    paths = solution.paths  # type: ignore
-    print(paths)
+    if not success:
+        print("No solution found")
+    else:
+        for id in all_paths:
+            print("Path {} : {}".format(id, all_paths[id]))
+            print("Cost vector {} : {}".format(id, all_cost_vectors[id]))
+    # paths = solution.paths  # type: ignore
+    # print(paths)
 
-    for idx, path in enumerate(paths):
-        print("Cost of path for agent {}: {}".format(idx, solver.compute_cost(path, risk=True)))
+    # for idx, path in enumerate(paths):
+    #     print("Cost of path for agent {}: {}".format(idx, solver.compute_cost(path, risk=True)))
 
     print("Number of expanded nodes: {}".format(solver.num_expanded))
     print("Number of generated nodes: {}".format(solver.num_generated))

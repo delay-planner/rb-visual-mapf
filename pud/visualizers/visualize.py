@@ -91,7 +91,8 @@ def visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=""):
 
 def visualize_buffer(rb_vec, eval_env, outpath=""):
     _, ax = plt.subplots(figsize=(6, 6))
-    ax = plot_walls(eval_env.walls, ax=ax)
+    # ax = plot_walls(eval_env.walls, ax=ax)
+    ax.imshow(eval_env.get_map(), cmap="binary", interpolation="nearest", alpha=1.0, extent=[0, 1, 0, 1])
     ax.scatter(rb_vec[:, 0], rb_vec[:, 1])
     cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
     ax.set_xticks([])
@@ -155,7 +156,8 @@ def visualize_problems(eval_env,  ax, starts=[], goals=[]):
 
 def visualize_graph(rb_vec, eval_env, pdist, cutoff=7, edges_to_display=8, outpath=""):
     _, ax = plt.subplots(figsize=(6, 6))
-    plot_walls(eval_env.walls, ax)
+    # plot_walls(eval_env.walls, ax)
+    ax.imshow(eval_env.get_map(), cmap="binary", interpolation="nearest", alpha=1.0, extent=[0, 1, 0, 1])
     ax.scatter(*rb_vec.T)
     cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
     ax.set_xticks([])
@@ -216,7 +218,8 @@ def visualize_combined_graph(rb_vec, eval_env, pdist, pcost, cost_limit, cutoff=
 
     _, ax = plt.subplots()
     ax.scatter(*rb_vec.T)
-    ax = plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
+    # ax = plot_safe_walls(eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax)
+    ax.imshow(eval_env.get_map(), cmap="binary", interpolation="nearest", alpha=1.0, extent=[0, 1, 0, 1])
     cmap = ax.imshow(eval_env.get_cost_map(), cmap="hot_r", interpolation="nearest", alpha=0.5, extent=[0, 1, 0, 1])
     ax.set_xticks([])
     ax.set_yticks([])
@@ -293,9 +296,10 @@ def visualize_combined_graph_ensemble(
     _, ax = plt.subplots(nrows=1, ncols=ensemble_size, figsize=(5 * ensemble_size, 5))
 
     for col_index in range(ensemble_size):
-        ax[col_index] = plot_safe_walls(
-            eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax[col_index]
-        )
+        # ax[col_index] = plot_safe_walls(
+        #     eval_env.get_map(), eval_env.get_cost_map(), cost_limit=cost_limit, ax=ax[col_index]
+        # )
+        ax[col_index].imshow(eval_env.get_map(), cmap="binary", interpolation="nearest", alpha=1.0, extent=[0, 1, 0, 1])
         ax[col_index].set_title("Critic %d" % (col_index + 1))
         ax[col_index].scatter(*rb_vec.T)
         for i, s_i in enumerate(rb_vec):

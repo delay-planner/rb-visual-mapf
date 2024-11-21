@@ -436,9 +436,20 @@ def single_unconstrained_search_policy(
             problem_setup[2].copy(),
         )
 
+    cbs_config = {
+        "seed": None,
+        "max_time": 300,
+        "max_distance": eval_env.max_goal_dist,
+        "use_experience": True,
+        "use_cardinality": True,
+        "collision_radius": 0.0,
+        "risk_attribute": "cost",
+        "edge_attributes": ["step"],
+        "split_strategy": "disjoint",
+    },
     if not habitat:
         search_policy = SearchPolicy(
-            agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True
+            agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True, cbs_config=cbs_config
         )
     else:
         search_policy = VisualSearchPolicy(
@@ -448,6 +459,7 @@ def single_unconstrained_search_policy(
             open_loop=True,
             max_search_steps=4,
             no_waypoint_hopping=True,
+            cbs_config=cbs_config,
         )
 
     for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
@@ -510,6 +522,19 @@ def multi_unconstrained_search_policy(
             problem_setup[2].copy(),
         )
 
+    
+    cbs_config={
+        "seed": None,
+        "max_time": 300,
+        "max_distance": eval_env.max_goal_dist,
+        "use_experience": True,
+        "use_cardinality": True,
+        "collision_radius": 0.0,
+        "risk_attribute": "cost",
+        "edge_attributes": ["step"],
+        "split_strategy": "disjoint",
+    },
+
     if not habitat:
         ma_search_policy = MultiAgentSearchPolicy(
             agent,
@@ -517,9 +542,8 @@ def multi_unconstrained_search_policy(
             args.num_agents,
             pdist=pdist,
             open_loop=True,
+            cbs_config=cbs_config,
             no_waypoint_hopping=True,
-            radius=0,
-            disjoint_split=ds,
         )
     else:
         ma_search_policy = VisualMultiAgentSearchPolicy(
@@ -528,8 +552,8 @@ def multi_unconstrained_search_policy(
             args.num_agents,
             pdist=pdist,
             open_loop=True,
-            disjoint_split=ds,
             max_search_steps=4,
+            cbs_config=cbs_config,
             no_waypoint_hopping=True,
         )
 
@@ -611,6 +635,7 @@ def single_constrained_policy(
     return constrained_records
 
 
+###### TODO: Fix this function!
 def single_constrained_search_policy(
     agent,
     eval_env,
@@ -645,8 +670,8 @@ def single_constrained_search_policy(
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
     constrained_search_factored_records = []
-    edge_cost_limit_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
-    for factor in edge_cost_limit_factors:
+    risk_factors = [0, 0.25, 0.5, 0.75, 1.0]
+    for factor in risk_factors:
         logging.info(f"Factor: {factor}")
 
         constrained_search_records = []
@@ -667,7 +692,17 @@ def single_constrained_search_policy(
         problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        edge_cost_limit = trained_cost_limit * factor
+        cbs_config={
+            "seed": None,
+            "max_time": 300,
+            "max_distance": eval_env.max_goal_dist,
+            "use_experience": True,
+            "use_cardinality": True,
+            "collision_radius": 0.0,
+            "risk_attribute": "cost",
+            "edge_attributes": ["step", "cost"],
+            "split_strategy": "disjoint",
+        },
 
         if not habitat:
             constrained_search_policy = ConstrainedSearchPolicy(
@@ -677,7 +712,6 @@ def single_constrained_search_policy(
                 pcost=pcost,
                 open_loop=True,
                 no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit,
                 ckpts={
                     "unconstrained": args.unconstrained_ckpt_file,
                     "constrained": args.constrained_ckpt_file,
@@ -692,7 +726,6 @@ def single_constrained_search_policy(
                 open_loop=True,
                 max_search_steps=4,
                 no_waypoint_hopping=True,
-                max_cost_limit=edge_cost_limit,
                 ckpts={
                     "unconstrained": args.unconstrained_ckpt_file,
                     "constrained": args.constrained_ckpt_file,
