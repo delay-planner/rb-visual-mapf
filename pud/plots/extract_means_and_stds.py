@@ -278,10 +278,10 @@ def collect_metrics(basedir, problem_type, n_agents, fallback=True):
             local_basedir / f"unconstrained_search_records_{n_agents}.npy",
             allow_pickle=True,
         )
-        unconstrained_search_ds_records = np.load(
-            local_basedir / f"unconstrained_search_ds_records_{n_agents}.npy",
-            allow_pickle=True,
-        )
+        # unconstrained_search_ds_records = np.load(
+        #     local_basedir / f"unconstrained_search_ds_records_{n_agents}.npy",
+        #     allow_pickle=True,
+        # )
         constrained_records = np.load(
             local_basedir / f"constrained_records_{n_agents}.npy", allow_pickle=True
         )
@@ -289,26 +289,26 @@ def collect_metrics(basedir, problem_type, n_agents, fallback=True):
             local_basedir / f"constrained_search_factored_records_{n_agents}_uc.npy",
             allow_pickle=True,
         )
-        constrained_search_ds_factored_records = np.load(
-            local_basedir / f"constrained_search_ds_factored_records_{n_agents}_uc.npy",
-            allow_pickle=True,
-        )
-        constrained_search_risk_bounded_ds_factored_records = np.load(
-            local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}_uc.npy",
-            allow_pickle=True,
-        )
+        # constrained_search_ds_factored_records = np.load(
+        #     local_basedir / f"constrained_search_ds_factored_records_{n_agents}_uc.npy",
+        #     allow_pickle=True,
+        # )
+        # constrained_search_risk_bounded_ds_factored_records = np.load(
+        #     local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}_uc.npy",
+        #     allow_pickle=True,
+        # )
         constrained_search_factored_records_cc = np.load(
             local_basedir / f"constrained_search_factored_records_{n_agents}.npy",
             allow_pickle=True,
         )
-        constrained_search_ds_factored_records_cc = np.load(
-            local_basedir / f"constrained_search_ds_factored_records_{n_agents}.npy",
-            allow_pickle=True,
-        )
-        constrained_search_risk_bounded_ds_factored_records_cc = np.load(
-            local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}.npy",
-            allow_pickle=True,
-        )
+        # constrained_search_ds_factored_records_cc = np.load(
+        #     local_basedir / f"constrained_search_ds_factored_records_{n_agents}.npy",
+        #     allow_pickle=True,
+        # )
+        # constrained_search_risk_bounded_ds_factored_records_cc = np.load(
+        #     local_basedir / f"risk_bounded_constrained_search_ds_factored_records_{n_agents}.npy",
+        #     allow_pickle=True,
+        # )
 
         unconstrained_metrics = extract_multi_agent_metrics(
             unconstrained_records, n_agents
@@ -316,47 +316,47 @@ def collect_metrics(basedir, problem_type, n_agents, fallback=True):
         unconstrained_search_metrics = extract_multi_agent_metrics(
             unconstrained_search_records, n_agents, (fallback, unconstrained_records)
         )
-        unconstrained_search_ds_metrics = extract_multi_agent_metrics(
-            unconstrained_search_ds_records, n_agents, (fallback, unconstrained_records)
-        )
+        # unconstrained_search_ds_metrics = extract_multi_agent_metrics(
+        #     unconstrained_search_ds_records, n_agents,# (fallback, unconstrained_records)
+        # )
         constrained_metrics = extract_multi_agent_metrics(constrained_records, n_agents)
         constrained_search_factored_metrics = [
             extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_factored_records
         ]
-        constrained_search_ds_factored_metrics = [
-            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
-            for csr in constrained_search_ds_factored_records
-        ]
-        constrained_search_risk_bounded_ds_factored_metrics = [
-            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
-            for csr in constrained_search_risk_bounded_ds_factored_records
-        ]
+        # constrained_search_ds_factored_metrics = [
+        #     extract_multi_agent_metrics(csr, n_agents,)# (fallback, constrained_records))
+        #     for csr in constrained_search_ds_factored_records
+        # ]
+        # constrained_search_risk_bounded_ds_factored_metrics = [
+        #     extract_multi_agent_metrics(csr, n_agents,)# (fallback, constrained_records))
+        #     for csr in constrained_search_risk_bounded_ds_factored_records
+        # ]
         constrained_search_factored_metrics_cc = [
             extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
             for csr in constrained_search_factored_records_cc
         ]
-        constrained_search_ds_factored_metrics_cc = [
-            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
-            for csr in constrained_search_ds_factored_records_cc
-        ]
-        constrained_search_risk_bounded_ds_factored_metrics_cc = [
-            extract_multi_agent_metrics(csr, n_agents, (fallback, constrained_records))
-            for csr in constrained_search_risk_bounded_ds_factored_records_cc
-        ]
+        # constrained_search_ds_factored_metrics_cc = [
+        #     extract_multi_agent_metrics(csr, n_agents,)# (fallback, constrained_records))
+        #     for csr in constrained_search_ds_factored_records_cc
+        # ]
+        # constrained_search_risk_bounded_ds_factored_metrics_cc = [
+        #     extract_multi_agent_metrics(csr, n_agents,)# (fallback, constrained_records))
+        #     for csr in constrained_search_risk_bounded_ds_factored_records_cc
+        # ]
 
         return means_and_stddevs(
             {
                 "unconstrained": unconstrained_metrics,
                 "unconstrained_search": unconstrained_search_metrics,
-                "unconstrained_search_disjoint": unconstrained_search_ds_metrics,
+                # "unconstrained_search_disjoint": unconstrained_search_ds_metrics,
                 "constrained": constrained_metrics,
                 "constrained_search_uc": constrained_search_factored_metrics,
-                "constrained_search_disjoint_uc": constrained_search_ds_factored_metrics,
+                # "constrained_search_disjoint_uc": constrained_search_ds_factored_metrics,
                 "constrained_search": constrained_search_factored_metrics_cc,
-                "constrained_search_disjoint": constrained_search_ds_factored_metrics_cc,
-                "constrained_search_risk_bounded_disjoint_uc": constrained_search_risk_bounded_ds_factored_metrics,
-                "constrained_search_risk_bounded_disjoint": constrained_search_risk_bounded_ds_factored_metrics_cc,
+                # "constrained_search_disjoint": constrained_search_ds_factored_metrics_cc,
+                # "constrained_search_risk_bounded_disjoint_uc": constrained_search_risk_bounded_ds_factored_metrics,
+                # "constrained_search_risk_bounded_disjoint": constrained_search_risk_bounded_ds_factored_metrics_cc,
             },
             n_agents,
         )

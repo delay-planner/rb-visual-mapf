@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 import scipy
 import torch
 import logging
@@ -186,7 +186,7 @@ class SearchPolicy(BasePolicy):
             for j, s_j in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
-                    g.add_edge(i, j, weight=float(length), step=1.0)
+                    g.add_edge(i, j, weight=float(length), step=1.0, cost=0.0)
         self.g = g
 
     def get_pairwise_dist_to_rb(self, state, masked=True):
@@ -231,7 +231,7 @@ class SearchPolicy(BasePolicy):
         return waypoint, waypoint_index, min_search_dist
 
     def construct_planning_graph(
-        self, state, planning_graph=None, start_id="start", goal_id="goal"
+        self, state, planning_graph=None, start_id: Union[int, str] = "start", goal_id: Union[int, str] = "goal"
     ):
         start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
         if planning_graph is None:
@@ -242,11 +242,11 @@ class SearchPolicy(BasePolicy):
         ):
             if dist_from_start < self.max_search_steps:
                 planning_graph.add_edge(
-                    start_id, i, weight=float(dist_from_start), step=1.0
+                    start_id, i, weight=float(dist_from_start), step=1.0, cost=0.0
                 )
             if dist_to_goal < self.max_search_steps:
                 planning_graph.add_edge(
-                    i, goal_id, weight=float(dist_to_goal), step=1.0
+                    i, goal_id, weight=float(dist_to_goal), step=1.0, cost=0.0
                 )
 
         if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
@@ -295,11 +295,11 @@ class SearchPolicy(BasePolicy):
         self.reached_final_waypoint = False
 
     def initialize_path_using_CBS(self, rb_vec, state):
-        graph = self.construct_planning_graph(state)
-
         num_nodes = rb_vec.shape[0] - 1
         goal_ids = [num_nodes + 2]
         start_ids = [num_nodes + 1]
+
+        graph = self.construct_planning_graph(state, start_id=start_ids[0], goal_id=goal_ids[0])
 
         augmented_wps = rb_vec.copy()
         augmented_wps = np.vstack([augmented_wps, state["observation"], state["goal"]])
@@ -312,8 +312,6 @@ class SearchPolicy(BasePolicy):
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
-        else:
-            raise NotImplementedError
 
         cbs_solver = cbs_class(
             graph=graph.copy(),
@@ -722,8 +720,6 @@ class VisualSearchPolicy(SearchPolicy):
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
-        else:
-            raise NotImplementedError
 
         cbs_solver = cbs_class(
             graph=graph.copy(),
@@ -810,7 +806,7 @@ class VisualSearchPolicy(SearchPolicy):
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
                 # self.initialize_path(state)
-                self.initialize_path_using_CBS(self.rb_vec, state)
+                self.initialize_path_using_CBS(self.rb_vec_grid, state)
 
             if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
                 # Prune edge and replan
@@ -819,7 +815,7 @@ class VisualSearchPolicy(SearchPolicy):
                     dest_node = self.waypoint_indices[self.waypoint_counter]
                     self.g.remove_edge(src_node, dest_node)
                 # self.initialize_path(state)
-                self.initialize_path_using_CBS(self.rb_vec, state)
+                self.initialize_path_using_CBS(self.rb_vec_grid, state)
 
             waypoint, waypoint_index = self.get_current_waypoint()
             state["goal"] = waypoint
@@ -1048,8 +1044,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
-        else:
-            raise NotImplementedError
 
         cbs_solver = cbs_class(
             graph=graph.copy(),
@@ -1481,8 +1475,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
-        else:
-            raise NotImplementedError
 
         cbs_solver = cbs_class(
             graph=graph.copy(),

@@ -184,6 +184,10 @@ if __name__ == "__main__":
     # Replay buffer is normalized between 0 and 1
     rb_vec = Collector.sample_initial_unconstrained_states(eval_env, replay_buffer.max_size)  # type: ignore
 
+    from pud.visualizers.visualize import visualize_map
+    visualize_map(eval_env, outpath=figdir.joinpath("vis_map.jpg").as_posix())
+    visualize_map(eval_env, cost_map=True, outpath=figdir.joinpath("vis_cost_map.jpg").as_posix())
+
     from pud.visualizers.visualize import visualize_buffer
     visualize_buffer(rb_vec, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())
 

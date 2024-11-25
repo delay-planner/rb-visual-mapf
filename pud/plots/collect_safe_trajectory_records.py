@@ -9,7 +9,9 @@ from tqdm import tqdm
 from pathlib import Path
 from dotmap import DotMap
 
+from pud.mapf.cbs import CBSSolver
 from pud.algos.ddpg import GoalConditionedCritic
+from pud.mapf.single_agent_planner import compute_sum_of_costs
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.collectors.constrained_collector import ConstrainedCollector
@@ -399,7 +401,9 @@ def single_unconstrained_policy(
                 np.save(save_path, unconstrained_records)
 
     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+    for risk_threshold in range(
+        1, args.num_risk_thresholds
+    ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
         unconstrained_records[risk_threshold] = unconstrained_records[0]
 
     if save:
@@ -436,20 +440,27 @@ def single_unconstrained_search_policy(
             problem_setup[2].copy(),
         )
 
-    cbs_config = {
-        "seed": None,
-        "max_time": 300,
-        "max_distance": eval_env.max_goal_dist,
-        "use_experience": True,
-        "use_cardinality": True,
-        "collision_radius": 0.0,
-        "risk_attribute": "cost",
-        "edge_attributes": ["step"],
-        "split_strategy": "disjoint",
-    },
+    cbs_config = (
+        {
+            "seed": None,
+            "max_time": 300,
+            "max_distance": eval_env.max_goal_dist,
+            "use_experience": True,
+            "use_cardinality": True,
+            "collision_radius": 0.0,
+            "risk_attribute": "cost",
+            "edge_attributes": ["step"],
+            "split_strategy": "disjoint",
+        },
+    )
     if not habitat:
         search_policy = SearchPolicy(
-            agent, rb_vec, pdist=pdist, open_loop=True, no_waypoint_hopping=True, cbs_config=cbs_config
+            agent,
+            rb_vec,
+            pdist=pdist,
+            open_loop=True,
+            no_waypoint_hopping=True,
+            cbs_config=cbs_config,
         )
     else:
         search_policy = VisualSearchPolicy(
@@ -481,7 +492,9 @@ def single_unconstrained_search_policy(
                 np.save(save_path, unconstrained_search_records)
 
     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+    for risk_threshold in range(
+        1, args.num_risk_thresholds
+    ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
         unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
 
     if save:
@@ -522,18 +535,19 @@ def multi_unconstrained_search_policy(
             problem_setup[2].copy(),
         )
 
-    
-    cbs_config={
-        "seed": None,
-        "max_time": 300,
-        "max_distance": eval_env.max_goal_dist,
-        "use_experience": True,
-        "use_cardinality": True,
-        "collision_radius": 0.0,
-        "risk_attribute": "cost",
-        "edge_attributes": ["step"],
-        "split_strategy": "disjoint",
-    },
+    cbs_config = (
+        {
+            "seed": None,
+            "max_time": 300,
+            "max_distance": eval_env.max_goal_dist,
+            "use_experience": True,
+            "use_cardinality": True,
+            "collision_radius": 0.0,
+            "risk_attribute": "cost",
+            "edge_attributes": ["step"],
+            "split_strategy": "disjoint",
+        },
+    )
 
     if not habitat:
         ma_search_policy = MultiAgentSearchPolicy(
@@ -574,13 +588,17 @@ def multi_unconstrained_search_policy(
                 unconstrained_search_records[risk_threshold].append(records)
             except Exception as e:
                 logging.error(f"Error: {e}")
-                unconstrained_search_records[risk_threshold].append([{} for _ in range(args.num_agents)])
+                unconstrained_search_records[risk_threshold].append(
+                    [{} for _ in range(args.num_agents)]
+                )
 
             if save:
                 np.save(save_path, unconstrained_search_records)
 
     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+    for risk_threshold in range(
+        1, args.num_risk_thresholds
+    ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
         unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
 
     if save:
@@ -627,7 +645,9 @@ def single_constrained_policy(
                 np.save(save_path, constrained_records)
 
     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-    for risk_threshold in range(1, args.num_risk_thresholds):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
+    for risk_threshold in range(
+        1, args.num_risk_thresholds
+    ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
         constrained_records[risk_threshold] = constrained_records[0]
 
     if save:
@@ -635,14 +655,12 @@ def single_constrained_policy(
     return constrained_records
 
 
-###### TODO: Fix this function!
 def single_constrained_search_policy(
     agent,
     eval_env,
     problem_setup,
     args,
     config,
-    trained_cost_limit,
     basedir,
     save=False,
 ):
@@ -670,6 +688,7 @@ def single_constrained_search_policy(
     eval_env.set_prob_constraint(1.0)  # type: ignore
 
     constrained_search_factored_records = []
+    planners = ["cbs", "lagrangian", "multi_objective"]
     risk_factors = [0, 0.25, 0.5, 0.75, 1.0]
     for factor in risk_factors:
         logging.info(f"Factor: {factor}")
@@ -690,19 +709,36 @@ def single_constrained_search_policy(
 
         problems = problem_setup[-1].copy()
         problems = problems[start_idx:]
+        problems_copy = problems.copy()
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        cbs_config={
-            "seed": None,
-            "max_time": 300,
-            "max_distance": eval_env.max_goal_dist,
-            "use_experience": True,
-            "use_cardinality": True,
-            "collision_radius": 0.0,
-            "risk_attribute": "cost",
-            "edge_attributes": ["step", "cost"],
-            "split_strategy": "disjoint",
-        },
+        cbs_config = (
+            {
+                "seed": None,
+                "max_time": 300,
+                "max_distance": eval_env.max_goal_dist,
+                "use_experience": True,
+                "use_cardinality": True,
+                "collision_radius": 0.0,
+                "risk_attribute": "cost",
+                "edge_attributes": ["step", "cost"],
+                "split_strategy": "disjoint",
+            }
+        )
+        min_step_config = cbs_config.copy()
+        min_step_config["edge_attributes"] = ["step"]
+        min_cost_config = cbs_config.copy()
+        min_cost_config["edge_attributes"] = ["cost"]
+
+        risk_bounded_config = cbs_config.copy()
+        risk_bounded_config["risk_bound"] = np.inf
+
+        if not args.use_unconstrained_ckpt:
+            lagrangian_config = cbs_config.copy()
+            lagrangian_config["lagrangian"] = agent.lagrange.lagrangian_multiplier.data.numpy()
+
+        multi_objective_config = cbs_config.copy()
+        multi_objective_config["use_multi_objective"] = True
 
         if not habitat:
             constrained_search_policy = ConstrainedSearchPolicy(
@@ -716,7 +752,9 @@ def single_constrained_search_policy(
                     "unconstrained": args.unconstrained_ckpt_file,
                     "constrained": args.constrained_ckpt_file,
                 },
+                cbs_config=cbs_config,
             )
+            rb_vec_parameter = rb_vec
         else:
             constrained_search_policy = VisualConstrainedSearchPolicy(
                 agent,
@@ -730,17 +768,47 @@ def single_constrained_search_policy(
                     "unconstrained": args.unconstrained_ckpt_file,
                     "constrained": args.constrained_ckpt_file,
                 },
+                cbs_config=cbs_config,
             )
+            rb_vec_parameter = rb_vec_grid
 
         for _ in tqdm(range(start_idx, config.num_samples)):
             try:
-                _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-                    constrained_search_policy, eval_env, habitat=habitat
-                )
-                constrained_search_records.append(records)
-            except Exception as e:
-                logging.error(f"Error: {e}")
-                constrained_search_records.append({})
+                pb = problems_copy.pop(0)
+                state = {"observation": pb["start"], "goal": pb["goal"]}
+                planning_graph = constrained_search_policy.construct_planning_graph(state)
+                num_nodes = rb_vec_parameter.shape[0] - 1
+                goal_ids = [num_nodes + 2]
+                start_ids = [num_nodes + 1]
+                augmented_wps = rb_vec_parameter.copy()
+                augmented_wps = np.vstack([augmented_wps, state["observation"], state["goal"]])
+
+                min_step_cbs_solver = CBSSolver(graph=planning_graph, goals=goal_ids, starts=start_ids, graph_waypoints=augmented_wps, config=min_step_config)
+                min_step_solution = min_step_cbs_solver.find_paths()
+                min_step_risk = compute_sum_of_costs(min_step_solution.paths, planning_graph, "cost")
+
+                min_cost_cbs_solver = CBSSolver(graph=planning_graph, goals=goal_ids, starts=start_ids, graph_waypoints=augmented_wps, config=min_cost_config)
+                min_cost_solution = min_cost_cbs_solver.find_paths()
+                min_cost_risk = compute_sum_of_costs(min_cost_solution.paths, planning_graph, "cost")
+
+                for factor in risk_factors:
+                    for planner in planners:
+                        if planner == "cbs":
+                            constrained_search_policy.cbs_config = cbs_config
+                        elif planner == "risk_bounded":
+                            constrained_search_policy.cbs_config = risk_bounded_config
+                        elif planner == "lagrangian":
+                            constrained_search_policy.cbs_config = lagrangian_config
+                        elif planner == "multi_objective":
+                            constrained_search_policy.cbs_config = multi_objective_config
+
+                    _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
+                        constrained_search_policy, eval_env, habitat=habitat
+                    )
+                    constrained_search_records.append(records)
+                except Exception as e:
+                    logging.error(f"Error: {e}")
+                    constrained_search_records.append({})
 
             if save:
                 np.save(save_path, constrained_search_records)

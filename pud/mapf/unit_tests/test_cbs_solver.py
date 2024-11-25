@@ -236,7 +236,7 @@ class TestCBSSolver(unittest.TestCase):
             "seed": 0,
             "max_time": 100,
             "max_distance": 1,
-            "risk_bouned": 4.0,
+            "risk_bound": 4.0,
             "use_experience": True,
             "collision_radius": 0.0,
             "use_cardinality": True,
