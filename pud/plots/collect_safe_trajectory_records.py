@@ -717,10 +717,17 @@ def constrained_search_policy(
             )
             constrained_search_records.append(records)
             if full_risk:
+                all_success = True
                 bound_data = []
                 for agent in range(args.num_agents):
                     bound_data.append(records[agent]["cumulative_costs"])
-                bounds_data.append(np.sum(bound_data))
+                    if not records[agent]["success"]:
+                        all_success = False
+                        break
+                if all_success:
+                    bounds_data.append(np.sum(bound_data))
+                else:
+                    bounds_data.append(-1)
         except Exception as e:
             logging.error(f"Error: {e}")
             constrained_search_records.append([{} for _ in range(args.num_agents)])
