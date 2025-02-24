@@ -18,22 +18,23 @@ class PathConstrainedCBSSolver(CBSSolver):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        risk_budget: float,
         graph_waypoints: NDArray,
         config: Dict,
     ):
 
+        self.risk_budget = config["risk_budget"]
         super().__init__(graph, goals, starts, graph_waypoints, config)
-        self.risk_budget = risk_budget
 
+    def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
             self.single_agent_planners[agent] = RiskBudgetedAStar(
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                goal=goals[agent],
-                start=starts[agent]
+                goal=self.goals[agent],
+                start=self.starts[agent],
+                undirected_graph=self.undirected_graph,
             )
 
     def find_paths(self) -> CBSNode:
@@ -52,7 +53,7 @@ class PathConstrainedCBSSolver(CBSSolver):
             agent_path = self.single_agent_planners[agent_id].find_constrained_path(
                 constraints=root.constraints,
                 experience=None,
-                risk_budget=self.risk_budget,
+                risk_budget=self.risk_budget / self.num_agents,
                 max_time=self.max_time // self.num_agents
             )
 
@@ -76,15 +77,16 @@ class PathConstrainedCBSSolver(CBSSolver):
             self.num_expanded += 1
 
             if len(current_node.collisions) == 0:
-                self.search_tree.add_node(
-                    current_node.id,
-                    label="{}->{}".format(current_node.id, current_node.cost),
-                    color="green",
-                    cost=current_node.cost,
-                    paths=str(current_node.paths),
-                    collisions=len(current_node.collisions),
-                )
-                self.save_search_tree()
+                if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                    self.search_tree.add_node(
+                        current_node.id,
+                        label="{}->{}".format(current_node.id, current_node.cost),
+                        color="green",
+                        cost=current_node.cost,
+                        paths=str(current_node.paths),
+                        collisions=len(current_node.collisions),
+                    )
+                    self.save_search_tree()
                 return current_node
 
             collision = self.choose_collision(current_node)
@@ -109,7 +111,7 @@ class PathConstrainedCBSSolver(CBSSolver):
                 agent_path = self.single_agent_planners[constraint_agent].find_constrained_path(
                     constraints=successor.constraints,
                     experience=current_node.paths[constraint_agent] if self.use_experience else None,
-                    risk_budget=self.risk_budget,
+                    risk_budget=self.risk_budget / self.num_agents,
                     max_time=self.max_time // self.num_agents
                 )
 
@@ -117,22 +119,24 @@ class PathConstrainedCBSSolver(CBSSolver):
                 if type(agent_path) is MAPFErrorCodes:
                     error_code = agent_path
                     logging.debug("Constraint agent failed to find a path. So skipping it")
-                    changes = "+" if constraint["positive"] else "-"
-                    changes += "C = ({}, {}, {}) not satisfied".format(
-                        constraint["agent_id"],
-                        constraint["location"],
-                        constraint["timestep"],
-                    )
-                    changes += "\n|C| = {}".format(len(successor.collisions))
-                    self.search_tree.add_node(
-                        successor.id,
-                        label="Constraint agent path not found",
-                        color="red"
-                    )
-                    self.search_tree.add_edge(
-                        current_node.id, successor.id, label=changes
-                    )
-                    self.num_generated += 1
+
+                    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                        changes = "+" if constraint["positive"] else "-"
+                        changes += "C = ({}, {}, {}) not satisfied".format(
+                            constraint["agent_id"],
+                            constraint["location"],
+                            constraint["timestep"],
+                        )
+                        changes += "\n|C| = {}".format(len(successor.collisions))
+                        self.search_tree.add_node(
+                            successor.id,
+                            label="Constraint agent path not found",
+                            color="red"
+                        )
+                        self.search_tree.add_edge(
+                            current_node.id, successor.id, label=changes
+                        )
+                        self.num_generated += 1
                 else:
                     successor.paths[constraint_agent] = agent_path
 
@@ -149,29 +153,30 @@ class PathConstrainedCBSSolver(CBSSolver):
                             agent_path = self.single_agent_planners[agent].find_constrained_path(
                                 constraints=successor.constraints,
                                 experience=current_node.paths[agent] if self.use_experience else None,
-                                risk_budget=self.risk_budget,
+                                risk_budget=self.risk_budget / self.num_agents,
                                 max_time=self.max_time // self.num_agents
                             )
 
                             if type(agent_path) is MAPFErrorCodes:
                                 error_code = agent_path
                                 logging.debug("Violating agent {} failed to find a path. So skipping it".format(agent))
-                                changes = "+" if constraint["positive"] else "-"
-                                changes += "C = ({}, {}, {}) not satisfied".format(
-                                    constraint["agent_id"],
-                                    constraint["location"],
-                                    constraint["timestep"],
-                                )
-                                changes += "\n|C| = {}".format(len(successor.collisions))
-                                self.search_tree.add_node(
-                                    successor.id,
-                                    label="Violating agent path not found",
-                                    color="red"
-                                )
-                                self.search_tree.add_edge(
-                                    current_node.id, successor.id, label=changes
-                                )
-                                self.num_generated += 1
+                                if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                                    changes = "+" if constraint["positive"] else "-"
+                                    changes += "C = ({}, {}, {}) not satisfied".format(
+                                        constraint["agent_id"],
+                                        constraint["location"],
+                                        constraint["timestep"],
+                                    )
+                                    changes += "\n|C| = {}".format(len(successor.collisions))
+                                    self.search_tree.add_node(
+                                        successor.id,
+                                        label="Violating agent path not found",
+                                        color="red"
+                                    )
+                                    self.search_tree.add_edge(
+                                        current_node.id, successor.id, label=changes
+                                    )
+                                    self.num_generated += 1
                                 skip = True
                                 break
                             else:
@@ -184,16 +189,17 @@ class PathConstrainedCBSSolver(CBSSolver):
                         successor.cost = self.compute_sum_of_costs(successor.paths)
                         self.push_node(successor)
 
-                        changes = "+" if constraint["positive"] else "-"
-                        changes += "C = ({}, {}, {}) satisfied".format(
-                            constraint["agent_id"],
-                            constraint["location"],
-                            constraint["timestep"],
-                        )
-                        changes += "\n|C| = {}".format(len(successor.collisions))
-                        self.search_tree.add_edge(
-                            current_node.id, successor.id, label=changes
-                        )
+                        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                            changes = "+" if constraint["positive"] else "-"
+                            changes += "C = ({}, {}, {}) satisfied".format(
+                                constraint["agent_id"],
+                                constraint["location"],
+                                constraint["timestep"],
+                            )
+                            changes += "\n|C| = {}".format(len(successor.collisions))
+                            self.search_tree.add_edge(
+                                current_node.id, successor.id, label=changes
+                            )
                         logging.debug("Generated: {}".format(self.num_generated))
 
         if time.time() - self.start_time > self.max_time:

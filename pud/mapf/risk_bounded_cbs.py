@@ -116,18 +116,19 @@ class RiskBoundedCBSSolver(CBSSolver):
         elif self.budget_allocator == "inverse_utility":
             self.budget_allocator_cls = InverseUtilityBudgetAllocater
         else:
-            raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_BUDGET_ALLOCATER))
-
+            raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_BUDGET_ALLOCATER)["message"])
         self.budget_allocator = self.budget_allocator_cls(self.risk_bound)
 
+    def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
             self.single_agent_planners[agent] = RiskBudgetedAStar(
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                goal=goals[agent],
-                start=starts[agent],
+                goal=self.goals[agent],
+                start=self.starts[agent],
+                undirected_graph=self.undirected_graph,
             )
 
     def min_feasible_cost(
@@ -336,7 +337,7 @@ class RiskBoundedCBSSolver(CBSSolver):
         # Compute the risk allocation for each agent based on their current utility
         utility = [self.compute_cost(path) for path in root.paths]
         root.risk_allocation = self.budget_allocator.allocate(root.paths, utility)
-        logging.info("Risk allocation {}".format(root.risk_allocation))
+        logging.debug("Risk allocation {}".format(root.risk_allocation))
 
         # The open list tracks nodes for the CBS tree based on how many agents' risk allocation was changed
         # The root's risk allocation is the initial risk allocation so no agents' risk allocation was changed
@@ -685,7 +686,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                             current_node.id, successor.id, label=changes
                         )
                         logging.debug("Generated: {}".format(self.num_generated))
-                    logging.info(
+                    logging.debug(
                         "Risk allocation {}".format(successor.risk_allocation)
                     )
                 else:
@@ -713,6 +714,6 @@ class RiskBoundedCBSSolver(CBSSolver):
         # If we terminate the search due to timeout the explicitly return the timeout error code
         # otherwise return the no path error code
         if time.time() - start_time >= self.max_time:
-            raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED))
+            raise RuntimeError(MAPFError(MAPFErrorCodes.TIMELIMIT_REACHED)["message"])
         else:
-            raise RuntimeError(MAPFError(MAPFErrorCodes.NO_PATH))
+            raise RuntimeError(MAPFError(MAPFErrorCodes.NO_PATH)["message"])

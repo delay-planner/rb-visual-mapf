@@ -66,6 +66,7 @@ class CBSSolver(object):
 
         self.graph = graph
         self.graph_waypoints = graph_waypoints
+        self.undirected_graph = graph.to_undirected()
 
         self.goals = goals
         self.starts = starts
@@ -88,6 +89,7 @@ class CBSSolver(object):
         self.splitter = config["split_strategy"]
         self.use_experience = config["use_experience"]
         self.use_cardinality = config["use_cardinality"]
+        self.edge_attributes = config["edge_attributes"]
         self.collision_radius = config["collision_radius"]
 
         self.risk_attribute = config["risk_attribute"]
@@ -103,7 +105,7 @@ class CBSSolver(object):
         elif self.splitter == "disjoint":
             self.splitter_function = disjoint_split
         else:
-            raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_SPLITTER))
+            raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_SPLITTER)["message"])
 
         # Add self-loops
         for node in self.graph.nodes:
@@ -113,16 +115,20 @@ class CBSSolver(object):
                 min_cost = min(
                     min_cost, self.graph[node][neighbor][self.risk_attribute]
                 )
-            self.graph.add_edge(node, node, step=0, cost=min_cost)
+            self.graph.add_edge(node, node, weight=0, step=1, cost=min_cost)
 
+        self.make_planners(config)
+
+    def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
             self.single_agent_planners[agent] = AStar(
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                goal=goals[agent],
-                start=starts[agent],
+                undirected_graph=self.undirected_graph,
+                goal=self.goals[agent],
+                start=self.starts[agent],
             )
 
     def compute_cost(self, path: List[int], risk: bool = False) -> float:
@@ -225,8 +231,9 @@ class CBSSolver(object):
         agent_A = collision["agent_A"]
         alternative_path_A = self.single_agent_planners[agent_A].find_path(
             constraints=constraints,
-            experience=cbs_node.paths[agent_A] if self.use_experience else None,
+            edge_attribute=self.edge_attributes[0],
             max_time=self.max_time // self.num_agents,
+            experience=cbs_node.paths[agent_A] if self.use_experience else None,
         )
 
         if type(alternative_path_A) is MAPFErrorCodes:
@@ -239,8 +246,9 @@ class CBSSolver(object):
         agent_B = collision["agent_B"]
         alternative_path_B = self.single_agent_planners[agent_B].find_path(
             constraints=constraints,
-            experience=cbs_node.paths[agent_B] if self.use_experience else None,
+            edge_attribute=self.edge_attributes[0],
             max_time=self.max_time // self.num_agents,
+            experience=cbs_node.paths[agent_B] if self.use_experience else None,
         )
 
         if type(alternative_path_B) is MAPFErrorCodes:
@@ -269,9 +277,10 @@ class CBSSolver(object):
 
         for agent_id in range(self.num_agents):
             agent_path = self.single_agent_planners[agent_id].find_path(
-                constraints=root.constraints,
                 experience=None,
-                max_time=self.max_time // self.num_agents
+                constraints=root.constraints,
+                edge_attribute=self.edge_attributes[0],
+                max_time=self.max_time // self.num_agents,
             )
 
             if type(agent_path) is MAPFErrorCodes:
@@ -327,8 +336,9 @@ class CBSSolver(object):
                 constraint_agent = constraint["agent_id"]
                 agent_path = self.single_agent_planners[constraint_agent].find_path(
                     constraints=successor.constraints,
+                    edge_attribute=self.edge_attributes[0],
+                    max_time=self.max_time // self.num_agents,
                     experience=current_node.paths[constraint_agent] if self.use_experience else None,
-                    max_time=self.max_time // self.num_agents
                 )
 
                 skip = False
@@ -367,8 +377,9 @@ class CBSSolver(object):
 
                             agent_path = self.single_agent_planners[agent].find_path(
                                 constraints=successor.constraints,
+                                edge_attribute=self.edge_attributes[0],
+                                max_time=self.max_time // self.num_agents,
                                 experience=current_node.paths[agent] if self.use_experience else None,
-                                max_time=self.max_time // self.num_agents
                             )
 
                             if type(agent_path) is MAPFErrorCodes:

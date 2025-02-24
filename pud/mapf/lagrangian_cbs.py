@@ -17,17 +17,19 @@ class LagrangianCBSSolver(CBSSolver):
         config: Dict,
     ):
 
-        super().__init__(graph, goals, starts, graph_waypoints, config)
         self.lagrangian = config["lagrangian"]
+        super().__init__(graph, goals, starts, graph_waypoints, config)
 
+    def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
         for agent in range(self.num_agents):
             self.single_agent_planners[agent] = LagrangianAStar(
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                goal=goals[agent],
-                start=starts[agent],
+                undirected_graph=self.undirected_graph,
+                goal=self.goals[agent],
+                start=self.starts[agent],
                 lagrangian=self.lagrangian,
             )
 

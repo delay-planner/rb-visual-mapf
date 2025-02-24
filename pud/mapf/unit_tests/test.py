@@ -97,12 +97,13 @@ if __name__ == "__main__":
                     G.add_edge(
                         node,
                         neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                        weight=1,
                         step=1,
                         cost=1
                     )
                 else:
                     G.add_edge(
-                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], step=1, cost=0
+                        node, neighbor[0] * boolean_map.shape[1] + neighbor[1], weight=1, step=1, cost=0
                     )
 
     start_ids, goal_ids = [], []

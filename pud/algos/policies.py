@@ -1,3 +1,4 @@
+from pathlib import Path
 import time
 from typing import Dict, Tuple, Union
 import scipy
@@ -8,6 +9,7 @@ import networkx as nx
 from pud.mapf.bocbs import BiObjectiveCBSSolver
 from pud.mapf.cbs import CBSNode, CBSSolver
 from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
+from pud.mapf.path_constrained_cbs import PathConstrainedCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSNode, RiskBoundedCBSSolver
 from pud.mapf.single_agent_planner import compute_sum_of_costs
 
@@ -87,7 +89,6 @@ class SearchPolicy(BasePolicy):
         max_search_steps=7,
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -123,7 +124,6 @@ class SearchPolicy(BasePolicy):
         self.cleanup = False
         self.attempt_cutoff = 3 * max_search_steps
         self.no_waypoint_hopping = no_waypoint_hopping
-        self.waypoint_consistency_cutoff = waypoint_consistency_cutoff
 
         self.build_rb_graph(self.rb_vec)
         if not self.open_loop:
@@ -142,7 +142,7 @@ class SearchPolicy(BasePolicy):
         assert "max_distance" in cbs_config.keys(), "Max distance for CBS not provided"
         assert "collision_radius" in cbs_config.keys(), "Collision radius not provided"
         assert "split_strategy" in cbs_config.keys(), "Split strategy for CBS not provided"
-        assert "edge_attributes" in cbs_config.keys(), "Edge attributes used for CBS not provided"
+        # assert "edge_attributes" in cbs_config.keys(), "Edge attributes used for CBS not provided"
 
         if "use_experience" not in cbs_config.keys():
             cbs_config["use_experience"] = False
@@ -314,30 +314,31 @@ class SearchPolicy(BasePolicy):
             cbs_class = BiObjectiveCBSSolver
 
         cbs_solver = cbs_class(
-            graph=graph.copy(),
-            graph_waypoints=augmented_wps.copy(),
-            starts=start_ids.copy(),
-            goals=goal_ids.copy(),
+            graph=graph,
+            graph_waypoints=augmented_wps,
+            starts=start_ids,
+            goals=goal_ids,
             config=self.cbs_config,
         )
         try:
             solution = cbs_solver.find_paths()
-        except RuntimeError as e:
+        except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError(
-                "CBS failed to find a solution. " + error_message["message"]
+                "CBS failed to find a solution. " + error_message
             )
 
         if "use_multi_objective" in self.cbs_config.keys():
-            assert type(solution) is Tuple[Dict, Dict, bool]
+            # assert type(solution) is Tuple[Dict, Dict, bool]
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
             solution_cost = np.inf
+            step_idx = self.cbs_config["edge_attributes"].index("step")
             for path_id, cost_vector in all_cost_vectors.items():
-                if cost_vector[self.cbs_config["edge_attributes"].index("step")] < solution_cost:
-                    solution_cost = cost_vector[0]
+                if cost_vector[step_idx] < solution_cost:
+                    solution_cost = cost_vector[step_idx]
                     paths = all_paths[path_id]
         else:
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
@@ -479,7 +480,6 @@ class ConstrainedSearchPolicy(SearchPolicy):
         cost_aggregate="max",
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -524,7 +524,6 @@ class ConstrainedSearchPolicy(SearchPolicy):
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
 
@@ -545,7 +544,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
         self.agent.load_state_dict(
-            torch.load(self.ckpts["unconstrained"], map_location="cuda:0")
+            torch.load(self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True)
         )
         start_to_rb_cost = self.agent.get_pairwise_cost(
             [state["observation"]],
@@ -558,7 +557,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
             aggregate=self.cost_aggregate,
         )
         self.agent.load_state_dict(
-            torch.load(self.ckpts["constrained"], map_location="cuda:0")
+            torch.load(self.ckpts["constrained"], map_location="cuda:0", weights_only=True)
         )
         return start_to_rb_cost, rb_to_goal_cost
 
@@ -653,7 +652,6 @@ class VisualSearchPolicy(SearchPolicy):
         max_search_steps=7,
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -677,7 +675,6 @@ class VisualSearchPolicy(SearchPolicy):
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
 
@@ -722,30 +719,31 @@ class VisualSearchPolicy(SearchPolicy):
             cbs_class = BiObjectiveCBSSolver
 
         cbs_solver = cbs_class(
-            graph=graph.copy(),
-            graph_waypoints=augmented_wps.copy(),
-            starts=start_ids.copy(),
-            goals=goal_ids.copy(),
+            graph=graph,
+            graph_waypoints=augmented_wps,
+            starts=start_ids,
+            goals=goal_ids,
             config=self.cbs_config,
         )
         try:
             solution = cbs_solver.find_paths()
-        except RuntimeError as e:
+        except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError(
-                "CBS failed to find a solution. " + error_message["message"]
+                "CBS failed to find a solution. " + error_message
             )
 
         if "use_multi_objective" in self.cbs_config.keys():
-            assert type(solution) is Tuple[Dict, Dict, bool]
+            # assert type(solution) is Tuple[Dict, Dict, bool]
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
             solution_cost = np.inf
+            step_idx = self.cbs_config["edge_attributes"].index("step")
             for path_id, cost_vector in all_cost_vectors.items():
-                if cost_vector[self.cbs_config["edge_attributes"].index("step")] < solution_cost:
-                    solution_cost = cost_vector[0]
+                if cost_vector[step_idx] < solution_cost:
+                    solution_cost = cost_vector[step_idx]
                     paths = all_paths[path_id]
         else:
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
@@ -879,7 +877,6 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
         cost_aggregate="max",
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -907,7 +904,6 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
 
@@ -924,7 +920,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
         max_search_steps=7,
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -948,7 +943,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
         self.n_agents = n_agents
@@ -1040,36 +1034,80 @@ class MultiAgentSearchPolicy(SearchPolicy):
         if "risk_bound" in self.cbs_config.keys():
             cbs_class = RiskBoundedCBSSolver
             assert "budget_allocater" in self.cbs_config.keys(), "Budget allocator not provided"
+        elif "risk_budget" in self.cbs_config.keys():
+            cbs_class = PathConstrainedCBSSolver
         elif "lagrangian" in self.cbs_config.keys():
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
+        # import time
+        # start = time.time()
         cbs_solver = cbs_class(
-            graph=graph.copy(),
-            graph_waypoints=augmented_wps.copy(),
-            starts=start_ids.copy(),
-            goals=goal_ids.copy(),
+            graph=graph,
+            graph_waypoints=augmented_wps,
+            starts=start_ids,
+            goals=goal_ids,
             config=self.cbs_config,
         )
+        # print("Time to initialize CBS: ", time.time() - start)
         try:
+            # start_time = time.time()
             solution = cbs_solver.find_paths()
-        except RuntimeError as e:
+
+            # TODO: Temporary code here for now. Remove after collection step is done!
+            assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
+            if isinstance(cbs_solver, CBSSolver):
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                    lb_data = []
+                    lb_cost = 0
+                    for path in solution.paths:
+                        lb_cost += cbs_solver.compute_cost(path, risk=True)
+                    if Path(self.cbs_config["lb_save_path"]).exists():
+                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                    lb_data.append(lb_cost)
+                    np.save(self.cbs_config["lb_save_path"], lb_data)
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                    ub_data = []
+                    ub_cost = 0
+                    for path in solution.paths:
+                        ub_cost += cbs_solver.compute_cost(path, risk=True)
+                    if Path(self.cbs_config["ub_save_path"]).exists():
+                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                    ub_data.append(ub_cost)
+                    np.save(self.cbs_config["ub_save_path"], ub_data)
+
+            # print("Time to find paths: ", time.time() - start_time)
+        except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
+            if isinstance(cbs_solver, CBSSolver):
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                    lb_data = []
+                    if Path(self.cbs_config["lb_save_path"]).exists():
+                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                    lb_data.append(-1)
+                    np.save(self.cbs_config["lb_save_path"], lb_data)
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                    ub_data = []
+                    if Path(self.cbs_config["ub_save_path"]).exists():
+                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                    ub_data.append(-1)
+                    np.save(self.cbs_config["ub_save_path"], ub_data)
             raise RuntimeError(
-                "CBS failed to find a solution. " + error_message["message"]
+                "CBS failed to find a solution. " + error_message
             )
 
         if "use_multi_objective" in self.cbs_config.keys():
-            assert type(solution) is Tuple[Dict, Dict, bool]
+            # assert type(solution) is Tuple[Dict, Dict, bool]
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
             solution_cost = np.inf
+            step_idx = self.cbs_config["edge_attributes"].index("step")
             for path_id, cost_vector in all_cost_vectors.items():
-                if cost_vector[self.cbs_config["edge_attributes"].index("step")] < solution_cost:
-                    solution_cost = cost_vector[0]
+                if cost_vector[step_idx] < solution_cost:
+                    solution_cost = cost_vector[step_idx]
                     paths = all_paths[path_id]
         else:
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
@@ -1133,7 +1171,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             waypoint_index = self.augmented_waypoint_indices[agent_id][
                 self.augmented_waypoint_counters[agent_id]
             ]
-            if waypoint_index > self.rb_vec.shape[0]:
+            if waypoint_index >= self.rb_vec.shape[0]:
                 waypoint = (
                     self.starts[agent_id]
                     if waypoint_index == self.start_ids[agent_id]
@@ -1141,16 +1179,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 )
             else:
                 waypoint = self.rb_vec[waypoint_index]
-
-            if agent_id > 0:
-                waypoint_qvals = self.agent.get_pairwise_dist(
-                    [waypoint], augmented_waypoints, aggregate=None
-                )
-                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
-                    waypoint_index = self.augmented_waypoint_indices[agent_id][
-                        self.augmented_waypoint_counters[agent_id]
-                    ]
-                    waypoint = self.rb_vec[waypoint_index]
 
             augmented_waypoints.append(waypoint)
             augmented_wp_indices.append(waypoint_index)
@@ -1314,7 +1342,6 @@ class ConstrainedMultiAgentSearchPolicy(
         cost_aggregate="max",
         no_waypoint_hopping=False,
         weighted_path_planning="",
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -1343,7 +1370,6 @@ class ConstrainedMultiAgentSearchPolicy(
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
 
@@ -1360,7 +1386,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         max_search_steps=7,
         weighted_path_planning="",
         no_waypoint_hopping=False,
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -1385,7 +1410,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
 
@@ -1471,37 +1495,75 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
             cbs_class = RiskBoundedCBSSolver
+        elif "risk_budget" in self.cbs_config.keys():
+            cbs_class = PathConstrainedCBSSolver
         elif "lagrangian" in self.cbs_config.keys():
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
         cbs_solver = cbs_class(
-            graph=graph.copy(),
-            graph_waypoints=augmented_wps.copy(),
-            starts=start_ids.copy(),
-            goals=goal_ids.copy(),
+            graph=graph,
+            graph_waypoints=augmented_wps,
+            starts=start_ids,
+            goals=goal_ids,
             config=self.cbs_config,
         )
         try:
             solution = cbs_solver.find_paths()
-        except RuntimeError as e:
+
+            # TODO: Temporary code here for now. Remove after collection step is done!
+            assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
+            if isinstance(cbs_solver, CBSSolver):
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                    lb_data = []
+                    lb_cost = 0
+                    for path in solution.paths:
+                        lb_cost += cbs_solver.compute_cost(path, risk=True)
+                    if Path(self.cbs_config["lb_save_path"]).exists():
+                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                    lb_data.append(lb_cost)
+                    np.save(self.cbs_config["lb_save_path"], lb_data)
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                    ub_data = []
+                    ub_cost = 0
+                    for path in solution.paths:
+                        ub_cost += cbs_solver.compute_cost(path, risk=True)
+                    if Path(self.cbs_config["ub_save_path"]).exists():
+                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                    ub_data.append(ub_cost)
+                    np.save(self.cbs_config["ub_save_path"], ub_data)
+        except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
+            if isinstance(cbs_solver, CBSSolver):
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                    lb_data = []
+                    if Path(self.cbs_config["lb_save_path"]).exists():
+                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                    lb_data.append(-1)
+                    np.save(self.cbs_config["lb_save_path"], lb_data)
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                    ub_data = []
+                    if Path(self.cbs_config["ub_save_path"]).exists():
+                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                    ub_data.append(-1)
+                    np.save(self.cbs_config["ub_save_path"], ub_data)
             raise RuntimeError(
-                "CBS failed to find a solution. " + error_message["message"]
+                "CBS failed to find a solution. " + error_message
             )
 
         if "use_multi_objective" in self.cbs_config.keys():
-            assert type(solution) is Tuple[Dict, Dict, bool]
+            # assert type(solution) is Tuple[Dict, Dict, bool]
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
             solution_cost = np.inf
+            step_idx = self.cbs_config["edge_attributes"].index("step")
             for path_id, cost_vector in all_cost_vectors.items():
-                if cost_vector[self.cbs_config["edge_attributes"].index("step")] < solution_cost:
-                    solution_cost = cost_vector[0]
+                if cost_vector[step_idx] < solution_cost:
                     paths = all_paths[path_id]
+                    solution_cost = cost_vector[step_idx]
         else:
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             paths = solution.paths
@@ -1564,7 +1626,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             waypoint_index = self.augmented_waypoint_indices[agent_id][
                 self.augmented_waypoint_counters[agent_id]
             ]
-            if waypoint_index > self.rb_vec.shape[0]:
+            if waypoint_index >= self.rb_vec.shape[0]:
                 waypoint = (
                     self.starts[agent_id]
                     if waypoint_index == self.start_ids[agent_id]
@@ -1572,16 +1634,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 )
             else:
                 waypoint = self.rb_vec[waypoint_index]
-
-            if agent_id > 0:
-                waypoint_qvals = self.agent.get_pairwise_dist(
-                    [waypoint], augmented_waypoints, aggregate=None
-                )
-                if np.any(waypoint_qvals < self.waypoint_consistency_cutoff):
-                    waypoint_index = self.augmented_waypoint_indices[agent_id][
-                        self.augmented_waypoint_counters[agent_id]
-                    ]
-                    waypoint = self.rb_vec[waypoint_index]
 
             augmented_waypoints.append(waypoint)
             augmented_wp_indices.append(waypoint_index)
@@ -1774,7 +1826,6 @@ class VisualConstrainedMultiAgentSearchPolicy(
         cost_aggregate="max",
         no_waypoint_hopping=False,
         weighted_path_planning="",
-        waypoint_consistency_cutoff=5.0,
         cbs_config={
             "seed": None,
             "max_time": 300,
@@ -1803,369 +1854,5 @@ class VisualConstrainedMultiAgentSearchPolicy(
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
-            waypoint_consistency_cutoff=waypoint_consistency_cutoff,
             **kwargs,
         )
-
-
-class SparseSearchPolicy(SearchPolicy):
-
-    def __init__(
-        self,
-        *args,
-        pdist=None,
-        cache_pdist=True,
-        beta=0.05,
-        edge_cutoff=10,
-        norm_cutoff=0.05,
-        consistency_cutoff=5,
-        waypoint_consistency_cutoff=1.5,
-        k_nearest=5,
-        localize_to_nearest=True,
-        open_loop=True,
-        no_waypoint_hopping=True,
-        **kwargs,
-    ):
-        """
-        Note: If beta!=0 and cache_pdist=False, then dynamic construction of the
-        state graph will use updated embeddings to compute distances.
-        Set cache_pdist=True to use the distances of the original observations.
-
-        Args:
-            cache_pdist: if True, then uses `pdist` when building graph,
-                         otherwise, compute distances with new embeddings
-            beta: percentage assigned to newest embedding space observation
-                  in exponential moving average / variance calculations
-            edge_cutoff: draw directed edges between nodes when their qvalue
-                         distance is less than edge_cutoff
-            norm_cutoff: define neighbors if their embedding
-                         norm distance is less than norm_cutoff
-            consistency_cutoff: qval consistency cutoff
-            waypoint_consistency_cutoff: waypoint qval consistency cutoff
-            k_nearest: for filtering the nearest k nodes using edge weight
-            localize_to_nearest: if True, will incrementally add edges with
-                                 incoming start and goal nodes until path
-                                 exists from start to goal; otherwise, adds
-                                 all edges with incoming start and goal nodes
-                                 that have distance less than `max_search_steps`
-        """
-        self.cache_pdist = cache_pdist
-        self.beta = beta
-        self.edge_cutoff = edge_cutoff
-        self.norm_cutoff = norm_cutoff
-        self.consistency_cutoff = consistency_cutoff
-        self.waypoint_consistency_cutoff = waypoint_consistency_cutoff
-        self.k_nearest = k_nearest
-        self.localize_to_nearest = localize_to_nearest
-        super().__init__(
-            *args,
-            pdist=pdist,
-            open_loop=open_loop,
-            no_waypoint_hopping=no_waypoint_hopping,
-            **kwargs,
-        )
-
-    def filter_keep_k_nearest(self):
-        """
-        For each node in the graph, keeps only the k outgoing edges with lowest weight.
-        """
-        for node in self.g.nodes():
-            edges = list(self.g.edges(nbunch=node, data="weight", default=np.inf))  # type: ignore
-            edges.sort(key=lambda x: x[2])
-            try:
-                edges_to_remove = edges[self.k_nearest :]
-            except IndexError:
-                edges_to_remove = []
-            self.g.remove_edges_from(edges_to_remove)
-
-    def construct_planning_graph(self, state):
-        if not self.localize_to_nearest:
-            return super().construct_planning_graph(state)
-
-        start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
-        start_to_rb_dist, rb_to_goal_dist = (
-            start_to_rb_dist.flatten(),
-            rb_to_goal_dist.flatten(),
-        )
-        planning_graph = self.g.copy()
-
-        sorted_start_indices = np.argsort(start_to_rb_dist)
-        sorted_goal_indices = np.argsort(rb_to_goal_dist)
-        neighbors_added = 0
-        while neighbors_added < len(start_to_rb_dist):
-            i = sorted_start_indices[neighbors_added]
-            j = sorted_goal_indices[neighbors_added]
-            planning_graph.add_edge("start", i, weight=float(start_to_rb_dist[i]))
-            planning_graph.add_edge(j, "goal", weight=float(rb_to_goal_dist[j]))
-            try:
-                nx.shortest_path(planning_graph, source="start", target="goal")
-                break
-            except nx.NetworkXNoPath:
-                neighbors_added += 1
-
-        if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
-            rb_to_goal_dist < self.max_search_steps
-        ):
-            self.stats["localization_fails"] += 1
-        return planning_graph
-
-    def construct_augmented_planning_graph(self, starts, goals):
-        if not self.localize_to_nearest:
-            return super().construct_augmented_planning_graph(starts, goals)
-
-        planning_graph = self.g.copy()
-        print("Initial graph size = ", self.g.number_of_nodes())
-        nodes_to_agent_maps = {}
-        for idx, (start, goal) in enumerate(zip(starts, goals)):
-            start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(
-                {"observation": start, "goal": goal}
-            )
-            start_to_rb_dist, rb_to_goal_dist = (
-                start_to_rb_dist.flatten(),
-                rb_to_goal_dist.flatten(),
-            )
-
-            sorted_start_indices = np.argsort(start_to_rb_dist)
-            sorted_goal_indices = np.argsort(rb_to_goal_dist)
-            neighbors_added = 0
-            num_nodes = planning_graph.number_of_nodes() - 1
-            while neighbors_added < len(start_to_rb_dist):
-                i = sorted_start_indices[neighbors_added]
-                j = sorted_goal_indices[neighbors_added]
-                planning_graph.add_edge(
-                    # "start" + str(idx), i, weight=start_to_rb_dist[i]
-                    num_nodes + 1,
-                    i,
-                    weight=float(start_to_rb_dist[i]),
-                )
-                # planning_graph.add_edge(j, "goal" + str(idx), weight=rb_to_goal_dist[j])
-                planning_graph.add_edge(
-                    j, num_nodes + 2, weight=float(rb_to_goal_dist[j])
-                )
-                nodes_to_agent_maps["start" + str(idx)] = num_nodes + 1
-                nodes_to_agent_maps["goal" + str(idx)] = num_nodes + 2
-                try:
-                    nx.shortest_path(
-                        planning_graph,
-                        # source="start" + str(idx),
-                        # target="goal" + str(idx),
-                        source=num_nodes + 1,
-                        target=num_nodes + 2,
-                    )
-                    break
-                except nx.NetworkXNoPath:
-                    neighbors_added += 1
-
-            if not np.any(start_to_rb_dist < self.max_search_steps) or not np.any(
-                rb_to_goal_dist < self.max_search_steps
-            ):
-                self.stats["localization_fails"] += 1
-        print("Final graph size = ", planning_graph.number_of_nodes())
-        return planning_graph, nodes_to_agent_maps
-
-    def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
-        waypoint_qvals_combined = np.max(self.pdist, axis=0)[waypoint_index, :]
-        obs_qvals = self.agent.get_pairwise_dist(
-            [state["observation"]], self.rb_vec, aggregate=None
-        )
-        obs_qvals_combined = np.max(obs_qvals, axis=0).flatten()
-        qval_diffs = waypoint_qvals_combined - obs_qvals_combined
-        qval_inconsistency = np.linalg.norm(qval_diffs, np.inf)
-        return qval_inconsistency < self.waypoint_consistency_cutoff
-
-    def build_rb_graph(self):
-        """
-        Performs dynamic graph building.
-        Args:
-            edge_cutoff: draw directed edges between nodes when their qvalue
-                         distance is less than edge_cutoff
-            beta: percentage assigned to newest embedding space observation
-                  in exponential moving average / variance calculations
-        """
-        if self.cache_pdist:
-            self.cached_pdist = self.pdist.copy()
-
-        self.g = nx.DiGraph()
-        embeddings_to_add = self.rb_vec.copy()
-        for i, embedding in enumerate(embeddings_to_add):
-            self.update_graph(embedding, cache_index=i)
-
-        self.cache_pdist = False
-        self.cached_pdist = None
-
-    def update_graph(
-        self, embedding, cache_index=None
-    ):  # Merge with existing node or create new node
-        if self.cache_pdist:
-            assert cache_index is not None
-
-        if self.g.number_of_nodes() == 0:
-            self.g.add_node(cache_index)
-            self.rb_vec = np.array([embedding])
-            self.rb_variances = np.zeros((1))
-
-            if self.cache_pdist:
-                self.pdist = self.get_cached_pairwise_dist(
-                    np.array([cache_index]), np.array([cache_index])
-                )
-            else:
-                self.pdist = self.agent.get_pairwise_dist(self.rb_vec, aggregate=None)
-
-            if self.cache_pdist:
-                self.cache_indices = np.array([cache_index])
-        else:
-            # Localize to nearest neighbors in embedding space
-            neighbor_indices = np.arange(len(self.rb_vec))[
-                self.norm_consistency(embedding, self.rb_vec)
-            ]
-
-            # Get maximum distances (i.e., minimum qvalues)
-            if self.cache_pdist:
-                embedding_to_rb = self.get_cached_pairwise_dist(
-                    np.array([cache_index]), self.cache_indices
-                )
-                rb_to_embedding = self.get_cached_pairwise_dist(
-                    self.cache_indices, np.array([cache_index])
-                )
-            else:
-                embedding_to_rb = self.agent.get_pairwise_dist(
-                    [embedding], self.rb_vec, aggregate=None
-                )
-                rb_to_embedding = self.agent.get_pairwise_dist(
-                    self.rb_vec, [embedding], aggregate=None
-                )
-
-            pdist_combined = np.max(self.pdist, axis=0)
-            embedding_to_rb_combined = np.max(embedding_to_rb, axis=0).flatten()
-            rb_to_embedding_combined = np.max(rb_to_embedding, axis=0).flatten()
-
-            # Try to merge with a neighbor based on qvalue consistency
-            merged = False
-            for neighbor in neighbor_indices:
-                # Merge if qvalues are consistent
-                if self.qvalue_consistency(
-                    neighbor,
-                    pdist_combined,
-                    embedding_to_rb_combined,
-                    rb_to_embedding_combined,
-                ):
-                    difference_from_avg = embedding - self.rb_vec[neighbor]
-                    self.rb_vec[neighbor] = (
-                        self.rb_vec[neighbor] + self.beta * difference_from_avg
-                    )
-                    self.rb_variances[neighbor] = (1 - self.beta) * (
-                        self.rb_variances[neighbor]
-                        + self.beta * np.sum(difference_from_avg**2)
-                    )
-                    merged = True
-                    break
-
-            # Add node if cannot merge
-            if not merged:
-                # Add node to graph
-                new_index = self.g.number_of_nodes()
-                in_indices = np.arange(new_index)[
-                    rb_to_embedding_combined < self.edge_cutoff
-                ]
-                in_weights = rb_to_embedding_combined[in_indices]
-                out_indices = np.arange(new_index)[
-                    embedding_to_rb_combined < self.edge_cutoff
-                ]
-                out_weights = embedding_to_rb_combined[out_indices]
-                self.g.add_node(new_index)
-                self.g.add_weighted_edges_from(
-                    zip(in_indices, [new_index] * len(in_indices), in_weights)
-                )
-                self.g.add_weighted_edges_from(
-                    zip([new_index] * len(out_indices), out_indices, out_weights)
-                )
-
-                # The only qvalue distance we don't yet have is the new node to itself.
-                # Can concatenate qvalues we already have to save |V|^2 qvalue query.
-                # Used to update sparse_pdist
-                if self.cache_pdist:
-                    embedding_to_embedding = self.get_cached_pairwise_dist(
-                        np.array([cache_index]), np.array([cache_index])
-                    )
-                else:
-                    embedding_to_embedding = self.agent.get_pairwise_dist(
-                        [embedding], [embedding], aggregate=None
-                    )
-
-                # Add node to other attributes
-                self.rb_vec = np.concatenate((self.rb_vec, [embedding]), axis=0)
-                self.rb_variances = np.append(self.rb_variances, [0])
-                self.pdist = np.concatenate((self.pdist, embedding_to_rb), axis=1)
-                self.pdist = np.concatenate(
-                    (
-                        self.pdist,
-                        np.concatenate(
-                            (rb_to_embedding, embedding_to_embedding), axis=1
-                        ),
-                    ),
-                    axis=2,
-                )
-                if self.cache_pdist:
-                    assert cache_index is not None
-                    self.cache_indices = np.append(self.cache_indices, cache_index)
-
-    def get_cached_pairwise_dist(self, row_indices, col_indices):
-        assert len(row_indices.shape) == len(col_indices.shape) == 1
-        row_entries = row_indices.shape[0]
-        col_entries = col_indices.shape[0]
-        row_advanced_index = np.tile(row_indices, (col_entries, 1)).T
-        col_advanced_index = np.tile(col_indices, (row_entries, 1))
-        assert self.cached_pdist is not None
-        if len(self.cached_pdist.shape) == 2:
-            return self.cached_pdist[row_advanced_index, col_advanced_index]
-        elif len(self.cached_pdist.shape) == 3:
-            return self.cached_pdist[:, row_advanced_index, col_advanced_index]
-        else:
-            raise RuntimeError("Cached pdist has unrecognized shape")
-
-    def norm_consistency(self, embedding, embeddings):
-        differences = embeddings - embedding
-        inconsistency = np.linalg.norm(differences, axis=1)
-        return inconsistency < self.norm_cutoff
-
-    def qvalue_consistency(
-        self,
-        neighbor_index,
-        pdist_combined,
-        rb_to_embedding_combined,
-        embedding_to_rb_combined,
-    ):
-        # Find adjacent nodes
-        in_indices = np.array(list(self.g.predecessors(neighbor_index)))
-        out_indices = np.array(list(self.g.successors(neighbor_index)))
-
-        # Be conservative about merging in this edge case
-        if len(in_indices) == 0 and len(out_indices) == 0:
-            return False
-
-        # Calculate qvalues with adjacent nodes
-        if len(in_indices) != 0:
-            existing_in_qvals = pdist_combined[in_indices, neighbor_index]
-            new_in_qvals = rb_to_embedding_combined[in_indices]
-        else:
-            existing_in_qvals = np.array([])
-            new_in_qvals = np.array([])
-        if len(out_indices) != 0:
-            existing_out_qvals = pdist_combined[neighbor_index, out_indices]
-            new_out_qvals = embedding_to_rb_combined[out_indices]
-        else:
-            existing_out_qvals = np.array([])
-            new_out_qvals = np.array([])
-        existing_qvals = np.append(existing_in_qvals, existing_out_qvals)
-        new_qvals = np.append(new_in_qvals, new_out_qvals)
-
-        # Measure qvalue consistency
-        qval_diffs = new_qvals - existing_qvals
-        qval_inconsistency = np.linalg.norm(qval_diffs, np.inf)
-
-        # Determine if consistent using cutoff
-        return qval_inconsistency < self.consistency_cutoff
-
-    def get_goal_in_rb(self):
-        goal_index = np.random.randint(low=0, high=self.rb_vec.shape[0])
-        return self.rb_vec[goal_index].copy()

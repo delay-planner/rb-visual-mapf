@@ -77,6 +77,7 @@ class MultiObjectiveCBSSolver(object):
             random.seed(0)
 
         self.graph = graph
+        self.undirected_graph = graph.to_undirected()
 
         self.goals = goals
         self.starts = starts
@@ -133,16 +134,24 @@ class MultiObjectiveCBSSolver(object):
                 min_cost = min(
                     min_cost, self.graph[node][neighbor][self.risk_attribute]
                 )
-            self.graph.add_edge(node, node, step=0, cost=min_cost)
-
-        self.single_agent_planners = {}
-        for agent in range(self.num_agents):
-            self.single_agent_planners[agent] = MultiObjectiveAStar(
-                graph, agent, starts[agent], goals[agent], config
-            )
+            self.graph.add_edge(node, node, weight=0, step=1, cost=min_cost)
 
         self.single_agent_planner_times = []
         self.single_agent_planner_expansions = []
+
+        self.make_planners(config)
+
+    def make_planners(self, config: Dict) -> None:
+        self.single_agent_planners = {}
+        for agent in range(self.num_agents):
+            self.single_agent_planners[agent] = MultiObjectiveAStar(
+                config=config,
+                agent_id=agent,
+                graph=self.graph,
+                goal=self.goals[agent],
+                start=self.starts[agent],
+                undirected_graph=self.undirected_graph,
+            )
 
     def init_search_on_demand(self) -> bool:
         self.pareto_individual_paths = {}
@@ -152,7 +161,7 @@ class MultiObjectiveCBSSolver(object):
 
             plan_start_time = time.time()
             pareto_paths, _ = self.single_agent_planners[agent].find_path(
-                constraints=[]
+                constraints=[], max_time=self.max_time // self.num_agents
             )
             plan_end_time = time.time()
             self.single_agent_planner_times.append(plan_end_time - plan_start_time)

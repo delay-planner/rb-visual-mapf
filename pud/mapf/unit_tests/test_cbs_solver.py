@@ -123,6 +123,7 @@ class TestCBSSolver(unittest.TestCase):
                         self.G.add_edge(
                             node,
                             neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                            weight=1,
                             step=1,
                             cost=1,
                         )
@@ -130,6 +131,7 @@ class TestCBSSolver(unittest.TestCase):
                         self.G.add_edge(
                             node,
                             neighbor[0] * boolean_map.shape[1] + neighbor[1],
+                            weight=1,
                             step=1,
                             cost=0,
                         )

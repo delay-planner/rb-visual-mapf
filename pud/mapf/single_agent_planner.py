@@ -3,8 +3,8 @@ import copy
 import time
 import heapq
 import numpy as np
-from networkx import Graph
 from numpy.typing import NDArray
+from networkx import Graph, shortest_path
 from typing import Dict, List, Tuple, Union
 from pud.mapf.mapf_exceptions import MAPFErrorCodes
 from pud.mapf.utils import PrioritySet, dominate_or_equal
@@ -266,12 +266,19 @@ class RiskNode(Node):
 
 class AStar(object):
     def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+        self,
+        graph: Graph,
+        undirected_graph: Graph,
+        agent_id: int,
+        start: int,
+        goal: int,
+        config: Dict,
     ):
         self.goal = goal
         self.start = start
         self.graph = graph
         self.agent_id = agent_id
+        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -286,9 +293,33 @@ class AStar(object):
 
         self.heuristic = {}
         for edge_attribute in self.edge_attributes:
-            self.heuristic[edge_attribute] = compute_heuristics(
-                self.graph, self.goal, edge_attribute
-            )
+            self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
+
+    def compute_heuristics(self, edge_attribute="step"):
+        open_list = [(0, self.goal)]
+        heuristics = {self.goal: 0}
+        closed_list = set()
+
+        while open_list:
+            cost, location = heapq.heappop(open_list)
+
+            if location in closed_list:
+                continue
+            closed_list.add(location)
+
+            for neighbor in self.undirected_graph.neighbors(location):
+                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
+                if edge_attribute == "cost":
+                    edge_cost += 1
+            # for neighbor in self.graph.neighbors(location):
+            #     edge_cost = self.graph[location][neighbor][edge_attribute]
+                successor_cost = cost + edge_cost
+
+                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
+                    heuristics[neighbor] = successor_cost  # type: ignore
+                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
+
+        return heuristics
 
     def reset(self) -> None:
         self.num_expanded = 0
@@ -310,35 +341,35 @@ class AStar(object):
     def successor_generator(
         self, current_node: Node, neighbor_location: int, edge_attribute: str = "step"
     ) -> Node:
-        if neighbor_location == current_node.location:
-            # We are waiting here
-            successor = Node(
-                parent=current_node,
-                id=self.num_generated,
-                location=neighbor_location,
-                h_value=current_node.h_value,
-                g_value=current_node.g_value + 1,
-                timestep=current_node.timestep + 1,
-            )
-        else:
-            successor_gadd = self.graph[current_node.location][neighbor_location][
-                edge_attribute
-            ]
+        # if neighbor_location == current_node.location:
+        #     # We are waiting here
+        #     successor = Node(
+        #         parent=current_node,
+        #         id=self.num_generated,
+        #         location=neighbor_location,
+        #         h_value=current_node.h_value,
+        #         g_value=current_node.g_value + 1,
+        #         timestep=current_node.timestep + 1,
+        #     )
+        # else:
+        successor_gadd = self.graph[current_node.location][neighbor_location][
+            edge_attribute
+        ]
 
-            if edge_attribute == "cost":
-                # This ensures that the agent gives more priority to the cost of the edge
-                successor_gadd *= 3 * self.max_distance
-                # This ensures that the agent makes progress even when the edge attribute is zero
-                successor_gadd += 1
+        if edge_attribute == "cost":
+            # # This ensures that the agent gives more priority to the cost of the edge
+            # successor_gadd *= 3 * self.max_distance
+            # This ensures that the agent makes progress even when the edge attribute is zero
+            successor_gadd += 1
 
-            successor = Node(
-                parent=current_node,
-                id=self.num_generated,
-                location=neighbor_location,
-                g_value=current_node.g_value + successor_gadd,
-                timestep=current_node.timestep + 1,
-                h_value=self.heuristic[edge_attribute][neighbor_location],
-            )
+        successor = Node(
+            parent=current_node,
+            id=self.num_generated,
+            location=neighbor_location,
+            g_value=current_node.g_value + successor_gadd,
+            timestep=current_node.timestep + 1,
+            h_value=self.heuristic[edge_attribute][neighbor_location],
+        )
 
         return successor
 
@@ -388,6 +419,9 @@ class AStar(object):
     ) -> Union[List[int], MAPFErrorCodes]:
         start_time = time.time()
         self.reset()
+
+        if len(constraints) == 0:
+            return shortest_path(self.graph, self.start, self.goal, edge_attribute)  # type: ignore
 
         if self.start not in self.heuristic[edge_attribute]:
             return MAPFErrorCodes.START_GOAL_DISCONNECT
@@ -516,9 +550,15 @@ class AStar(object):
 
 class RiskBudgetedAStar(AStar):
     def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+        self,
+        graph: Graph,
+        undirected_graph: Graph,
+        agent_id: int,
+        start: int,
+        goal: int,
+        config: Dict,
     ):
-        super().__init__(graph, agent_id, start, goal, config)
+        super().__init__(graph, undirected_graph, agent_id, start, goal, config)
 
     def push_constrained_node(self, node: RiskNode) -> None:
         heapq.heappush(
@@ -538,34 +578,34 @@ class RiskBudgetedAStar(AStar):
         neighbor_location: int,
         edge_attribute: str = "step",
     ) -> RiskNode:
-        if neighbor_location == current_node.location:
-            successor_risk = current_node.risk
-            successor = RiskNode(
-                parent=current_node,
-                risk=successor_risk,
-                id=self.num_generated,
-                location=neighbor_location,
-                h_value=current_node.h_value,
-                g_value=current_node.g_value + 1,
-                timestep=current_node.timestep + 1,
-            )
-        else:
-            successor_gadd = self.graph[current_node.location][neighbor_location][
-                edge_attribute
-            ]
-            successor_risk = (
-                current_node.risk
-                + self.graph[current_node.location][neighbor_location]["cost"]
-            )
-            successor = RiskNode(
-                parent=current_node,
-                risk=successor_risk,
-                id=self.num_generated,
-                location=neighbor_location,
-                timestep=current_node.timestep + 1,
-                g_value=current_node.g_value + successor_gadd,
-                h_value=self.heuristic[edge_attribute][neighbor_location],
-            )
+        # if neighbor_location == current_node.location:
+        #     successor_risk = current_node.risk
+        #     successor = RiskNode(
+        #         parent=current_node,
+        #         risk=successor_risk,
+        #         id=self.num_generated,
+        #         location=neighbor_location,
+        #         h_value=current_node.h_value,
+        #         g_value=current_node.g_value + 1,
+        #         timestep=current_node.timestep + 1,
+        #     )
+        # else:
+        successor_gadd = self.graph[current_node.location][neighbor_location][
+            edge_attribute
+        ]
+        successor_risk = (
+            current_node.risk
+            + self.graph[current_node.location][neighbor_location]["cost"]
+        )
+        successor = RiskNode(
+            parent=current_node,
+            risk=successor_risk,
+            id=self.num_generated,
+            location=neighbor_location,
+            timestep=current_node.timestep + 1,
+            g_value=current_node.g_value + successor_gadd,
+            h_value=self.heuristic[edge_attribute][neighbor_location],
+        )
 
         return successor
 
@@ -658,7 +698,7 @@ class RiskBudgetedAStar(AStar):
                 ):
                     max_constraint = 0
 
-        self.push_node(root)
+        self.push_constrained_node(root)
 
         if (
             self.use_experience
@@ -762,15 +802,15 @@ class LagrangianAStar(AStar):
     def __init__(
         self,
         graph: Graph,
+        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
         lagrangian: float,
         config: Dict,
     ):
-        super().__init__(graph, agent_id, start, goal, config)
         self.lagrangian = lagrangian
-
+        super().__init__(graph, undirected_graph, agent_id, start, goal, config)
         assert (
             len(self.edge_attributes) == 2
         ), "Lagrangian A* requires two edge attributes"
@@ -781,10 +821,7 @@ class LagrangianAStar(AStar):
             "cost" in self.edge_attributes
         ), "Lagrangian A* requires cost edge attribute"
 
-        self.heuristic["step"] = self.compute_heuristics()
-
-    def compute_heuristics(self):
-        graph = self.graph.to_undirected()
+    def compute_heuristics(self, edge_attribute="step"):
         open_list = [(0, self.goal)]
         heuristics = {self.goal: 0}
         closed_list = set()
@@ -796,10 +833,11 @@ class LagrangianAStar(AStar):
                 continue
             closed_list.add(location)
 
-            for neighbor in graph.neighbors(location):
+            for neighbor in self.undirected_graph.neighbors(location):
                 edge_cost = (
-                    graph[location][neighbor]["step"]
-                    + self.lagrangian * graph[location][neighbor]["cost"]
+                    self.undirected_graph[location][neighbor]["step"]
+                    + self.lagrangian
+                    * self.undirected_graph[location][neighbor]["cost"]
                 )
                 successor_cost = cost + edge_cost
 
@@ -850,13 +888,20 @@ class FrontierBiObjective(object):
 
 class BiObjectiveAStar(object):
     def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+        self,
+        graph: Graph,
+        undirected_graph: Graph,
+        agent_id: int,
+        start: int,
+        goal: int,
+        config: Dict,
     ):
         self.goal = goal
         self.start = start
         self.agent_id = agent_id
 
         self.graph = graph
+        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -873,9 +918,29 @@ class BiObjectiveAStar(object):
 
         self.heuristic = {}
         for edge_attribute in self.edge_attributes:
-            self.heuristic[edge_attribute] = compute_heuristics(
-                self.graph, self.goal, edge_attribute
-            )
+            self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
+
+    def compute_heuristics(self, edge_attribute: str = "step"):
+        open_list = [(0, self.goal)]
+        heuristics = {self.goal: 0}
+        closed_list = set()
+
+        while open_list:
+            cost, location = heapq.heappop(open_list)
+
+            if location in closed_list:
+                continue
+            closed_list.add(location)
+
+            for neighbor in self.undirected_graph.neighbors(location):
+                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
+                successor_cost = cost + edge_cost
+
+                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
+                    heuristics[neighbor] = successor_cost  # type: ignore
+                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
+
+        return heuristics
 
     def get_heuristic(self, location: int) -> NDArray:
         heuristic = np.zeros(self.cost_dim)
@@ -918,7 +983,9 @@ class BiObjectiveAStar(object):
     def frontier_check(self, current_node: MultiObjectiveNode) -> bool:
         current_node_key = self.get_frontier_key(current_node)
         if current_node_key in self.id_to_frontier_map:
-            return self.id_to_frontier_map[current_node_key].check(current_node.g_vector)
+            return self.id_to_frontier_map[current_node_key].check(
+                current_node.g_vector
+            )
         return False
 
     def solution_check(self, current_node: MultiObjectiveNode) -> bool:
@@ -1064,13 +1131,20 @@ class MultiObjectiveNode(object):
 
 class MultiObjectiveAStar(object):
     def __init__(
-        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+        self,
+        graph: Graph,
+        undirected_graph: Graph,
+        agent_id: int,
+        start: int,
+        goal: int,
+        config: Dict,
     ):
         self.goal = goal
         self.start = start
         self.agent_id = agent_id
 
         self.graph = graph
+        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -1087,9 +1161,29 @@ class MultiObjectiveAStar(object):
 
         self.heuristic = {}
         for edge_attribute in self.edge_attributes:
-            self.heuristic[edge_attribute] = compute_heuristics(
-                self.graph, self.goal, edge_attribute
-            )
+            self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
+
+    def compute_heuristics(self, edge_attribute: str = "step"):
+        open_list = [(0, self.goal)]
+        heuristics = {self.goal: 0}
+        closed_list = set()
+
+        while open_list:
+            cost, location = heapq.heappop(open_list)
+
+            if location in closed_list:
+                continue
+            closed_list.add(location)
+
+            for neighbor in self.undirected_graph.neighbors(location):
+                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
+                successor_cost = cost + edge_cost
+
+                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
+                    heuristics[neighbor] = successor_cost  # type: ignore
+                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
+
+        return heuristics
 
     def get_heuristic(self, location: int) -> NDArray:
         h_val = np.zeros(self.cost_dim)
@@ -1348,7 +1442,9 @@ class FrontierLinear(object):
 
 
 class NAMultiObjectiveAStar(object):
-    def __init__(self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict):
+    def __init__(
+        self, graph: Graph, agent_id: int, start: int, goal: int, config: Dict
+    ):
         self.goal = goal
         self.start = start
         self.agent_id = agent_id
