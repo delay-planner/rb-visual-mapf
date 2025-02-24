@@ -1536,19 +1536,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            if isinstance(cbs_solver, CBSSolver):
-                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
-                    lb_data = []
-                    if Path(self.cbs_config["lb_save_path"]).exists():
-                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
-                    lb_data.append(-1)
-                    np.save(self.cbs_config["lb_save_path"], lb_data)
-                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
-                    ub_data = []
-                    if Path(self.cbs_config["ub_save_path"]).exists():
-                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
-                    ub_data.append(-1)
-                    np.save(self.cbs_config["ub_save_path"], ub_data)
             raise RuntimeError(
                 "CBS failed to find a solution. " + error_message
             )

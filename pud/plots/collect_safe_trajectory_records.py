@@ -1422,6 +1422,18 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
                 )
             except Exception as e:
                 logging.error(f"Error: {e}")
+                if edge_attrib == ["cost"]:
+                    lb_data = []
+                    if Path(cbs_config["lb_save_path"]).exists():
+                        lb_data = np.load(cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                    lb_data.append(-1)
+                    np.save(cbs_config["lb_save_path"], lb_data)
+                else:
+                    ub_data = []
+                    if Path(cbs_config["ub_save_path"]).exists():
+                        ub_data = np.load(cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                    ub_data.append(-1)
+                    np.save(cbs_config["ub_save_path"], ub_data)
 
 
 # def single_unconstrained_search_policy(
