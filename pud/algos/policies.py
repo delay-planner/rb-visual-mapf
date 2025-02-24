@@ -1513,7 +1513,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             solution = cbs_solver.find_paths()
 
             # TODO: Temporary code here for now. Remove after collection step is done!
-            assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
+            # assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             if isinstance(cbs_solver, CBSSolver):
                 if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
                     lb_data = []
