@@ -1074,7 +1074,7 @@ def risk_budgeted_search_policy(
                 continue
             elif lb == ub and pct != 0.0:
                 risk_budgeted_search_records[idx].append(
-                    risk_budgeted_search_records[idx - 1]
+                    risk_budgeted_search_records[idx - 1][pb_idx]
                 )
                 continue
             else:
@@ -1250,7 +1250,7 @@ def risk_bounded_search_policy(
                 continue
             elif lb == ub and pct != 0.0:
                 risk_bounded_search_records[idx].append(
-                    risk_bounded_search_records[idx - 1]
+                    risk_bounded_search_records[idx - 1][pb_idx]
                 )
                 continue
             else:
