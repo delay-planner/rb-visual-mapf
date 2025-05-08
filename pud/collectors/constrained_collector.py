@@ -635,9 +635,11 @@ class ConstrainedCollector(Collector):
                             continue
 
                         agent_state = np.array(state["agent_observations"][agent_id])
+                        agent_state *= denormalize_factor
                         other_agent_state = np.array(
                             state["agent_observations"][other_agent_id]
                         )
+                        other_agent_state *= denormalize_factor
 
                         if np.linalg.norm(agent_state - other_agent_state) < 1.0:
                             # Wait if the distance is less than MAX_ACTION
@@ -865,9 +867,10 @@ class ConstrainedCollector(Collector):
                         if agent_id == other_agent_id:
                             continue
 
-                        agent_state = np.array(state["agent_observations"][agent_id])
+                        # State here is agent ID x 2 where each element is a tuple of grid and visual observation
+                        agent_state = np.array(state["agent_observations"][agent_id][0])
                         other_agent_state = np.array(
-                            state["agent_observations"][other_agent_id]
+                            state["agent_observations"][other_agent_id][0]
                         )
 
                         if np.linalg.norm(agent_state - other_agent_state) < 1.0:

@@ -7,7 +7,6 @@ agents=(1 5 10 20)
 constrained_ckpt_file=$4
 unconstrained_ckpt_file=$3
 problem_types=("hard" "medium" "easy")
-# multiline bash array
 method_types=(
     "collect_bounds_data"
     "unconstrained" 
@@ -24,11 +23,8 @@ method_types=(
     "risk_bounded_utility_search"
     "risk_bounded_inverse_utility_search"
 )
-# method_types=("unconstrained" "unconstrained_reward_search" "constrained" "constrained_reward_search" "constrained_risk_search" "full_constrained_reward_search" "full_constrained_risk_search" "lagrangian_search" "biobjective_search") 
-#"unconstrained_search" "constrained_search" "unconstrained_search_ds" "constrained_search_ds" "risk_bounded_constrained_search_ds")
 
-env_options=("sc0_staging_20") 
-#"centerdot" "sc2_staging_08" "sc0_staging_20" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15")
+env_options=("centerdot" "sc0_staging_20" "sc2_staging_08" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15") 
 if [[ ! " ${env_options[@]} " =~ " ${env} " ]]; then
     echo $baseline
     echo "Error: Invalid env provided. Please choose from: ${env_options[*]}"
@@ -53,21 +49,6 @@ collect_trajectories() {
         echo "Script crashed with exit code $EXIT_CODE. Restarting..." >&2
     sleep 1
     done
-    # if [ $method_type == "constrained_search" ] || [ $method_type == "constrained_search_ds" ] || [ $method_type == "risk_bounded_constrained_search_ds" ]; then
-    #     printf "%*s\n" 50 | tr ' ' '*'
-    #     echo "Method type: ${method_type} with unconstrained checkpoint"
-    #     printf "%*s\n" 50 | tr ' ' '*'
-    #     while true; do
-    #         python -u pud/plots/collect_safe_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --use_unconstrained_ckpt --num_agents ${num_agent} ${visual} --traj_difficulty ${problem_type}
-    #         EXIT_CODE=$?
-    #         if [ $EXIT_CODE -eq 0 ]; then
-    #             echo "Script completed successfully."
-    #             break
-    #         fi
-    #         echo "Script crashed with exit code $EXIT_CODE. Restarting..." >&2
-    #     sleep 1
-    #     done
-    # fi
 }
 
 # Sample problems

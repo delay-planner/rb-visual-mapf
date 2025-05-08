@@ -128,7 +128,6 @@ class RiskBoundedCBSSolver(CBSSolver):
                 graph=self.graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
-                undirected_graph=self.undirected_graph,
             )
 
     def min_feasible_cost(
@@ -154,7 +153,7 @@ class RiskBoundedCBSSolver(CBSSolver):
         self,
         failings_agents: List[int],
         cbs_node: RiskBoundedCBSNode,
-    ) -> Union[Tuple[List[float], int], MAPFErrorCodes]:
+    ) -> Union[Tuple[List[float], List], MAPFErrorCodes]:
 
         passing_agents = [
             agent for agent in range(self.num_agents) if agent not in failings_agents
@@ -208,17 +207,14 @@ class RiskBoundedCBSSolver(CBSSolver):
         # If the cumulative minimum feasible risk allocations of passing agents are less than the required budget
         # for the failing agents, then we no reallocation of the risk will make the failing agents pass without
         # violating the risk-budgeted paths of the passing agents
-        if additional_budget > budget_available:
+        if round(additional_budget, 10) > round(budget_available, 10):
             return MAPFErrorCodes.BUDGET_MISMATCH
 
-        num_agents_allocation_modified = 0
         new_allocation = cbs_node.risk_allocation.copy()
         for agent in failings_agents:
-            num_agents_allocation_modified += 1
             new_allocation[agent] = required_budgets[agent]
 
         for agent in passing_agents:
-            num_agents_allocation_modified += 1
             max_reduction = (
                 cbs_node.risk_allocation[agent]
                 - passing_agent_minimum_feasible_budgets[agent]
@@ -229,7 +225,8 @@ class RiskBoundedCBSSolver(CBSSolver):
             if additional_budget <= 0:
                 break
 
-        return new_allocation, num_agents_allocation_modified
+        diff = np.array(cbs_node.risk_allocation) != np.array(new_allocation)
+        return new_allocation, np.where(diff)[0].tolist()
 
     def push_node(
         self, cbs_node: RiskBoundedCBSNode, risk_allocations_changed: int = 0
@@ -402,7 +399,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                     accumulated_risk = self.compute_sum_of_costs(
                         current_node.paths, risk=True
                     )
-                    if accumulated_risk <= self.risk_bound:
+                    if round(accumulated_risk, 10) <= round(self.risk_bound, 10):
                         # If the accumulated risk is within the risk bound then we have found a solution
                         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
                             self.search_tree.add_node(
@@ -484,13 +481,14 @@ class RiskBoundedCBSSolver(CBSSolver):
 
                                 # If their path is found then update their path in this branch's CBS node
                                 if type(agent_path) is not MAPFErrorCodes:
-                                    # logging.debug("Path found is {}".format(agent_path))
+                                    logging.debug("Path found for violating agent {}".format(agent))
                                     successor.paths[agent] = agent_path
                                     successor.paths_found[agent] = True
                                 else:
                                     # If we cannot find a path for this violating agent then keep track of them so
                                     # that we can recompute the risk allocation and re-insert the node into the open
                                     # list
+                                    logging.debug("Path was not found for violating agent {}".format(agent))
                                     successor.paths_found[agent] = False
 
                             # If some of the violating agents were not able to find paths within their risk allocation
@@ -510,7 +508,7 @@ class RiskBoundedCBSSolver(CBSSolver):
 
                                 # If the reallocation of the risk is successful then we need to re-insert the node
                                 if type(new_allocation) is not MAPFErrorCodes:
-                                    new_allocation, num_agents_allocation_changed = new_allocation  # type: ignore
+                                    new_allocation, agents_allocation_changed = new_allocation  # type: ignore
                                     logging.debug(
                                         "Violating agents paths not found so reallocated risk {}".format(
                                             new_allocation
@@ -525,9 +523,11 @@ class RiskBoundedCBSSolver(CBSSolver):
                                         self.collision_radius,
                                     )
                                     successor.risk_allocation = new_allocation
+                                    for allocation_changed in agents_allocation_changed:
+                                        successor.paths_found[allocation_changed] = False
 
                                     self.push_node(
-                                        successor, num_agents_allocation_changed
+                                        successor, len(agents_allocation_changed)
                                     )
 
                                     if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
@@ -545,6 +545,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                                         logging.debug(
                                             "Generated: {}".format(self.num_generated)
                                         )
+                                        logging.debug("Edge between {} and {}".format(current_node.id, successor.id))
                                 else:
                                     # If the reallocation of the risk is not successful then we cannot find a solution
                                     # from this branch of the CBS tree that satisfies the risk allocation and the
@@ -592,6 +593,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                                 current_node.id, successor.id, label=changes
                             )
                             logging.debug("Generated: {}".format(self.num_generated))
+                            logging.debug("Edge between {} and {}".format(current_node.id, successor.id))
                     else:
                         # If the path is not found for the conflicting agent within its risk allocation
                         # then we need to recompute the risk allocation for the failing agent and check if
@@ -606,7 +608,7 @@ class RiskBoundedCBSSolver(CBSSolver):
 
                         # If the reallocation of the risk is successful then we need to re-insert the node
                         if type(new_allocation) is not MAPFErrorCodes:
-                            new_allocation, num_agents_allocation_changed = new_allocation  # type: ignore
+                            new_allocation, agents_allocation_changed = new_allocation  # type: ignore
                             logging.debug(
                                 "Constraint agent's path not found so reallocated risk {}".format(
                                     new_allocation
@@ -619,8 +621,10 @@ class RiskBoundedCBSSolver(CBSSolver):
                                 self.collision_radius,
                             )
                             successor.risk_allocation = new_allocation
+                            for allocation_changed in agents_allocation_changed:
+                                successor.paths_found[allocation_changed] = False
 
-                            self.push_node(successor, num_agents_allocation_changed)
+                            self.push_node(successor, len(agents_allocation_changed))
 
                             if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
                                 changes = "+" if constraint["positive"] else "-"
@@ -633,6 +637,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                                     current_node.id, successor.id, label=changes
                                 )
                                 logging.debug("Generated: {}".format(self.num_generated))
+                                logging.debug("Edge between {} and {}".format(current_node.id, successor.id))
                         else:
                             # If the reallocation of the risk is not successful then we cannot find a solution from
                             # this branch of the CBS tree
@@ -673,12 +678,14 @@ class RiskBoundedCBSSolver(CBSSolver):
 
                 # If the reallocation of the risk is successful then we need to re-insert the node
                 if type(new_allocation) is not MAPFErrorCodes:
-                    new_allocation, num_agents_allocation_changed = new_allocation  # type: ignore
+                    new_allocation, agents_allocation_changed = new_allocation  # type: ignore
                     successor = current_node.copy()
                     successor.id = self.num_generated
                     successor.risk_allocation = new_allocation
+                    for allocation_changed in agents_allocation_changed:
+                        successor.paths_found[allocation_changed] = False
 
-                    self.push_node(successor, num_agents_allocation_changed)
+                    self.push_node(successor, len(agents_allocation_changed))
 
                     if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
                         changes = "RA failure"
@@ -686,6 +693,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                             current_node.id, successor.id, label=changes
                         )
                         logging.debug("Generated: {}".format(self.num_generated))
+                        logging.debug("Edge between {} and {}".format(current_node.id, successor.id))
                     logging.debug(
                         "Risk allocation {}".format(successor.risk_allocation)
                     )

@@ -66,7 +66,6 @@ class CBSSolver(object):
 
         self.graph = graph
         self.graph_waypoints = graph_waypoints
-        self.undirected_graph = graph.to_undirected()
 
         self.goals = goals
         self.starts = starts
@@ -108,13 +107,9 @@ class CBSSolver(object):
             raise RuntimeError(MAPFError(MAPFErrorCodes.INVALID_SPLITTER)["message"])
 
         # Add self-loops
-        for node in self.graph.nodes:
+        for node, neighbors in self.graph.adjacency():
             # ASSUMPTION 1: The cost of waiting at a node is the minimum risk of reaching this node from its neighbors
-            min_cost = np.inf
-            for neighbor in self.graph.neighbors(node):
-                min_cost = min(
-                    min_cost, self.graph[node][neighbor][self.risk_attribute]
-                )
+            min_cost = min((data[self.risk_attribute] for data in neighbors.values()), default=np.inf)
             self.graph.add_edge(node, node, weight=0, step=1, cost=min_cost)
 
         self.make_planners(config)
@@ -126,7 +121,6 @@ class CBSSolver(object):
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                undirected_graph=self.undirected_graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
             )

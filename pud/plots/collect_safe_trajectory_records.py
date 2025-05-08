@@ -1,29 +1,22 @@
-import sys
+import time
 import yaml
 import torch
 import logging
 import argparse
-import traceback
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from dotmap import DotMap
 
-from pud.mapf.cbs import CBSSolver
 from pud.algos.ddpg import GoalConditionedCritic
-from pud.mapf.single_agent_planner import compute_sum_of_costs
 from pud.utils import set_global_seed, set_env_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.collectors.constrained_collector import ConstrainedCollector
 from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_pbs_by_agent
 from pud.algos.policies import (
-    SearchPolicy,
-    VisualSearchPolicy,
     MultiAgentSearchPolicy,
-    ConstrainedSearchPolicy,
     VisualMultiAgentSearchPolicy,
-    VisualConstrainedSearchPolicy,
     ConstrainedMultiAgentSearchPolicy,
     VisualConstrainedMultiAgentSearchPolicy,
 )
@@ -41,7 +34,7 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 
 TIMELIMIT = 60
-MAX_TIMELIMIT = 300
+MAX_TIMELIMIT = 60
 COST_LIMIT_FACTOR = 0.5
 COLLISION_THRESHOLD = 1e-3
 
@@ -97,7 +90,7 @@ def pointenv_setup(args):
         f"Goal dim: {goal_dim},\n"
         f"State dim: {state_dim},\n"
         f"Action dim: {action_dim},\n"
-        "Max action: {max_action}"
+        f"Max action: {max_action}"
     )
 
     agent = DRLDDPGLag(
@@ -390,6 +383,7 @@ def unconstrained_policy(
 
     unconstrained_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
     save_path = save_path / f"{args.method_type}_records_{args.num_agents}.npy"
@@ -397,35 +391,54 @@ def unconstrained_policy(
         unconstrained_records = np.load(save_path, allow_pickle=True)
         unconstrained_records = unconstrained_records.tolist()
 
-    start_idx = len(unconstrained_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+    start_idx = len(unconstrained_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-        #     agent,
-        #     eval_env,
-        #     args.num_agents,
-        #     habitat=habitat,
-        #     wait=True,
-        #     threshold=COLLISION_THRESHOLD,
-        # )
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 agent,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             unconstrained_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            unconstrained_records.append({})
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            unconstrained_records.append(records)
 
         if save:
             np.save(save_path, unconstrained_records)
@@ -445,6 +458,7 @@ def constrained_policy(
 
     constrained_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
     save_path = save_path / f"{args.method_type}_records_{args.num_agents}.npy"
@@ -452,27 +466,54 @@ def constrained_policy(
         constrained_records = np.load(save_path, allow_pickle=True)
         constrained_records = constrained_records.tolist()
 
-    start_idx = len(constrained_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+    start_idx = len(constrained_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 agent,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             constrained_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            constrained_records.append({})
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            constrained_records.append(records)
 
         if save:
             np.save(save_path, constrained_records)
@@ -498,6 +539,7 @@ def unconstrained_search_policy(
 
     unconstrained_search_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
     save_path = save_path / f"{args.method_type}_records_{args.num_agents}.npy"
@@ -505,8 +547,8 @@ def unconstrained_search_policy(
         unconstrained_search_records = np.load(save_path, allow_pickle=True)
         unconstrained_search_records = unconstrained_search_records.tolist()
 
-    start_idx = len(unconstrained_search_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+    start_idx = len(unconstrained_search_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     if not habitat:
         rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
@@ -527,7 +569,12 @@ def unconstrained_search_policy(
         "split_strategy": "disjoint",
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
+        "tree_save_frequency": 1,
+        "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
+
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
 
     if not habitat:
         search_policy = MultiAgentSearchPolicy(
@@ -552,31 +599,51 @@ def unconstrained_search_policy(
         )
 
     problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-        #     search_policy,
-        #     eval_env,
-        #     args.num_agents,
-        #     habitat=habitat,
-        #     wait=True,
-        #     threshold=COLLISION_THRESHOLD,
-        # )
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
+        search_policy.planning_graph = processed_problems[pb_idx]["graph"]
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 search_policy,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             unconstrained_search_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            unconstrained_search_records.append([{} for _ in range(args.num_agents)])
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            unconstrained_search_records.append(records)
 
         if save:
             np.save(save_path, unconstrained_search_records)
@@ -605,6 +672,7 @@ def constrained_search_policy(
 
     constrained_search_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
 
@@ -624,8 +692,8 @@ def constrained_search_policy(
         constrained_search_records = np.load(save_path, allow_pickle=True)
         constrained_search_records = constrained_search_records.tolist()
 
-    start_idx = len(constrained_search_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
+    start_idx = len(constrained_search_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     if not habitat:
         rb_vec = problem_setup[0].copy()
@@ -648,12 +716,13 @@ def constrained_search_policy(
         "split_strategy": "disjoint",
         "edge_attributes": edge_attributes,
         "max_distance": eval_env.max_goal_dist,
-        "max_time": (
-            min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT)
-            if not full_risk
-            else min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT * 2)
-        ),
+        "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
+        "tree_save_frequency": 1,
+        "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
+
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
 
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
@@ -694,27 +763,52 @@ def constrained_search_policy(
         )
 
     problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-        #     search_policy,
-        #     eval_env,
-        #     args.num_agents,
-        #     habitat=habitat,
-        #     wait=True,
-        #     threshold=COLLISION_THRESHOLD,
-        # )
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
+        if not full_risk:
+            graph = processed_problems[pb_idx]["graph"]
+            for u, v in graph.edges():
+                if graph[u][v]["cost"] > trained_cost_limit * COST_LIMIT_FACTOR:
+                    graph.remove_edge(u, v)
+        else:
+            graph = processed_problems[pb_idx]["graph"]
+        search_policy.planning_graph = graph
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 search_policy,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             constrained_search_records.append(records)
             if full_risk:
                 all_success = True
@@ -730,7 +824,9 @@ def constrained_search_policy(
                     bounds_data.append(-1)
         except Exception as e:
             logging.error(f"Error: {e}")
-            constrained_search_records.append([{} for _ in range(args.num_agents)])
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            constrained_search_records.append(records)
             if full_risk:
                 bounds_data.append(-1)
 
@@ -768,6 +864,7 @@ def lagrangian_search_policy(
 
     lagrangian_search_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
     save_path = save_path / f"{args.method_type}_records_{args.num_agents}.npy"
@@ -775,12 +872,8 @@ def lagrangian_search_policy(
         lagrangian_search_records = np.load(save_path, allow_pickle=True)
         lagrangian_search_records = lagrangian_search_records.tolist()
 
-    start_idx = len(lagrangian_search_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    start_idx = len(lagrangian_search_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     cbs_config = {
         "seed": None,
@@ -793,7 +886,12 @@ def lagrangian_search_policy(
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
         "lagrangian": agent.lagrange.lagrangian_multiplier.data.numpy(),
+        "tree_save_frequency": 1,
+        "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
+
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
 
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
@@ -827,23 +925,52 @@ def lagrangian_search_policy(
             },
         )
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-        #     search_policy, eval_env, args.num_agents, habitat=habitat, wait=True
-        # )
+    problems = problem_setup[-1].copy()
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
+        search_policy.planning_graph = processed_problems[pb_idx]["graph"]
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 search_policy,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             lagrangian_search_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            lagrangian_search_records.append([{} for _ in range(args.num_agents)])
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            lagrangian_search_records.append(records)
 
         if save:
             np.save(save_path, lagrangian_search_records)
@@ -872,6 +999,7 @@ def biobjective_search_policy(
 
     biobjective_search_records = []
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
     save_path = save_path / f"{args.method_type}_records_{args.num_agents}.npy"
@@ -879,12 +1007,8 @@ def biobjective_search_policy(
         biobjective_search_records = np.load(save_path, allow_pickle=True)
         biobjective_search_records = biobjective_search_records.tolist()
 
-    start_idx = len(biobjective_search_records) * args.num_agents
-    logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-    problems = problem_setup[-1].copy()
-    problems = problems[start_idx:]
-    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+    start_idx = len(biobjective_search_records)
+    logging.info(f"Starting from index: {start_idx}")
 
     cbs_config = {
         "seed": None,
@@ -897,7 +1021,12 @@ def biobjective_search_policy(
         "edge_attributes": ["step", "cost"],
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
+        "tree_save_frequency": 1,
+        "logdir": "pud/mapf/unit_tests/logs/bocbs",
     }
+
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
 
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
@@ -931,28 +1060,52 @@ def biobjective_search_policy(
             },
         )
 
-    for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-        # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-        #     search_policy,
-        #     eval_env,
-        #     args.num_agents,
-        #     habitat=habitat,
-        #     wait=True,
-        #     threshold=COLLISION_THRESHOLD,
-        # )
+    problems = problem_setup[-1].copy()
+    eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
+
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
+    for pb_idx in tqdm(range(start_idx, config.num_samples)):
+        start_costs = np.zeros(args.num_agents)
+        input_starts, input_goals = [], []
+        input_starts = [
+            (
+                eval_env.normalize_obs(start)
+                if not habitat
+                else (start, eval_env.normalize_obs(start))
+            )
+            for start in processed_problems[pb_idx]["starts"]
+        ]
+        input_goals = [
+            (
+                eval_env.normalize_obs(goal)
+                if not habitat
+                else (goal, eval_env.normalize_obs(goal))
+            )
+            for goal in processed_problems[pb_idx]["goals"]
+        ]
+        search_policy.planning_graph = processed_problems[pb_idx]["graph"]
         try:
+            start_time = time.time()
             _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                 search_policy,
                 eval_env,
                 args.num_agents,
                 habitat=habitat,
+                input_starts=input_starts,
+                input_goals=input_goals,
+                start_costs=start_costs,
                 wait=True,
                 threshold=COLLISION_THRESHOLD,
             )
+            records.append({"total_time": time.time() - start_time})
             biobjective_search_records.append(records)
         except Exception as e:
             logging.error(f"Error: {e}")
-            biobjective_search_records.append([{} for _ in range(args.num_agents)])
+            records = [{} for _ in range(args.num_agents)]
+            records.append({"total_time": time.time() - start_time})
+            biobjective_search_records.append(records)
 
         if save:
             np.save(save_path, biobjective_search_records)
@@ -977,21 +1130,15 @@ def risk_budgeted_search_policy(
     )
 
     risk_percents = [0.0, 0.25, 0.5, 0.75, 1.0]
-    risk_budgeted_search_records = [[] for pct in risk_percents]
+    risk_budgeted_search_records = [[] for _ in risk_percents]
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
 
-    bounds_data_path = save_path / "risk_bounds"
     cbs_bounds_data_path = save_path / "cbs_risk_bounds"
-    lb_data = np.load(
-        bounds_data_path / f"lb_{args.num_agents}.npy", allow_pickle=True
-    ).tolist()
     cbs_lb_data = np.load(
         cbs_bounds_data_path / f"lb_{args.num_agents}.npy", allow_pickle=True
-    ).tolist()
-    ub_data = np.load(
-        bounds_data_path / f"ub_{args.num_agents}.npy", allow_pickle=True
     ).tolist()
     cbs_ub_data = np.load(
         cbs_bounds_data_path / f"ub_{args.num_agents}.npy", allow_pickle=True
@@ -1026,7 +1173,12 @@ def risk_budgeted_search_policy(
         "edge_attributes": ["step", "cost"],
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
+        "tree_save_frequency": 1,
+        "logdir": "pud/mapf/unit_tests/logs/rbcbs",
     }
+
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
 
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
@@ -1062,22 +1214,24 @@ def risk_budgeted_search_policy(
             },
         )
 
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
     for idx, pct in enumerate(risk_percents):
 
-        start_idx = len(risk_budgeted_search_records[idx]) * args.num_agents
-        logging.info(f"Starting from index: {start_idx // args.num_agents}")
+        start_idx = len(risk_budgeted_search_records[idx])
+        logging.info(f"Starting from index: {start_idx}")
 
         problems = problem_setup[-1].copy()
-        problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        for pb_idx in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-            lb = max(lb_data[pb_idx], cbs_lb_data[pb_idx])
-            ub = max(ub_data[pb_idx], cbs_ub_data[pb_idx])
+        for pb_idx in tqdm(range(start_idx, config.num_samples)):
+            lb = cbs_lb_data[pb_idx]
+            ub = cbs_ub_data[pb_idx]
             if lb == -1 or ub == -1:
-                risk_budgeted_search_records[idx].append(
-                    [{} for _ in range(args.num_agents)]
-                )
+                record = [{} for _ in range(args.num_agents)]
+                record.append({"total_time": 0.0})
+                risk_budgeted_search_records[idx].append(record)
                 continue
             elif lb == ub and pct != 0.0:
                 risk_budgeted_search_records[idx].append(
@@ -1088,30 +1242,46 @@ def risk_budgeted_search_policy(
                 risk_budget = lb if lb == ub else lb + pct * (ub - lb)
 
             cbs_config["risk_budget"] = risk_budget
-            # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            #     search_policy,
-            #     eval_env,
-            #     args.num_agents,
-            #     habitat=habitat,
-            #     wait=True,
-            #     threshold=COLLISION_THRESHOLD,
-            # )
-            # risk_bounded_search_records[idx].append(records)
+            start_costs = np.zeros(args.num_agents)
+            input_starts, input_goals = [], []
+            input_starts = [
+                (
+                    eval_env.normalize_obs(start)
+                    if not habitat
+                    else (start, eval_env.normalize_obs(start))
+                )
+                for start in processed_problems[pb_idx]["starts"]
+            ]
+            input_goals = [
+                (
+                    eval_env.normalize_obs(goal)
+                    if not habitat
+                    else (goal, eval_env.normalize_obs(goal))
+                )
+                for goal in processed_problems[pb_idx]["goals"]
+            ]
+            search_policy.planning_graph = processed_problems[pb_idx]["graph"]
+
             try:
+                start_time = time.time()
                 _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                     search_policy,
                     eval_env,
                     args.num_agents,
+                    input_starts=input_starts,
+                    input_goals=input_goals,
+                    start_costs=start_costs,
                     habitat=habitat,
                     wait=True,
                     threshold=COLLISION_THRESHOLD,
                 )
+                records.append({"total_time": time.time() - start_time})
                 risk_budgeted_search_records[idx].append(records)
             except Exception as e:
                 logging.error(f"Error: {e}")
-                risk_budgeted_search_records[idx].append(
-                    [{} for _ in range(args.num_agents)]
-                )
+                records = [{} for _ in range(args.num_agents)]
+                records.append({"total_time": time.time() - start_time})
+                risk_budgeted_search_records[idx].append(records)
 
             if save:
                 store_data = {str(idx): risk_budgeted_search_records[idx]}
@@ -1150,21 +1320,15 @@ def risk_bounded_search_policy(
     )
 
     risk_percents = [0.0, 0.25, 0.5, 0.75, 1.0]
-    risk_bounded_search_records = [[] for pct in risk_percents]
+    risk_bounded_search_records = [[] for _ in risk_percents]
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
 
-    bounds_data_path = save_path / "risk_bounds"
     cbs_bounds_data_path = save_path / "cbs_risk_bounds"
-    lb_data = np.load(
-        bounds_data_path / f"lb_{args.num_agents}.npy", allow_pickle=True
-    ).tolist()
     cbs_lb_data = np.load(
         cbs_bounds_data_path / f"lb_{args.num_agents}.npy", allow_pickle=True
-    ).tolist()
-    ub_data = np.load(
-        bounds_data_path / f"ub_{args.num_agents}.npy", allow_pickle=True
     ).tolist()
     cbs_ub_data = np.load(
         cbs_bounds_data_path / f"ub_{args.num_agents}.npy", allow_pickle=True
@@ -1204,6 +1368,9 @@ def risk_bounded_search_policy(
         "logdir": "pud/mapf/unit_tests/logs/rbcbs",
     }
 
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
+
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
             agent=agent,
@@ -1238,22 +1405,24 @@ def risk_bounded_search_policy(
             },
         )
 
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
     for idx, pct in enumerate(risk_percents):
 
-        start_idx = len(risk_bounded_search_records[idx]) * args.num_agents
-        logging.info(f"Starting from index: {start_idx // args.num_agents}")
+        start_idx = len(risk_bounded_search_records[idx])
+        logging.info(f"Starting from index: {start_idx}")
 
         problems = problem_setup[-1].copy()
-        problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        for pb_idx in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-            lb = max(lb_data[pb_idx], cbs_lb_data[pb_idx])
-            ub = max(ub_data[pb_idx], cbs_ub_data[pb_idx])
+        for pb_idx in tqdm(range(start_idx, config.num_samples)):
+            lb = cbs_lb_data[pb_idx]
+            ub = cbs_ub_data[pb_idx]
             if lb == -1 or ub == -1:
-                risk_bounded_search_records[idx].append(
-                    [{} for _ in range(args.num_agents)]
-                )
+                record = [{} for _ in range(args.num_agents)]
+                record.append({"total_time": 0.0})
+                risk_bounded_search_records[idx].append(record)
                 continue
             elif lb == ub and pct != 0.0:
                 risk_bounded_search_records[idx].append(
@@ -1264,30 +1433,46 @@ def risk_bounded_search_policy(
                 risk_budget = lb if lb == ub else lb + pct * (ub - lb)
 
             cbs_config["risk_bound"] = risk_budget
-            # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            #     search_policy,
-            #     eval_env,
-            #     args.num_agents,
-            #     habitat=habitat,
-            #     wait=True,
-            #     threshold=COLLISION_THRESHOLD,
-            # )
-            # risk_bounded_search_records[idx].append(records)
+            start_costs = np.zeros(args.num_agents)
+            input_starts, input_goals = [], []
+            input_starts = [
+                (
+                    eval_env.normalize_obs(start)
+                    if not habitat
+                    else (start, eval_env.normalize_obs(start))
+                )
+                for start in processed_problems[pb_idx]["starts"]
+            ]
+            input_goals = [
+                (
+                    eval_env.normalize_obs(goal)
+                    if not habitat
+                    else (goal, eval_env.normalize_obs(goal))
+                )
+                for goal in processed_problems[pb_idx]["goals"]
+            ]
+            search_policy.planning_graph = processed_problems[pb_idx]["graph"]
+
             try:
+                start_time = time.time()
                 _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
                     search_policy,
                     eval_env,
                     args.num_agents,
+                    input_starts=input_starts,
+                    input_goals=input_goals,
+                    start_costs=start_costs,
                     habitat=habitat,
                     wait=True,
                     threshold=COLLISION_THRESHOLD,
                 )
+                records.append({"total_time": time.time() - start_time})
                 risk_bounded_search_records[idx].append(records)
             except Exception as e:
                 logging.error(f"Error: {e}")
-                risk_bounded_search_records[idx].append(
-                    [{} for _ in range(args.num_agents)]
-                )
+                records = [{} for _ in range(args.num_agents)]
+                records.append({"total_time": time.time() - start_time})
+                risk_bounded_search_records[idx].append(records)
 
             if save:
                 store_data = {str(idx): risk_bounded_search_records[idx]}
@@ -1315,6 +1500,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
     )
 
     save_path = basedir / args.traj_difficulty
+    processed_problems_path = save_path / "problems" / f"pbs_{args.num_agents}.npy"
     if not save_path.exists():
         save_path.mkdir(parents=True)
 
@@ -1359,6 +1545,9 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
 
+    if args.num_agents >= 20:
+        cbs_config["max_time"] = 600
+
     if not habitat:
         search_policy = ConstrainedMultiAgentSearchPolicy(
             agent=agent,
@@ -1395,35 +1584,51 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
     edge_attributes = [["step"], ["cost"]]
 
+    processed_problems = np.load(processed_problems_path, allow_pickle=True)
+    processed_problems = processed_problems.tolist()
+
     for edge_attrib in edge_attributes:
 
         if edge_attrib == ["cost"]:
-            start_idx = len(lb_bounds_data) * args.num_agents
+            start_idx = len(lb_bounds_data)
         else:
-            start_idx = len(ub_bounds_data) * args.num_agents
-        logging.info(f"Starting from index: {start_idx // args.num_agents}")
+            start_idx = len(ub_bounds_data)
+        logging.info(f"Starting from index: {start_idx}")
 
         cbs_config["edge_attributes"] = edge_attrib
 
         problems = problem_setup[-1].copy()
-        problems = problems[start_idx:]
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
-        for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-            # _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-            #     search_policy,
-            #     eval_env,
-            #     args.num_agents,
-            #     habitat=habitat,
-            #     wait=True,
-            #     threshold=COLLISION_THRESHOLD,
-            # )
+        for pb_idx in tqdm(range(start_idx, config.num_samples)):
+            start_costs = np.zeros(args.num_agents)
+            input_starts, input_goals = [], []
+            input_starts = [
+                (
+                    eval_env.normalize_obs(start)
+                    if not habitat
+                    else (start, eval_env.normalize_obs(start))
+                )
+                for start in processed_problems[pb_idx]["starts"]
+            ]
+            input_goals = [
+                (
+                    eval_env.normalize_obs(goal)
+                    if not habitat
+                    else (goal, eval_env.normalize_obs(goal))
+                )
+                for goal in processed_problems[pb_idx]["goals"]
+            ]
+            search_policy.planning_graph = processed_problems[pb_idx]["graph"]
             try:
                 _, _, _, _, _, _ = ConstrainedCollector.get_trajectories(
                     search_policy,
                     eval_env,
                     args.num_agents,
                     habitat=habitat,
+                    input_starts=input_starts,
+                    input_goals=input_goals,
+                    start_costs=start_costs,
                     wait=True,
                     threshold=COLLISION_THRESHOLD,
                 )
@@ -1432,595 +1637,19 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
                 if edge_attrib == ["cost"]:
                     lb_data = []
                     if Path(cbs_config["lb_save_path"]).exists():
-                        lb_data = np.load(cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                        lb_data = np.load(
+                            cbs_config["lb_save_path"], allow_pickle=True
+                        ).tolist()
                     lb_data.append(-1)
                     np.save(cbs_config["lb_save_path"], lb_data)
                 else:
                     ub_data = []
                     if Path(cbs_config["ub_save_path"]).exists():
-                        ub_data = np.load(cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                        ub_data = np.load(
+                            cbs_config["ub_save_path"], allow_pickle=True
+                        ).tolist()
                     ub_data.append(-1)
                     np.save(cbs_config["ub_save_path"], ub_data)
-
-
-# def single_unconstrained_search_policy(
-#     agent, eval_env, problem_setup, args, config, basedir, save=False
-# ):
-#     habitat = args.visual
-#     agent, eval_env = load_agent_and_env(
-#         agent, eval_env, args, config, constrained=False
-#     )
-
-#     unconstrained_search_records = [[] for _ in range(args.num_risk_thresholds)]
-#     save_path = basedir / "single_agent" / args.traj_difficulty
-#     if not save_path.exists():
-#         save_path.mkdir(parents=True)
-#     save_path = save_path / "unconstrained_search_records.npy"
-#     if save and Path(save_path).exists():
-#         unconstrained_search_records = np.load(save_path, allow_pickle=True)
-#         unconstrained_search_records = unconstrained_search_records.tolist()
-
-#     start_idx = len(unconstrained_search_records)
-#     logging.info(f"Starting from index: {start_idx}")
-
-#     if not habitat:
-#         rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
-#     else:
-#         rb_vec_grid, rb_vec, pdist = (
-#             problem_setup[0].copy(),
-#             problem_setup[1].copy(),
-#             problem_setup[2].copy(),
-#         )
-
-#     cbs_config = (
-#         {
-#             "seed": None,
-#             "max_time": 300,
-#             "max_distance": eval_env.max_goal_dist,
-#             "use_experience": True,
-#             "use_cardinality": True,
-#             "collision_radius": 0.0,
-#             "risk_attribute": "cost",
-#             "edge_attributes": ["step"],
-#             "split_strategy": "disjoint",
-#         },
-#     )
-#     if not habitat:
-#         search_policy = SearchPolicy(
-#             agent,
-#             rb_vec,
-#             pdist=pdist,
-#             open_loop=True,
-#             no_waypoint_hopping=True,
-#             cbs_config=cbs_config,
-#         )
-#     else:
-#         search_policy = VisualSearchPolicy(
-#             agent,
-#             (rb_vec_grid, rb_vec),
-#             pdist=pdist,
-#             open_loop=True,
-#             max_search_steps=4,
-#             no_waypoint_hopping=True,
-#             cbs_config=cbs_config,
-#         )
-
-#     for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         problems = problem_setup[-1].copy()
-#         problems = problems[start_idx:]
-#         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-#         for _ in tqdm(range(start_idx, config.num_samples)):
-#             try:
-#                 _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-#                     search_policy, eval_env, habitat=habitat
-#                 )
-#                 unconstrained_search_records[risk_threshold].append(records)
-#             except Exception as e:
-#                 logging.error(f"Error: {e}")
-#                 unconstrained_search_records[risk_threshold].append({})
-
-#             if save:
-#                 np.save(save_path, unconstrained_search_records)
-
-#     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-#     for risk_threshold in range(
-#         1, args.num_risk_thresholds
-#     ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
-
-#     if save:
-#         np.save(save_path, unconstrained_search_records)
-#     return unconstrained_search_records
-
-
-# def multi_unconstrained_search_policy(
-#     agent, eval_env, problem_setup, args, config, basedir, ds=False, save=False
-# ):
-#     habitat = args.visual
-#     agent, eval_env = load_agent_and_env(
-#         agent, eval_env, args, config, constrained=False
-#     )
-
-#     unconstrained_search_records = [[] for _ in range(args.num_risk_thresholds)]
-#     save_path = basedir / "multi_agent" / args.traj_difficulty
-#     if not save_path.exists():
-#         save_path.mkdir(parents=True)
-
-#     if ds:
-#         save_path = save_path / f"unconstrained_search_ds_records_{args.num_agents}.npy"
-#     else:
-#         save_path = save_path / f"unconstrained_search_records_{args.num_agents}.npy"
-#     if save and Path(save_path).exists():
-#         unconstrained_search_records = np.load(save_path, allow_pickle=True)
-#         unconstrained_search_records = unconstrained_search_records.tolist()
-
-#     start_idx = len(unconstrained_search_records) * args.num_agents
-#     logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-#     if not habitat:
-#         rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
-#     else:
-#         rb_vec_grid, rb_vec, pdist = (
-#             problem_setup[0].copy(),
-#             problem_setup[1].copy(),
-#             problem_setup[2].copy(),
-#         )
-
-#     cbs_config = (
-#         {
-#             "seed": None,
-#             "max_time": 300,
-#             "max_distance": eval_env.max_goal_dist,
-#             "use_experience": True,
-#             "use_cardinality": True,
-#             "collision_radius": 0.0,
-#             "risk_attribute": "cost",
-#             "edge_attributes": ["step"],
-#             "split_strategy": "disjoint",
-#         },
-#     )
-
-#     if not habitat:
-#         ma_search_policy = MultiAgentSearchPolicy(
-#             agent,
-#             rb_vec,
-#             args.num_agents,
-#             pdist=pdist,
-#             open_loop=True,
-#             cbs_config=cbs_config,
-#             no_waypoint_hopping=True,
-#         )
-#     else:
-#         ma_search_policy = VisualMultiAgentSearchPolicy(
-#             agent,
-#             (rb_vec_grid, rb_vec),
-#             args.num_agents,
-#             pdist=pdist,
-#             open_loop=True,
-#             max_search_steps=4,
-#             cbs_config=cbs_config,
-#             no_waypoint_hopping=True,
-#         )
-
-#     for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         problems = problem_setup[-1].copy()
-#         problems = problems[start_idx:]
-#         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-#         for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-#             try:
-#                 _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-#                     ma_search_policy,
-#                     eval_env,
-#                     args.num_agents,
-#                     threshold=0.0,
-#                     habitat=habitat,
-#                 )
-#                 unconstrained_search_records[risk_threshold].append(records)
-#             except Exception as e:
-#                 logging.error(f"Error: {e}")
-#                 unconstrained_search_records[risk_threshold].append(
-#                     [{} for _ in range(args.num_agents)]
-#                 )
-
-#             if save:
-#                 np.save(save_path, unconstrained_search_records)
-
-#     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-#     for risk_threshold in range(
-#         1, args.num_risk_thresholds
-#     ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         unconstrained_search_records[risk_threshold] = unconstrained_search_records[0]
-
-#     if save:
-#         np.save(save_path, unconstrained_search_records)
-#     return unconstrained_search_records
-
-
-# def single_constrained_policy(
-#     agent, eval_env, problem_setup, args, config, basedir, save=False
-# ):
-#     habitat = args.visual
-#     agent, eval_env = load_agent_and_env(
-#         agent, eval_env, args, config, constrained=True
-#     )
-
-#     constrained_records = [[] for _ in range(args.num_risk_thresholds)]
-#     save_path = basedir / "single_agent" / args.traj_difficulty
-#     if not save_path.exists():
-#         save_path.mkdir(parents=True)
-#     save_path = save_path / "constrained_records.npy"
-#     if save and Path(save_path).exists():
-#         constrained_records = np.load(save_path, allow_pickle=True)
-#         constrained_records = constrained_records.tolist()
-
-#     start_idx = len(constrained_records)
-#     logging.info(f"Starting from index: {start_idx}")
-
-#     for risk_threshold in range(0, 1):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         problems = problem_setup[-1].copy()
-#         problems = problems[start_idx:]
-#         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-#         for _ in range(start_idx, config.num_samples):
-#             try:
-#                 _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-#                     agent, eval_env, habitat=habitat
-#                 )
-#                 constrained_records[risk_threshold].append(records)
-#             except Exception as e:
-#                 logging.error(f"Error: {e}")
-#                 constrained_records[risk_threshold].append({})
-
-#             if save:
-#                 np.save(save_path, constrained_records)
-
-#     # Only for policies that do not care about risk-thresholds are the result is going to be the same for all thresholds
-#     for risk_threshold in range(
-#         1, args.num_risk_thresholds
-#     ):  # 5 risk-thresholds (0%, 25%, 50%, 75%, 100%)
-#         constrained_records[risk_threshold] = constrained_records[0]
-
-#     if save:
-#         np.save(save_path, constrained_records)
-#     return constrained_records
-
-
-# def single_constrained_search_policy(
-#     agent,
-#     eval_env,
-#     problem_setup,
-#     args,
-#     config,
-#     basedir,
-#     save=False,
-# ):
-#     habitat = args.visual
-#     if args.use_unconstrained_ckpt:
-#         agent, eval_env = load_agent_and_env(
-#             agent, eval_env, args, config, constrained=False
-#         )
-#     else:
-#         agent, eval_env = load_agent_and_env(
-#             agent, eval_env, args, config, constrained=True
-#         )
-
-#     if not habitat:
-#         rb_vec = problem_setup[0].copy()
-#         pdist = problem_setup[2].copy()
-#         pcost = problem_setup[3].copy()
-#     else:
-#         rb_vec_grid = problem_setup[0].copy()
-#         rb_vec = problem_setup[1].copy()
-#         pdist = problem_setup[3].copy()
-#         pcost = problem_setup[4].copy()
-#     problems = problem_setup[-1].copy()
-
-#     eval_env.set_prob_constraint(1.0)  # type: ignore
-
-#     constrained_search_factored_records = []
-#     planners = ["cbs", "lagrangian", "multi_objective"]
-#     risk_factors = [0, 0.25, 0.5, 0.75, 1.0]
-#     for factor in risk_factors:
-#         logging.info(f"Factor: {factor}")
-
-#         constrained_search_records = []
-#         save_path = basedir / "single_agent" / args.traj_difficulty
-#         if not save_path.exists():
-#             save_path.mkdir(parents=True)
-#         save_path = save_path / f"constrained_search_records_{factor}.npy"
-#         if args.use_unconstrained_ckpt:
-#             save_path = save_path.as_posix()[:-4] + "_uc.npy"
-#         if save and Path(save_path).exists():
-#             constrained_search_records = np.load(save_path, allow_pickle=True)
-#             constrained_search_records = constrained_search_records.tolist()
-
-#         start_idx = len(constrained_search_records)
-#         logging.info(f"Starting from index: {start_idx}")
-
-#         problems = problem_setup[-1].copy()
-#         problems = problems[start_idx:]
-#         problems_copy = problems.copy()
-#         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-#         cbs_config = (
-#             {
-#                 "seed": None,
-#                 "max_time": 300,
-#                 "max_distance": eval_env.max_goal_dist,
-#                 "use_experience": True,
-#                 "use_cardinality": True,
-#                 "collision_radius": 0.0,
-#                 "risk_attribute": "cost",
-#                 "edge_attributes": ["step", "cost"],
-#                 "split_strategy": "disjoint",
-#             }
-#         )
-#         min_step_config = cbs_config.copy()
-#         min_step_config["edge_attributes"] = ["step"]
-#         min_cost_config = cbs_config.copy()
-#         min_cost_config["edge_attributes"] = ["cost"]
-
-#         risk_bounded_config = cbs_config.copy()
-#         risk_bounded_config["risk_bound"] = np.inf
-
-#         if not args.use_unconstrained_ckpt:
-#             lagrangian_config = cbs_config.copy()
-#             lagrangian_config["lagrangian"] = agent.lagrange.lagrangian_multiplier.data.numpy()
-
-#         multi_objective_config = cbs_config.copy()
-#         multi_objective_config["use_multi_objective"] = True
-
-#         if not habitat:
-#             constrained_search_policy = ConstrainedSearchPolicy(
-#                 agent,
-#                 rb_vec,
-#                 pdist=pdist,
-#                 pcost=pcost,
-#                 open_loop=True,
-#                 no_waypoint_hopping=True,
-#                 ckpts={
-#                     "unconstrained": args.unconstrained_ckpt_file,
-#                     "constrained": args.constrained_ckpt_file,
-#                 },
-#                 cbs_config=cbs_config,
-#             )
-#             rb_vec_parameter = rb_vec
-#         else:
-#             constrained_search_policy = VisualConstrainedSearchPolicy(
-#                 agent,
-#                 (rb_vec_grid, rb_vec),
-#                 pdist=pdist,
-#                 pcost=pcost,
-#                 open_loop=True,
-#                 max_search_steps=4,
-#                 no_waypoint_hopping=True,
-#                 ckpts={
-#                     "unconstrained": args.unconstrained_ckpt_file,
-#                     "constrained": args.constrained_ckpt_file,
-#                 },
-#                 cbs_config=cbs_config,
-#             )
-#             rb_vec_parameter = rb_vec_grid
-
-#         for _ in tqdm(range(start_idx, config.num_samples)):
-#             try:
-#                 pb = problems_copy.pop(0)
-#                 state = {"observation": pb["start"], "goal": pb["goal"]}
-#                 planning_graph = constrained_search_policy.construct_planning_graph(state)
-#                 num_nodes = rb_vec_parameter.shape[0] - 1
-#                 goal_ids = [num_nodes + 2]
-#                 start_ids = [num_nodes + 1]
-#                 augmented_wps = rb_vec_parameter.copy()
-#                 augmented_wps = np.vstack([augmented_wps, state["observation"], state["goal"]])
-
-#                 min_step_cbs_solver = CBSSolver(graph=planning_graph, goals=goal_ids, starts=start_ids, graph_waypoints=augmented_wps, config=min_step_config)
-#                 min_step_solution = min_step_cbs_solver.find_paths()
-#                 min_step_risk = compute_sum_of_costs(min_step_solution.paths, planning_graph, "cost")
-
-#                 min_cost_cbs_solver = CBSSolver(graph=planning_graph, goals=goal_ids, starts=start_ids, graph_waypoints=augmented_wps, config=min_cost_config)
-#                 min_cost_solution = min_cost_cbs_solver.find_paths()
-#                 min_cost_risk = compute_sum_of_costs(min_cost_solution.paths, planning_graph, "cost")
-
-#                 for factor in risk_factors:
-#                     for planner in planners:
-#                         if planner == "cbs":
-#                             constrained_search_policy.cbs_config = cbs_config
-#                         elif planner == "risk_bounded":
-#                             constrained_search_policy.cbs_config = risk_bounded_config
-#                         elif planner == "lagrangian":
-#                             constrained_search_policy.cbs_config = lagrangian_config
-#                         elif planner == "multi_objective":
-#                             constrained_search_policy.cbs_config = multi_objective_config
-
-#                     _, _, _, _, _, records = ConstrainedCollector.get_trajectory(
-#                         constrained_search_policy, eval_env, habitat=habitat
-#                     )
-#                     constrained_search_records.append(records)
-#                 except Exception as e:
-#                     logging.error(f"Error: {e}")
-#                     constrained_search_records.append({})
-
-#             if save:
-#                 np.save(save_path, constrained_search_records)
-
-#         if save:
-#             np.save(save_path, constrained_search_records)
-
-#         constrained_search_factored_records.append(constrained_search_records)
-
-#     if save:
-#         save_path = basedir / "single_agent" / args.traj_difficulty
-#         if not save_path.exists():
-#             save_path.mkdir(parents=True)
-#         save_path = save_path / "constrained_search_factored_records.npy"
-#         if args.use_unconstrained_ckpt:
-#             save_path = save_path.as_posix()[:-4] + "_uc.npy"
-#         np.save(save_path, constrained_search_factored_records)
-#     return constrained_search_factored_records
-
-
-# def multi_constrained_search_policy(
-#     agent,
-#     eval_env,
-#     problem_setup,
-#     args,
-#     config,
-#     trained_cost_limit,
-#     basedir,
-#     ds=False,
-#     risk_bounded=False,
-#     save=False,
-# ):
-#     habitat = args.visual
-#     if args.use_unconstrained_ckpt:
-#         agent, eval_env = load_agent_and_env(
-#             agent, eval_env, args, config, constrained=False
-#         )
-#     else:
-#         agent, eval_env = load_agent_and_env(
-#             agent, eval_env, args, config, constrained=True
-#         )
-
-#     if not habitat:
-#         rb_vec = problem_setup[0].copy()
-#         pdist = problem_setup[2].copy()
-#         pcost = problem_setup[3].copy()
-#     else:
-#         rb_vec_grid = problem_setup[0].copy()
-#         rb_vec = problem_setup[1].copy()
-#         pdist = problem_setup[3].copy()
-#         pcost = problem_setup[4].copy()
-#     problems = problem_setup[-1].copy()
-
-#     constrained_search_factored_records = []
-#     edge_cost_limit_factors = [0.1, 0.25, 0.5, 0.75, 1.0]
-#     for factor in edge_cost_limit_factors:
-#         logging.info(f"Factor: {factor}")
-
-#         constrained_search_records = []
-#         save_path = basedir / "multi_agent" / args.traj_difficulty
-#         if not save_path.exists():
-#             save_path.mkdir(parents=True)
-
-#         if ds and not risk_bounded:
-#             save_path = (
-#                 save_path
-#                 / f"constrained_search_ds_records_{args.num_agents}_{factor}.npy"
-#             )
-#         elif ds and risk_bounded:
-#             save_path = (
-#                 save_path
-#                 / f"risk_bounded_constrained_search_ds_records_{args.num_agents}_{factor}.npy"
-#             )
-#         else:
-#             save_path = (
-#                 save_path / f"constrained_search_records_{args.num_agents}_{factor}.npy"
-#             )
-
-#         if args.use_unconstrained_ckpt:
-#             save_path = save_path.as_posix()[:-4] + "_uc.npy"
-#         if save and Path(save_path).exists():
-#             constrained_search_records = np.load(save_path, allow_pickle=True)
-#             constrained_search_records = constrained_search_records.tolist()
-
-#         start_idx = len(constrained_search_records) * args.num_agents
-#         logging.info(f"Starting from index: {start_idx // args.num_agents}")
-
-#         problems = problem_setup[-1].copy()
-#         problems = problems[start_idx:]
-#         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
-
-#         edge_cost_limit = trained_cost_limit * factor
-
-#         if not habitat:
-#             constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
-#                 agent,
-#                 rb_vec.copy(),
-#                 args.num_agents,
-#                 radius=0.0,
-#                 open_loop=True,
-#                 risk_bound=(
-#                     edge_cost_limit * args.num_agents if risk_bounded else np.inf
-#                 ),
-#                 disjoint_split=ds,
-#                 pdist=pdist.copy(),
-#                 pcost=pcost.copy(),
-#                 no_waypoint_hopping=True,
-#                 max_cost_limit=edge_cost_limit,
-#                 ckpts={
-#                     "unconstrained": args.unconstrained_ckpt_file,
-#                     "constrained": args.constrained_ckpt_file,
-#                 },
-#             )
-#         else:
-#             constrained_ma_search_policy = VisualConstrainedMultiAgentSearchPolicy(
-#                 agent,
-#                 (rb_vec_grid.copy(), rb_vec.copy()),
-#                 args.num_agents,
-#                 radius=0.0,
-#                 pdist=pdist.copy(),
-#                 pcost=pcost.copy(),
-#                 open_loop=True,
-#                 risk_bound=(
-#                     edge_cost_limit * args.num_agents if risk_bounded else np.inf
-#                 ),
-#                 disjoint_split=ds,
-#                 max_search_steps=4,
-#                 no_waypoint_hopping=True,
-#                 max_cost_limit=edge_cost_limit,
-#                 ckpts={
-#                     "unconstrained": args.unconstrained_ckpt_file,
-#                     "constrained": args.constrained_ckpt_file,
-#                 },
-#             )
-
-#         for _ in tqdm(range(start_idx // args.num_agents, config.num_samples)):
-#             try:
-#                 _, _, _, _, _, records = ConstrainedCollector.get_trajectories(
-#                     constrained_ma_search_policy,
-#                     eval_env,
-#                     args.num_agents,
-#                     threshold=0.0,
-#                     habitat=habitat,
-#                 )
-#                 constrained_search_records.append(records)
-#             except Exception as e:
-#                 logging.error(f"Error: {e}")
-#                 constrained_search_records.append([{} for _ in range(args.num_agents)])
-
-#             if save:
-#                 np.save(save_path, constrained_search_records)
-
-#         if save:
-#             np.save(save_path, constrained_search_records)
-
-#         constrained_search_factored_records.append(constrained_search_records)
-
-#     if save:
-#         save_path = basedir / "multi_agent" / args.traj_difficulty
-#         if not save_path.exists():
-#             save_path.mkdir(parents=True)
-
-#         if ds and not risk_bounded:
-#             save_path = (
-#                 save_path
-#                 / f"constrained_search_ds_factored_records_{args.num_agents}.npy"
-#             )
-#         elif ds and risk_bounded:
-#             save_path = (
-#                 save_path
-#                 / f"risk_bounded_constrained_search_ds_factored_records_{args.num_agents}.npy"
-#             )
-#         else:
-#             save_path = (
-#                 save_path / f"constrained_search_factored_records_{args.num_agents}.npy"
-#             )
-#         if args.use_unconstrained_ckpt:
-#             save_path = save_path.as_posix()[:-4] + "_uc.npy"
-#         np.save(save_path, constrained_search_factored_records)
-#     return constrained_search_factored_records
 
 
 def main():

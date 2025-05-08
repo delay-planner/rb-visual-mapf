@@ -18,10 +18,7 @@ class BiObjectiveCBSSolver(MultiObjectiveCBSSolver):
         graph_waypoints: NDArray,
         config: Dict,
     ):
-        # import time
-        # start_time = time.time()
         super().__init__(graph, starts, goals, graph_waypoints, config)
-        # print("Time to initialize BiObjectiveCBSSolver: ", time.time() - start_time)
 
     def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
@@ -32,5 +29,4 @@ class BiObjectiveCBSSolver(MultiObjectiveCBSSolver):
                 graph=self.graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
-                undirected_graph=self.undirected_graph,
             )

@@ -34,7 +34,6 @@ class PathConstrainedCBSSolver(CBSSolver):
                 graph=self.graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
-                undirected_graph=self.undirected_graph,
             )
 
     def find_paths(self) -> CBSNode:

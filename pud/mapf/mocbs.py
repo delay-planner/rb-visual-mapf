@@ -40,6 +40,7 @@ class MultiObjectiveCBSNode(CBSNode):
         constraints: List[Dict],
     ):
         super().__init__(id, cost, paths, collisions, constraints)
+        self.time = None
         self.root = root
         self.cost_vector = cost_vector
 
@@ -77,7 +78,6 @@ class MultiObjectiveCBSSolver(object):
             random.seed(0)
 
         self.graph = graph
-        self.undirected_graph = graph.to_undirected()
 
         self.goals = goals
         self.starts = starts
@@ -127,13 +127,9 @@ class MultiObjectiveCBSSolver(object):
         ), "Risk attribute {} not found in the graph".format(self.risk_attribute)
 
         # Add self-loops
-        for node in self.graph.nodes:
+        for node, neighbors in self.graph.adjacency():
             # ASSUMPTION 1: The cost of waiting at a node is the minimum risk of reaching this node from its neighbors
-            min_cost = np.inf
-            for neighbor in self.graph.neighbors(node):
-                min_cost = min(
-                    min_cost, self.graph[node][neighbor][self.risk_attribute]
-                )
+            min_cost = min((data[self.risk_attribute] for data in neighbors.values()), default=np.inf)
             self.graph.add_edge(node, node, weight=0, step=1, cost=min_cost)
 
         self.single_agent_planner_times = []
@@ -150,7 +146,6 @@ class MultiObjectiveCBSSolver(object):
                 graph=self.graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
-                undirected_graph=self.undirected_graph,
             )
 
     def init_search_on_demand(self) -> bool:
@@ -185,12 +180,12 @@ class MultiObjectiveCBSSolver(object):
         return True
 
     def compute_cost_vector(self, paths: List[List[int]]) -> NDArray:
-        cost_vector = np.zeros(self.cost_dimension)
+        cost_vector = np.zeros(self.cost_dimension, dtype=np.float32)
         for path in paths:
             for i in range(len(path) - 1):
                 edge = (path[i], path[i + 1])
                 for idx, edge_attribute in enumerate(self.edge_attributes):
-                    edge_cost = np.array(self.graph.edges[edge][edge_attribute])
+                    edge_cost = np.array(self.graph.edges[edge][edge_attribute], dtype=np.float32)
                     if edge_attribute == "step" and edge_cost == 0:
                         edge_cost = 1
                     cost_vector[idx] += edge_cost
@@ -207,7 +202,7 @@ class MultiObjectiveCBSSolver(object):
             id=self.num_generated,
             root=self.num_generated,
             cost=0,
-            cost_vector=np.zeros(self.cost_dimension),
+            cost_vector=np.zeros(self.cost_dimension, dtype=np.float32),
             paths=[],
             collisions=[],
             constraints=[],
@@ -420,7 +415,10 @@ class MultiObjectiveCBSSolver(object):
             logging.debug("Expanding node {}".format(current_node_id))
             logging.debug("Tree root id: {}".format(current_node.root))
             if len(current_node.collisions) == 0:
+                if len(self.nondominant_goal_nodes) == 0:
+                    print("First solution time (s): ", time.time() - start_time)
                 self.refine_nondominant_goal_nodes(current_node.id)
+                current_node.time = time.time() - start_time
                 self.nondominant_goal_nodes.add(current_node.id)
 
                 if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
@@ -450,7 +448,7 @@ class MultiObjectiveCBSSolver(object):
                     id=self.num_generated,
                     root=current_node.root,
                     cost=0,
-                    cost_vector=np.zeros(self.cost_dimension),
+                    cost_vector=np.zeros(self.cost_dimension, dtype=np.float32),
                     paths=current_node.paths.copy(),
                     collisions=[],
                     constraints=[constraint],
@@ -546,7 +544,7 @@ class MultiObjectiveCBSSolver(object):
                                     self.compute_cost_vector(updated_successor.paths)
                                 )
                                 updated_successor.cost = np.sum(
-                                    updated_successor.cost_vector
+                                    updated_successor.cost_vector, dtype=np.float32
                                 )
                                 if self.filter_goal_node(updated_successor):
                                     continue
@@ -689,8 +687,9 @@ class MultiObjectiveCBSSolver(object):
         all_cost_vectors = {}
         for goal_node_id in self.nondominant_goal_nodes:
             high_level_node = self.nodes[goal_node_id]
-            all_paths[goal_node_id] = high_level_node.paths
-            all_cost_vectors[goal_node_id] = high_level_node.cost_vector
+            if high_level_node.time is not None and high_level_node.time <= self.max_time:
+                all_paths[goal_node_id] = high_level_node.paths
+                all_cost_vectors[goal_node_id] = high_level_node.cost_vector
 
         if len(self.nondominant_goal_nodes) == 0:
             return all_paths, all_cost_vectors, False

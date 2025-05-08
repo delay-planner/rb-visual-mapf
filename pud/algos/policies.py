@@ -87,6 +87,7 @@ class SearchPolicy(BasePolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         weighted_path_planning="",
         no_waypoint_hopping=False,
         cbs_config={
@@ -125,7 +126,10 @@ class SearchPolicy(BasePolicy):
         self.attempt_cutoff = 3 * max_search_steps
         self.no_waypoint_hopping = no_waypoint_hopping
 
-        self.build_rb_graph(self.rb_vec)
+        self.planning_graph = planning_graph
+
+        if self.planning_graph is None:
+            self.build_rb_graph(self.rb_vec)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -134,14 +138,16 @@ class SearchPolicy(BasePolicy):
                 masked=True,
             )
             self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
-                pdist2, directed=True
+                pdist2, directed=False
             )
         self.reset_stats()
 
         assert "max_time" in cbs_config.keys(), "CBS timeout not provided"
         assert "max_distance" in cbs_config.keys(), "Max distance for CBS not provided"
         assert "collision_radius" in cbs_config.keys(), "Collision radius not provided"
-        assert "split_strategy" in cbs_config.keys(), "Split strategy for CBS not provided"
+        assert (
+            "split_strategy" in cbs_config.keys()
+        ), "Split strategy for CBS not provided"
         # assert "edge_attributes" in cbs_config.keys(), "Edge attributes used for CBS not provided"
 
         if "use_experience" not in cbs_config.keys():
@@ -153,12 +159,21 @@ class SearchPolicy(BasePolicy):
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             assert "logdir" in cbs_config.keys(), "Log directory not provided"
-            assert "tree_save_frequency" in cbs_config.keys(), "Tree save frequency not provided"
+            assert (
+                "tree_save_frequency" in cbs_config.keys()
+            ), "Tree save frequency not provided"
 
         self.cbs_config = cbs_config
 
     def __str__(self):
-        s = f"{self.__class__.__name__} (|V|={self.g.number_of_nodes()}, |E|={self.g.number_of_edges()})"
+        if self.planning_graph is not None:
+            num_nodes, num_edges = (
+                self.planning_graph.number_of_nodes(),
+                self.planning_graph.number_of_edges(),
+            )
+        else:
+            num_nodes, num_edges = self.g.number_of_nodes(), self.g.number_of_edges
+        s = f"{self.__class__.__name__} (|V|={num_nodes}, |E|={num_edges})"
         return s
 
     def reset_stats(self):
@@ -178,12 +193,13 @@ class SearchPolicy(BasePolicy):
         self.cleanup = cleanup
 
     def build_rb_graph(self, rb_vec):
-        g = nx.DiGraph()
+        print("Building graph")
+        g = nx.Graph()
         assert self.pdist is not None, "Pairwise distances not provided"
         pdist_combined = np.max(self.pdist, axis=0)
 
-        for i, s_i in enumerate(rb_vec):
-            for j, s_j in enumerate(rb_vec):
+        for i, _ in enumerate(rb_vec):
+            for j, _ in enumerate(rb_vec):
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps:
                     g.add_edge(i, j, weight=float(length), step=1.0, cost=0.0)
@@ -231,7 +247,11 @@ class SearchPolicy(BasePolicy):
         return waypoint, waypoint_index, min_search_dist
 
     def construct_planning_graph(
-        self, state, planning_graph=None, start_id: Union[int, str] = "start", goal_id: Union[int, str] = "goal"
+        self,
+        state,
+        planning_graph=None,
+        start_id: Union[int, str] = "start",
+        goal_id: Union[int, str] = "goal",
     ):
         start_to_rb_dist, rb_to_goal_dist = self.get_pairwise_dist_to_rb(state)
         if planning_graph is None:
@@ -257,7 +277,10 @@ class SearchPolicy(BasePolicy):
         return planning_graph
 
     def get_path(self, state):
-        g2 = self.construct_planning_graph(state)
+        if self.planning_graph is not None:
+            g2 = self.planning_graph
+        else:
+            g2 = self.construct_planning_graph(state)
         try:
             self.stats["path_planning_attempts"] += 1
             graph_search_start = time.perf_counter()
@@ -299,7 +322,12 @@ class SearchPolicy(BasePolicy):
         goal_ids = [num_nodes + 2]
         start_ids = [num_nodes + 1]
 
-        graph = self.construct_planning_graph(state, start_id=start_ids[0], goal_id=goal_ids[0])
+        if self.planning_graph is not None:
+            graph = self.planning_graph
+        else:
+            graph = self.construct_planning_graph(
+                state, start_id=start_ids[0], goal_id=goal_ids[0]
+            )
 
         augmented_wps = rb_vec.copy()
         augmented_wps = np.vstack([augmented_wps, state["observation"], state["goal"]])
@@ -307,7 +335,9 @@ class SearchPolicy(BasePolicy):
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
             cbs_class = RiskBoundedCBSSolver
-            assert "budget_allocater" in self.cbs_config.keys(), "Budget allocator not provided"
+            assert (
+                "budget_allocater" in self.cbs_config.keys()
+            ), "Budget allocator not provided"
         elif "lagrangian" in self.cbs_config.keys():
             cbs_class = LagrangianCBSSolver
         elif "use_multi_objective" in self.cbs_config.keys():
@@ -325,9 +355,7 @@ class SearchPolicy(BasePolicy):
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            raise RuntimeError(
-                "CBS failed to find a solution. " + error_message
-            )
+            raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
             # assert type(solution) is Tuple[Dict, Dict, bool]
@@ -418,7 +446,10 @@ class SearchPolicy(BasePolicy):
                 if self.waypoint_counter != 0 and not self.reached_final_waypoint:
                     src_node = self.waypoint_indices[self.waypoint_counter - 1]
                     dest_node = self.waypoint_indices[self.waypoint_counter]
-                    self.g.remove_edge(src_node, dest_node)
+                    if self.planning_graph is not None:
+                        self.planning_graph.remove_edge(src_node, dest_node)
+                    else:
+                        self.g.remove_edge(src_node, dest_node)
                 # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec, state)
 
@@ -455,7 +486,7 @@ class SearchPolicy(BasePolicy):
         if (
             (self.no_waypoint_hopping and not self.reached_final_waypoint)
             or (dist_to_goal_via_waypoint < dist_to_goal)
-            or (dist_to_goal > self.max_search_steps)
+            or (round(dist_to_goal, 0) > self.max_search_steps)
         ):
             state["goal"] = waypoint
             if self.open_loop:
@@ -475,6 +506,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
         ckpts=None,
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         max_cost_limit=np.inf,
         dist_aggregate="min",
         cost_aggregate="max",
@@ -521,6 +553,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
             open_loop=open_loop,
             cbs_config=cbs_config,
             aggregate=dist_aggregate,
+            planning_graph=planning_graph,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
@@ -528,14 +561,14 @@ class ConstrainedSearchPolicy(SearchPolicy):
         )
 
     def build_rb_graph(self, rb_vec):
-        g = nx.DiGraph()
+        g = nx.Graph()
         assert self.pdist is not None, "Pairwise distances not provided"
         assert self.pcost is not None, "Pairwise costs not provided"
         pdist_combined = np.max(self.pdist, axis=0)
         pcost_combined = np.max(self.pcost, axis=0)
 
-        for i, s_i in enumerate(rb_vec):
-            for j, s_j in enumerate(rb_vec):
+        for i, _ in enumerate(rb_vec):
+            for j, _ in enumerate(rb_vec):
                 cost = pcost_combined[i, j]
                 length = pdist_combined[i, j]
                 if length < self.max_search_steps and cost < self.max_cost_limit:
@@ -544,7 +577,9 @@ class ConstrainedSearchPolicy(SearchPolicy):
 
     def get_pairwise_cost_to_rb(self, state, masked=True):
         self.agent.load_state_dict(
-            torch.load(self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True)
+            torch.load(
+                self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True
+            )
         )
         start_to_rb_cost = self.agent.get_pairwise_cost(
             [state["observation"]],
@@ -557,7 +592,9 @@ class ConstrainedSearchPolicy(SearchPolicy):
             aggregate=self.cost_aggregate,
         )
         self.agent.load_state_dict(
-            torch.load(self.ckpts["constrained"], map_location="cuda:0", weights_only=True)
+            torch.load(
+                self.ckpts["constrained"], map_location="cuda:0", weights_only=True
+            )
         )
         return start_to_rb_cost, rb_to_goal_cost
 
@@ -650,6 +687,7 @@ class VisualSearchPolicy(SearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         weighted_path_planning="",
         no_waypoint_hopping=False,
         cbs_config={
@@ -672,6 +710,7 @@ class VisualSearchPolicy(SearchPolicy):
             aggregate=aggregate,
             open_loop=open_loop,
             cbs_config=cbs_config,
+            planning_graph=planning_graph,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
@@ -681,7 +720,8 @@ class VisualSearchPolicy(SearchPolicy):
         assert isinstance(rb_vec, tuple), "rb_vec must be a tuple of (grid, vec)"
         self.rb_vec_grid, self.rb_vec = rb_vec
 
-        self.build_rb_graph(self.rb_vec_grid)
+        if self.planning_graph is None:
+            self.build_rb_graph(self.rb_vec_grid)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -690,7 +730,7 @@ class VisualSearchPolicy(SearchPolicy):
                 masked=True,
             )
             self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
-                pdist2, directed=True
+                pdist2, directed=False
             )
 
     def get_waypoints(self):
@@ -700,15 +740,21 @@ class VisualSearchPolicy(SearchPolicy):
         return waypoints
 
     def initialize_path_using_CBS(self, rb_vec, state):
-
-        graph, nodes_to_agents_maps = self.construct_planning_graph(state)
-
         num_nodes = rb_vec.shape[0] - 1
-        goal_ids = num_nodes + 2
-        start_ids = num_nodes + 1
+        goal_ids = [num_nodes + 2]
+        start_ids = [num_nodes + 1]
+
+        if self.planning_graph is not None:
+            graph = self.planning_graph
+        else:
+            graph = self.construct_planning_graph(
+                state, start_id=start_ids[0], goal_id=goal_ids[0]
+            )
 
         augmented_wps = rb_vec.copy()
-        augmented_wps = np.vstack([augmented_wps, state["grid"]["observation"], state["grid"]["goal"]])
+        augmented_wps = np.vstack(
+            [augmented_wps, state["grid"]["observation"], state["grid"]["goal"]]
+        )
 
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
@@ -730,9 +776,7 @@ class VisualSearchPolicy(SearchPolicy):
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            raise RuntimeError(
-                "CBS failed to find a solution. " + error_message
-            )
+            raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
             # assert type(solution) is Tuple[Dict, Dict, bool]
@@ -811,7 +855,10 @@ class VisualSearchPolicy(SearchPolicy):
                 if self.waypoint_counter != 0 and not self.reached_final_waypoint:
                     src_node = self.waypoint_indices[self.waypoint_counter - 1]
                     dest_node = self.waypoint_indices[self.waypoint_counter]
-                    self.g.remove_edge(src_node, dest_node)
+                    if self.planning_graph is not None:
+                        self.planning_graph.remove_edge(src_node, dest_node)
+                    else:
+                        self.g.remove_edge(src_node, dest_node)
                 # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec_grid, state)
 
@@ -850,7 +897,7 @@ class VisualSearchPolicy(SearchPolicy):
         if (
             (self.no_waypoint_hopping and not self.reached_final_waypoint)
             or (dist_to_goal_via_waypoint < dist_to_goal)
-            or (dist_to_goal > self.max_search_steps)
+            or (round(dist_to_goal, 0) > self.max_search_steps)
         ):
             state["goal"] = waypoint
             state["grid"]["goal"] = self.rb_vec_grid[waypoint_index]
@@ -918,6 +965,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         weighted_path_planning="",
         no_waypoint_hopping=False,
         cbs_config={
@@ -940,6 +988,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             aggregate=aggregate,
             open_loop=open_loop,
             cbs_config=cbs_config,
+            planning_graph=planning_graph,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
@@ -1013,18 +1062,27 @@ class MultiAgentSearchPolicy(SearchPolicy):
         return planning_graph, nodes_to_agent_maps
 
     def initialize_paths(self, rb_vec, starts, goals):
-        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
-            starts, goals
-        )
-
-        goal_ids = [
-            nodes_to_agents_maps["goal" + str(agent_id)]
-            for agent_id in range(self.n_agents)
-        ]
-        start_ids = [
-            nodes_to_agents_maps["start" + str(agent_id)]
-            for agent_id in range(self.n_agents)
-        ]
+        if self.planning_graph is not None:
+            graph = self.planning_graph
+            goal_ids = []
+            start_ids = []
+            num_nodes = rb_vec.shape[0] - 1
+            for agent_id in range(self.n_agents):
+                goal_ids.append(num_nodes + 2)
+                start_ids.append(num_nodes + 1)
+                num_nodes += 2
+        else:
+            graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
+                starts, goals
+            )
+            goal_ids = [
+                nodes_to_agents_maps["goal" + str(agent_id)]
+                for agent_id in range(self.n_agents)
+            ]
+            start_ids = [
+                nodes_to_agents_maps["start" + str(agent_id)]
+                for agent_id in range(self.n_agents)
+            ]
 
         augmented_wps = rb_vec.copy()
         for _, (start, goal) in enumerate(zip(starts, goals)):
@@ -1033,7 +1091,9 @@ class MultiAgentSearchPolicy(SearchPolicy):
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
             cbs_class = RiskBoundedCBSSolver
-            assert "budget_allocater" in self.cbs_config.keys(), "Budget allocator not provided"
+            assert (
+                "budget_allocater" in self.cbs_config.keys()
+            ), "Budget allocator not provided"
         elif "risk_budget" in self.cbs_config.keys():
             cbs_class = PathConstrainedCBSSolver
         elif "lagrangian" in self.cbs_config.keys():
@@ -1041,8 +1101,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
-        # import time
-        # start = time.time()
         cbs_solver = cbs_class(
             graph=graph,
             graph_waypoints=augmented_wps,
@@ -1050,40 +1108,45 @@ class MultiAgentSearchPolicy(SearchPolicy):
             goals=goal_ids,
             config=self.cbs_config,
         )
-        # print("Time to initialize CBS: ", time.time() - start)
         try:
-            # start_time = time.time()
+            start_time = time.time()
             solution = cbs_solver.find_paths()
 
             # TODO: Temporary code here for now. Remove after collection step is done!
             # assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             if isinstance(cbs_solver, CBSSolver):
-                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config[
+                    "edge_attributes"
+                ] == ["cost"]:
                     lb_data = []
                     lb_cost = 0
                     for path in solution.paths:
                         lb_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["lb_save_path"]).exists():
-                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                        lb_data = np.load(
+                            self.cbs_config["lb_save_path"], allow_pickle=True
+                        ).tolist()
                     lb_data.append(lb_cost)
                     np.save(self.cbs_config["lb_save_path"], lb_data)
-                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config[
+                    "edge_attributes"
+                ] == ["step"]:
                     ub_data = []
                     ub_cost = 0
                     for path in solution.paths:
                         ub_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["ub_save_path"]).exists():
-                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                        ub_data = np.load(
+                            self.cbs_config["ub_save_path"], allow_pickle=True
+                        ).tolist()
                     ub_data.append(ub_cost)
                     np.save(self.cbs_config["ub_save_path"], ub_data)
 
-            # print("Time to find paths: ", time.time() - start_time)
+            print("Time to find paths: ", time.time() - start_time)
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            raise RuntimeError(
-                "CBS failed to find a solution. " + error_message
-            )
+            raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
             # assert type(solution) is Tuple[Dict, Dict, bool]
@@ -1146,7 +1209,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
         self.starts = starts
         self.goal_ids = goal_ids
         self.start_ids = start_ids
-        self.nodes_to_agents_maps = nodes_to_agents_maps
 
         cbs_class = None
 
@@ -1228,7 +1290,10 @@ class MultiAgentSearchPolicy(SearchPolicy):
                         dest_node = self.augmented_waypoint_indices[idx][
                             waypoint_counter
                         ]
-                        self.g.remove_edge(src_node, dest_node)
+                        if self.planning_graph is not None:
+                            self.planning_graph.remove_edge(src_node, dest_node)
+                        else:
+                            self.g.remove_edge(src_node, dest_node)
 
                 self.initialize_paths(
                     self.rb_vec, state["composite_starts"], state["composite_goals"]
@@ -1294,7 +1359,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                     dist_to_goal_via_waypoints[agent_id]
                     < dist_to_composite_goals[agent_id]
                 )
-                or (dist_to_composite_goals[agent_id] > self.max_search_steps)
+                or (round(dist_to_composite_goals[agent_id], 0) > self.max_search_steps)
             ):
                 state_copy["goal"] = waypoints[agent_id]
                 if self.open_loop:
@@ -1324,9 +1389,10 @@ class ConstrainedMultiAgentSearchPolicy(
         pcost=None,
         open_loop=False,
         max_search_steps=7,
-        max_cost_limit=np.inf,
+        planning_graph=None,
         dist_aggregate="min",
         cost_aggregate="max",
+        max_cost_limit=np.inf,
         no_waypoint_hopping=False,
         weighted_path_planning="",
         cbs_config={
@@ -1351,6 +1417,7 @@ class ConstrainedMultiAgentSearchPolicy(
             n_agents=n_agents,
             open_loop=open_loop,
             cbs_config=cbs_config,
+            planning_graph=planning_graph,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
             max_cost_limit=max_cost_limit,
@@ -1371,6 +1438,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         aggregate="min",
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         weighted_path_planning="",
         no_waypoint_hopping=False,
         cbs_config={
@@ -1394,6 +1462,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             aggregate=aggregate,
             open_loop=open_loop,
             cbs_config=cbs_config,
+            planning_graph=planning_graph,
             max_search_steps=max_search_steps,
             no_waypoint_hopping=no_waypoint_hopping,
             weighted_path_planning=weighted_path_planning,
@@ -1403,7 +1472,8 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         assert isinstance(rb_vec, tuple), "rb_vec should be a tuple"
         self.rb_vec_grid, self.rb_vec = rb_vec
 
-        self.build_rb_graph(self.rb_vec_grid)
+        if self.planning_graph is None:
+            self.build_rb_graph(self.rb_vec_grid)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -1412,7 +1482,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 masked=True,
             )
             self.rb_distances = scipy.sparse.csgraph.floyd_warshall(
-                pdist2, directed=True
+                pdist2, directed=False
             )
 
     def get_closest_waypoints(self, state):
@@ -1462,18 +1532,28 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         goals = [goal[1] for goal in goals]
         starts_grid = [start[0] for start in starts]
         starts = [start[1] for start in starts]
-        graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
-            starts, goals
-        )
 
-        goal_ids = [
-            nodes_to_agents_maps["goal" + str(agent_id)]
-            for agent_id in range(self.n_agents)
-        ]
-        start_ids = [
-            nodes_to_agents_maps["start" + str(agent_id)]
-            for agent_id in range(self.n_agents)
-        ]
+        if self.planning_graph is not None:
+            graph = self.planning_graph
+            goal_ids = []
+            start_ids = []
+            num_nodes = rb_vec.shape[0] - 1
+            for agent_id in range(self.n_agents):
+                goal_ids.append(num_nodes + 2)
+                start_ids.append(num_nodes + 1)
+                num_nodes += 2
+        else:
+            graph, nodes_to_agents_maps = self.construct_augmented_planning_graph(
+                starts, goals
+            )
+            goal_ids = [
+                nodes_to_agents_maps["goal" + str(agent_id)]
+                for agent_id in range(self.n_agents)
+            ]
+            start_ids = [
+                nodes_to_agents_maps["start" + str(agent_id)]
+                for agent_id in range(self.n_agents)
+            ]
 
         augmented_wps = rb_vec.copy()
         for _, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
@@ -1502,30 +1582,36 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             # TODO: Temporary code here for now. Remove after collection step is done!
             # assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             if isinstance(cbs_solver, CBSSolver):
-                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["cost"]:
+                if "lb_save_path" in self.cbs_config.keys() and self.cbs_config[
+                    "edge_attributes"
+                ] == ["cost"]:
                     lb_data = []
                     lb_cost = 0
                     for path in solution.paths:
                         lb_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["lb_save_path"]).exists():
-                        lb_data = np.load(self.cbs_config["lb_save_path"], allow_pickle=True).tolist()
+                        lb_data = np.load(
+                            self.cbs_config["lb_save_path"], allow_pickle=True
+                        ).tolist()
                     lb_data.append(lb_cost)
                     np.save(self.cbs_config["lb_save_path"], lb_data)
-                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config["edge_attributes"] == ["step"]:
+                elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config[
+                    "edge_attributes"
+                ] == ["step"]:
                     ub_data = []
                     ub_cost = 0
                     for path in solution.paths:
                         ub_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["ub_save_path"]).exists():
-                        ub_data = np.load(self.cbs_config["ub_save_path"], allow_pickle=True).tolist()
+                        ub_data = np.load(
+                            self.cbs_config["ub_save_path"], allow_pickle=True
+                        ).tolist()
                     ub_data.append(ub_cost)
                     np.save(self.cbs_config["ub_save_path"], ub_data)
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            raise RuntimeError(
-                "CBS failed to find a solution. " + error_message
-            )
+            raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
             # assert type(solution) is Tuple[Dict, Dict, bool]
@@ -1585,10 +1671,11 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         self.augmented_reached_final_waypoints = np.zeros(len(starts), dtype=bool)
 
         self.goals = goals
+        self.goals_grid = goals_grid
         self.starts = starts
+        self.starts_grid = starts_grid
         self.goal_ids = goal_ids
         self.start_ids = start_ids
-        self.nodes_to_agents_maps = nodes_to_agents_maps
 
     def get_current_waypoints(self):
 
@@ -1606,12 +1693,18 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                     if waypoint_index == self.start_ids[agent_id]
                     else self.goals[agent_id]
                 )
+                waypoint_grid = (
+                    self.starts_grid[agent_id]
+                    if waypoint_index == self.start_ids[agent_id]
+                    else self.goals_grid[agent_id]
+                )
             else:
                 waypoint = self.rb_vec[waypoint_index]
+                waypoint_grid = self.rb_vec_grid[waypoint_index]
 
             augmented_waypoints.append(waypoint)
             augmented_wp_indices.append(waypoint_index)
-            augmented_grid_waypoints.append(self.rb_vec_grid[waypoint_index])
+            augmented_grid_waypoints.append(waypoint_grid)
         return (augmented_grid_waypoints, augmented_waypoints), augmented_wp_indices
 
     def get_augmented_waypoints(self):
@@ -1653,8 +1746,10 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
 
             if state.get("first_step", False):
 
-                logging.debug("Composite starts: ", composite_starts_grid)
-                logging.debug("Composite goals: ", composite_goals_grid)
+                # logging.debug("Composite starts: {}".format(composite_starts_grid))
+                # logging.debug("Composite goals: {}".format(composite_goals_grid))
+                logging.debug(f"Composite starts: {composite_starts_grid}")
+                logging.debug(f"Composite goals: {composite_goals_grid}")
                 self.initialize_paths(
                     self.rb_vec_grid,
                     state["composite_starts"],
@@ -1684,7 +1779,10 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                         dest_node = self.augmented_waypoint_indices[idx][
                             waypoint_counter
                         ]
-                        self.g.remove_edge(src_node, dest_node)
+                        if self.planning_graph is not None:
+                            self.planning_graph.remove_edge(src_node, dest_node)
+                        else:
+                            self.g.remove_edge(src_node, dest_node)
 
                 self.initialize_paths(
                     self.rb_vec_grid,
@@ -1762,7 +1860,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                     dist_to_goal_via_waypoints[agent_id]
                     < dist_to_composite_goals[agent_id]
                 )
-                or (dist_to_composite_goals[agent_id] > self.max_search_steps)
+                or (round(dist_to_composite_goals[agent_id], 0) > self.max_search_steps)
             ):
                 state_copy["goal"] = waypoints[agent_id]
                 state_copy["grid"]["goal"] = waypoints_grid[agent_id]
@@ -1795,6 +1893,7 @@ class VisualConstrainedMultiAgentSearchPolicy(
         ckpts=None,
         open_loop=False,
         max_search_steps=7,
+        planning_graph=None,
         max_cost_limit=np.inf,
         dist_aggregate="min",
         cost_aggregate="max",
@@ -1822,6 +1921,7 @@ class VisualConstrainedMultiAgentSearchPolicy(
             n_agents=n_agents,
             open_loop=open_loop,
             cbs_config=cbs_config,
+            planning_graph=planning_graph,
             dist_aggregate=dist_aggregate,
             cost_aggregate=cost_aggregate,
             max_cost_limit=max_cost_limit,

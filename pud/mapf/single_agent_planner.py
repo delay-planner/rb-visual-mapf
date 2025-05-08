@@ -3,6 +3,7 @@ import copy
 import time
 import heapq
 import numpy as np
+import networkx as nx
 from numpy.typing import NDArray
 from networkx import Graph, shortest_path
 from typing import Dict, List, Tuple, Union
@@ -40,27 +41,7 @@ def compute_heuristics(graph: Graph, goal: int, edge_attribute: str = "step"):
     """
     Compute the heuristic for each node in the graph
     """
-    graph = graph.to_undirected()
-    open_list = [(0, goal)]
-    heuristics = {goal: 0}
-    closed_list = set()
-
-    while open_list:
-        cost, location = heapq.heappop(open_list)
-
-        if location in closed_list:
-            continue
-        closed_list.add(location)
-
-        for neighbor in graph.neighbors(location):
-            edge_cost = graph[location][neighbor][edge_attribute]
-            successor_cost = cost + edge_cost
-
-            if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
-                heuristics[neighbor] = successor_cost  # type: ignore
-                heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
-
-    return heuristics
+    return nx.single_source_dijkstra_path_length(graph, goal, weight=edge_attribute)
 
 
 def build_constraint_table(
@@ -268,7 +249,6 @@ class AStar(object):
     def __init__(
         self,
         graph: Graph,
-        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
@@ -278,7 +258,6 @@ class AStar(object):
         self.start = start
         self.graph = graph
         self.agent_id = agent_id
-        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -296,30 +275,9 @@ class AStar(object):
             self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
 
     def compute_heuristics(self, edge_attribute="step"):
-        open_list = [(0, self.goal)]
-        heuristics = {self.goal: 0}
-        closed_list = set()
-
-        while open_list:
-            cost, location = heapq.heappop(open_list)
-
-            if location in closed_list:
-                continue
-            closed_list.add(location)
-
-            for neighbor in self.undirected_graph.neighbors(location):
-                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
-                if edge_attribute == "cost":
-                    edge_cost += 1
-            # for neighbor in self.graph.neighbors(location):
-            #     edge_cost = self.graph[location][neighbor][edge_attribute]
-                successor_cost = cost + edge_cost
-
-                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
-                    heuristics[neighbor] = successor_cost  # type: ignore
-                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
-
-        return heuristics
+        return nx.single_source_dijkstra_path_length(
+            self.graph, self.goal, weight=edge_attribute
+        )
 
     def reset(self) -> None:
         self.num_expanded = 0
@@ -356,11 +314,11 @@ class AStar(object):
             edge_attribute
         ]
 
-        if edge_attribute == "cost":
-            # # This ensures that the agent gives more priority to the cost of the edge
-            # successor_gadd *= 3 * self.max_distance
-            # This ensures that the agent makes progress even when the edge attribute is zero
-            successor_gadd += 1
+        # if edge_attribute == "cost":
+        #     # # This ensures that the agent gives more priority to the cost of the edge
+        #     # successor_gadd *= 3 * self.max_distance
+        #     # This ensures that the agent makes progress even when the edge attribute is zero
+        #     successor_gadd += 1
 
         successor = Node(
             parent=current_node,
@@ -399,7 +357,7 @@ class AStar(object):
             existing_node = self.closed_list[(successor.location, successor.timestep)]
             if (
                 successor.g_value + successor.h_value
-                < existing_node.g_value + existing_node.h_value
+                <= existing_node.g_value + existing_node.h_value
                 and successor.g_value < existing_node.g_value
             ):
                 self.closed_list[(successor.location, successor.timestep)] = successor
@@ -533,7 +491,7 @@ class AStar(object):
             return
 
         prev_successor = state
-        experience_suffix = experience[idx + 1:]
+        experience_suffix = experience[idx + 1:]  # noqa
 
         for successor_location in experience_suffix:
             successor = self.add_child(
@@ -552,21 +510,21 @@ class RiskBudgetedAStar(AStar):
     def __init__(
         self,
         graph: Graph,
-        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
         config: Dict,
     ):
-        super().__init__(graph, undirected_graph, agent_id, start, goal, config)
+        super().__init__(graph, agent_id, start, goal, config)
 
     def push_constrained_node(self, node: RiskNode) -> None:
         heapq.heappush(
             self.open_list,
             (
                 node.g_value + node.h_value,
-                node.risk,
                 node.h_value,
+                node.risk + self.heuristic["cost"][node.location],
+                self.heuristic["cost"][node.location],
                 node,
             ),
         )
@@ -622,6 +580,7 @@ class RiskBudgetedAStar(AStar):
             current_node, neighbor_location, edge_attribute
         )
 
+        potential_risk = successor.risk + self.heuristic["cost"][successor.location]
         if (
             is_constrained_with_ds(
                 current_node.location,
@@ -631,7 +590,7 @@ class RiskBudgetedAStar(AStar):
                 constraint_table,
                 self.agent_id,
             )
-            or successor.risk > risk_budget
+            or round(potential_risk, 10) > round(risk_budget, 10)
         ):
             return
 
@@ -732,7 +691,7 @@ class RiskBudgetedAStar(AStar):
                     self.agent_id,
                     goal=True,
                 )
-                and current_node.risk <= risk_budget
+                and round(current_node.risk, 10) <= round(risk_budget, 10)
             ):
                 return extract_path(current_node)
 
@@ -782,7 +741,7 @@ class RiskBudgetedAStar(AStar):
             return
 
         prev_successor = state
-        experience_suffix = experience[idx + 1:]
+        experience_suffix = experience[idx + 1:]  # noqa
 
         for successor_location in experience_suffix:
             successor = self.add_constrained_child(
@@ -802,7 +761,6 @@ class LagrangianAStar(AStar):
     def __init__(
         self,
         graph: Graph,
-        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
@@ -810,7 +768,7 @@ class LagrangianAStar(AStar):
         config: Dict,
     ):
         self.lagrangian = lagrangian
-        super().__init__(graph, undirected_graph, agent_id, start, goal, config)
+        super().__init__(graph, agent_id, start, goal, config)
         assert (
             len(self.edge_attributes) == 2
         ), "Lagrangian A* requires two edge attributes"
@@ -821,31 +779,15 @@ class LagrangianAStar(AStar):
             "cost" in self.edge_attributes
         ), "Lagrangian A* requires cost edge attribute"
 
+    def custom_edge_weight(self, u, v, data):
+        step = data.get("step", 0)
+        cost = data.get("cost", 0)
+        return step + self.lagrangian * cost
+
     def compute_heuristics(self, edge_attribute="step"):
-        open_list = [(0, self.goal)]
-        heuristics = {self.goal: 0}
-        closed_list = set()
-
-        while open_list:
-            cost, location = heapq.heappop(open_list)
-
-            if location in closed_list:
-                continue
-            closed_list.add(location)
-
-            for neighbor in self.undirected_graph.neighbors(location):
-                edge_cost = (
-                    self.undirected_graph[location][neighbor]["step"]
-                    + self.lagrangian
-                    * self.undirected_graph[location][neighbor]["cost"]
-                )
-                successor_cost = cost + edge_cost
-
-                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
-                    heuristics[neighbor] = successor_cost  # type: ignore
-                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
-
-        return heuristics
+        return nx.single_source_dijkstra_path_length(
+            self.graph, self.goal, weight=self.custom_edge_weight  # type: ignore
+        )
 
     def successor_generator(
         self, current_node: Node, neighbor_location: int, edge_attribute: str = "step"
@@ -890,7 +832,6 @@ class BiObjectiveAStar(object):
     def __init__(
         self,
         graph: Graph,
-        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
@@ -901,7 +842,6 @@ class BiObjectiveAStar(object):
         self.agent_id = agent_id
 
         self.graph = graph
-        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -921,26 +861,9 @@ class BiObjectiveAStar(object):
             self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
 
     def compute_heuristics(self, edge_attribute: str = "step"):
-        open_list = [(0, self.goal)]
-        heuristics = {self.goal: 0}
-        closed_list = set()
-
-        while open_list:
-            cost, location = heapq.heappop(open_list)
-
-            if location in closed_list:
-                continue
-            closed_list.add(location)
-
-            for neighbor in self.undirected_graph.neighbors(location):
-                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
-                successor_cost = cost + edge_cost
-
-                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
-                    heuristics[neighbor] = successor_cost  # type: ignore
-                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
-
-        return heuristics
+        return nx.single_source_dijkstra_path_length(
+            self.graph, self.goal, weight=edge_attribute
+        )
 
     def get_heuristic(self, location: int) -> NDArray:
         heuristic = np.zeros(self.cost_dim)
@@ -1133,7 +1056,6 @@ class MultiObjectiveAStar(object):
     def __init__(
         self,
         graph: Graph,
-        undirected_graph: Graph,
         agent_id: int,
         start: int,
         goal: int,
@@ -1144,7 +1066,6 @@ class MultiObjectiveAStar(object):
         self.agent_id = agent_id
 
         self.graph = graph
-        self.undirected_graph = undirected_graph
 
         self.num_expanded = 0
         self.num_generated = 0
@@ -1164,26 +1085,9 @@ class MultiObjectiveAStar(object):
             self.heuristic[edge_attribute] = self.compute_heuristics(edge_attribute)
 
     def compute_heuristics(self, edge_attribute: str = "step"):
-        open_list = [(0, self.goal)]
-        heuristics = {self.goal: 0}
-        closed_list = set()
-
-        while open_list:
-            cost, location = heapq.heappop(open_list)
-
-            if location in closed_list:
-                continue
-            closed_list.add(location)
-
-            for neighbor in self.undirected_graph.neighbors(location):
-                edge_cost = self.undirected_graph[location][neighbor][edge_attribute]
-                successor_cost = cost + edge_cost
-
-                if neighbor not in heuristics or heuristics[neighbor] > successor_cost:
-                    heuristics[neighbor] = successor_cost  # type: ignore
-                    heapq.heappush(open_list, (successor_cost, neighbor))  # type: ignore
-
-        return heuristics
+        return nx.single_source_dijkstra_path_length(
+            self.graph, self.goal, weight=edge_attribute
+        )
 
     def get_heuristic(self, location: int) -> NDArray:
         h_val = np.zeros(self.cost_dim)

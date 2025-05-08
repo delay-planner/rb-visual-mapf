@@ -90,7 +90,7 @@ def pointenv_setup(args):
         f"Goal dim: {goal_dim},\n"
         f"State dim: {state_dim},\n"
         f"Action dim: {action_dim},\n"
-        "Max action: {max_action}"
+        f"Max action: {max_action}"
     )
 
     agent = DRLDDPGLag(

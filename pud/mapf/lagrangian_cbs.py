@@ -27,7 +27,6 @@ class LagrangianCBSSolver(CBSSolver):
                 config=config,
                 agent_id=agent,
                 graph=self.graph,
-                undirected_graph=self.undirected_graph,
                 goal=self.goals[agent],
                 start=self.starts[agent],
                 lagrangian=self.lagrangian,
