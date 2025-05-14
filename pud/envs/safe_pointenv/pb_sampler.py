@@ -6,7 +6,6 @@ from pud.algos.data_struct import arg_topk, get_nd_inds_set, arg_group_vals
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.envs.safe_pointenv.safe_wrappers import \
     SafeGoalConditionedPointWrapper
-from pud.envs.safe_habitatenv.safe_habitat_wrappers import SafeGoalConditionedHabitatPointWrapper
 
 def calc_pairwise_cost(agent:DRLDDPGLag, rb_vec:np.ndarray, ensemble_agg="max"):
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)
@@ -28,7 +27,7 @@ def calc_pairwise_dist(agent:DRLDDPGLag, rb_vec:np.ndarray, ensemble_agg="max"):
 
 
 def sample_pbs_by_agent(
-        env:Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper], 
+        env:Union[SafeGoalConditionedPointWrapper], 
         agent:DRLDDPGLag, 
         num_states:int=100,
         min_dist: float = 0,
@@ -49,7 +48,7 @@ def sample_pbs_by_agent(
         num_states (int, optional): _description_. Defaults to 100.
     """
     ## online generate start and goal states nearest to target cumulative costs
-    env: SafeGoalConditionedHabitatPointWrapper
+    env
     rb_vec = np.array([env.sample_empty_state() for _ in range(num_states)])
     rb_vec_goal = np.array([env.sample_empty_state() for _ in range(num_states)])
     
@@ -190,7 +189,7 @@ def sample_pbs_by_agent_deprecated(
     return nearest_pbs
 
 def sample_cost_pbs_by_agent(
-        env:Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper], 
+        env:Union[SafeGoalConditionedPointWrapper], 
         agent:DRLDDPGLag, 
         num_states:int=100,
         target_val:float=None,
@@ -374,7 +373,7 @@ def sample_cost_pbs_by_agent_deprecated(
         return nearest_pbs
 
 def load_pb_set(file_path:str, 
-        env:Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper],
+        env:Union[SafeGoalConditionedPointWrapper],
         agent:DRLDDPGLag,):
     pnts = np.loadtxt(fname=file_path,
             dtype=float,

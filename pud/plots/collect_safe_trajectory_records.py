@@ -1653,6 +1653,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
 
 def main():
+    save=False
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
@@ -1670,7 +1671,7 @@ def main():
 
     if args.collect_trajs:
         problem_setup = setup_problems(
-            eval_env, agent, args, config, basedir, save=True
+            eval_env, agent, args, config, basedir, save=save
         )
     else:
         assert args.load_problem_set
@@ -1681,15 +1682,15 @@ def main():
 
         if args.method_type == "unconstrained":
             unconstrained_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "unconstrained_reward_search":
             unconstrained_search_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "constrained":
             constrained_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "constrained_reward_search":
             constrained_search_policy(
@@ -1700,7 +1701,7 @@ def main():
                 config,
                 trained_cost_limit,
                 basedir,
-                save=True,
+                save=save,
             )
         elif args.method_type == "constrained_risk_search":
             constrained_search_policy(
@@ -1711,7 +1712,7 @@ def main():
                 config,
                 trained_cost_limit,
                 basedir,
-                save=True,
+                save=save,
                 edge_attributes=["cost"],
             )
         elif args.method_type == "full_constrained_reward_search":
@@ -1723,7 +1724,7 @@ def main():
                 config,
                 trained_cost_limit,
                 basedir,
-                save=True,
+                save=save,
                 full_risk=True,
                 edge_attributes=["step"],
             )
@@ -1736,25 +1737,25 @@ def main():
                 config,
                 trained_cost_limit,
                 basedir,
-                save=True,
+                save=save,
                 full_risk=True,
                 edge_attributes=["cost"],
             )
         elif args.method_type == "lagrangian_search":
             lagrangian_search_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "biobjective_search":
             biobjective_search_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "risk_budgeted_search":
             risk_budgeted_search_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "risk_bounded_uniform_search":
             risk_bounded_search_policy(
-                agent, eval_env, problem_setup, args, config, basedir, save=True
+                agent, eval_env, problem_setup, args, config, basedir, save=save
             )
         elif args.method_type == "risk_bounded_utility_search":
             risk_bounded_search_policy(
@@ -1764,7 +1765,7 @@ def main():
                 args,
                 config,
                 basedir,
-                save=True,
+                save=save,
                 allocater="utility",
             )
         elif args.method_type == "risk_bounded_inverse_utility_search":
@@ -1775,7 +1776,7 @@ def main():
                 args,
                 config,
                 basedir,
-                save=True,
+                save=save,
                 allocater="inverse_utility",
             )
         elif args.method_type == "collect_bounds_data":

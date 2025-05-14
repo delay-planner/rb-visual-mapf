@@ -5,6 +5,7 @@ runs
 runs_debug
 pud/algos/lr_scheduler/output
 temp/
+ros2_ws/
 external_data/
 .vscode/
 outputs/
@@ -14,6 +15,11 @@ pud/plots/figures/
 pud/mapf/unit_tests/logs/
 cc-sorb-venv/
 pud/envs/safe_habitatenv/apsps/
+pud/gzsim/log/
+pud/gzsim/install/
+pud/gzsim/test_data
+pud/gzsim/src/rbmapf_gzsim/test/
+pud/gzsim/src/rbmapf_gzsim/resource/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

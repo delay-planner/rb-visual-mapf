@@ -5,7 +5,52 @@ from typing import List, Dict
 from numpy.typing import NDArray
 
 
-def location_collision(path1: List[int], path2: List[int], timestep: int):
+def orientation(p, q, r):
+    """
+    Return:
+      0 if p, q, r are collinear,
+      1 if they make a clockwise turn,
+     -1 if they make a counter-clockwise turn.
+    """
+    # compute the 2D “cross-product” of (q–p) × (r–q)
+    val = (q[1] - p[1])*(r[0] - q[0]) - (q[0] - p[0])*(r[1] - q[1])
+    if abs(val) < 1e-9:
+        return 0
+    return 1 if val > 0 else -1
+
+
+def on_segment(p, q, r):
+    """
+    Given collinear p, q, r, return True if q lies on segment pr.
+    """
+    return (min(p[0], r[0]) <= q[0] <= max(p[0], r[0]) and
+            min(p[1], r[1]) <= q[1] <= max(p[1], r[1]))
+
+
+def segments_intersect(A, B, C, D):
+    """
+    Return True if segment AB intersects segment CD.
+    A, B, C, D are (x,y) pairs (tuples, lists, or numpy arrays)
+    """
+    o1 = orientation(A, B, C)
+    o2 = orientation(A, B, D)
+    o3 = orientation(C, D, A)
+    o4 = orientation(C, D, B)
+
+    # General case
+    if o1 != o2 and o3 != o4:
+        return True
+
+    # Special Cases (collinear & overlapping)
+    if o1 == 0 and on_segment(A, C, B): return True
+    if o2 == 0 and on_segment(A, D, B): return True
+    if o3 == 0 and on_segment(C, A, D): return True
+    if o4 == 0 and on_segment(C, B, D): return True
+
+    return False
+
+
+def location_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray):
 
     position1 = get_location(path1, timestep)
     position2 = get_location(path2, timestep)
@@ -16,6 +61,11 @@ def location_collision(path1: List[int], path2: List[int], timestep: int):
         next_position1 = get_location(path1, timestep + 1)
         next_position2 = get_location(path2, timestep + 1)
         if position1 == next_position2 and position2 == next_position1:
+            return [position1, next_position1], timestep + 1, "edge"
+        if segments_intersect(
+            graph_waypoints[position1], graph_waypoints[next_position1],
+            graph_waypoints[position2], graph_waypoints[next_position2]
+        ):
             return [position1, next_position1], timestep + 1, "edge"
 
     return None
@@ -79,7 +129,7 @@ def detect_collision(
                 path1, path2, timestep, graph_waypoints, collision_radius
             )
         else:
-            collided = location_collision(path1, path2, timestep)
+            collided = location_collision(path1, path2, timestep, graph_waypoints)
 
         if collided is not None:
             return collided

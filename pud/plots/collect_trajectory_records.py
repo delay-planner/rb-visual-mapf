@@ -951,6 +951,7 @@ def multi_constrained_search_policy(
 
 
 def main():
+    save=False
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
@@ -968,7 +969,7 @@ def main():
 
     if args.collect_trajs:
         problem_setup = setup_problems(
-            eval_env, agent, args, config, basedir, save=True
+            eval_env, agent, args, config, basedir, save=save
         )
     else:
         assert args.load_problem_set
@@ -980,20 +981,20 @@ def main():
         if args.method_type == "unconstrained":
             if args.num_agents == 1:
                 single_unconstrained_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
             else:
                 multi_unconstrained_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
         elif args.method_type == "unconstrained_search":
             if args.num_agents == 1:
                 single_unconstrained_search_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
             else:
                 multi_unconstrained_search_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
         elif args.method_type == "unconstrained_search_ds":
             assert args.num_agents != 1
@@ -1005,16 +1006,16 @@ def main():
                 config,
                 basedir,
                 ds=True,
-                save=True,
+                save=save,
             )
         elif args.method_type == "constrained":
             if args.num_agents == 1:
                 single_constrained_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
             else:
                 multi_constrained_policy(
-                    agent, eval_env, problem_setup, args, config, basedir, save=True
+                    agent, eval_env, problem_setup, args, config, basedir, save=save
                 )
         elif args.method_type == "constrained_search":
             if args.num_agents == 1:
@@ -1026,7 +1027,7 @@ def main():
                     config,
                     trained_cost_limit,
                     basedir,
-                    save=True,
+                    save=save,
                 )
             else:
                 multi_constrained_search_policy(
@@ -1037,7 +1038,7 @@ def main():
                     config,
                     trained_cost_limit,
                     basedir,
-                    save=True,
+                    save=save,
                 )
         elif args.method_type == "constrained_search_ds":
             assert args.num_agents != 1
@@ -1050,7 +1051,7 @@ def main():
                 trained_cost_limit,
                 basedir,
                 ds=True,
-                save=True,
+                save=save,
             )
         elif args.method_type == "risk_bounded_constrained_search_ds":
             assert args.num_agents != 1
@@ -1064,7 +1065,7 @@ def main():
                 basedir,
                 ds=True,
                 risk_bounded=True,
-                save=True,
+                save=save,
             )
         else:
             raise ValueError("Invalid method type")

@@ -622,8 +622,8 @@ def visualize_compare_search_multi_agent(agent, search_policy, eval_env, n_agent
         set_global_seed(seed)
         set_env_seed(eval_env, seed + 1)
 
+        threshold = 0.0
         policy = search_policy if use_search else agent
-        threshold = search_policy.radius
         collector_cls = ConstrainedCollector if constrained else Collector
 
         if col_index == 0:
