@@ -375,8 +375,8 @@ def visualize_path(paths, filename, plot_handles, save_fig=False, waypoints=None
 
     def init():
         for i, path in enumerate(paths):
-            starts[i].set_data(path[0][0], path[0][1])
-            ends[i].set_data(path[-1][0], path[-1][1])
+            starts[i].set_data([path[0][0]], [path[0][1]])
+            ends[i].set_data([path[-1][0]], [path[-1][1]])
         return starts
 
     def update(frame):

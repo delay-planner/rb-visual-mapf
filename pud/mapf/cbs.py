@@ -6,12 +6,12 @@ import logging
 import networkx as nx
 from pathlib import Path
 from networkx import Graph
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import numpy as np
 from numpy.typing import NDArray
 from pud.mapf.single_agent_planner import AStar
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
-from pud.mapf.utils import detect_collisions, get_location, standard_split, disjoint_split
+from pud.mapf.utils import detect_collisions, get_location, segments_intersect, standard_split, disjoint_split
 
 
 class CBSNode(object):
@@ -158,9 +158,9 @@ class CBSSolver(object):
 
     def extract_violating_agents(
         self, successor: CBSNode, constraint: Dict
-    ) -> List[int]:
+    ) -> List[Tuple]:
 
-        violating_agents = []
+        violating_agents = set()
         for agent in range(self.num_agents):
 
             if agent == constraint["agent_id"]:
@@ -176,21 +176,26 @@ class CBSSolver(object):
 
             if len(constraint["location"]) == 1:
                 if constraint["location"][0] == current_location:
-                    violating_agents.append(agent)
+                    violating_agents.add((agent, "vertex"))
             else:
                 successor_path_location = [
                     previous_location,
                     current_location,
                 ]
-                if (
-                    constraint["location"] == successor_path_location[::-1]
-                    or constraint["location"][0] == successor_path_location[0]
-                    or constraint["location"][1] == successor_path_location[1]
-                ):
-                    violating_agents.append(agent)
+                if (constraint["location"] == successor_path_location[::-1]):
+                    violating_agents.add((agent, "edge"))
+                elif (constraint["location"][0] == successor_path_location[0]
+                      or constraint["location"][1] == successor_path_location[1]):
+                    violating_agents.add((agent, "vertex"))
+                elif segments_intersect(self.graph_waypoints[constraint["location"][0]],
+                                        self.graph_waypoints[constraint["location"][1]],
+                                        self.graph_waypoints[previous_location],
+                                        self.graph_waypoints[current_location]):
+                    # Add another check for the intersection case
+                    violating_agents.add((agent, "intersection"))
 
         logging.debug("Violating agents are {}".format(violating_agents))
-        return violating_agents
+        return list(violating_agents)
 
     def save_search_tree(self) -> None:
         filepath = Path(self.logdir) / f"search_tree_step_{self.num_generated}.dot"
@@ -310,6 +315,7 @@ class CBSSolver(object):
                 return current_node
 
             collision = self.choose_collision(current_node)
+            logging.debug("Collision: {}".format(collision))
             constraints = self.splitter_function(collision)  # type: ignore
 
             for constraint in constraints:
@@ -326,6 +332,18 @@ class CBSSolver(object):
                 for old_constraint in current_node.constraints:
                     if old_constraint not in successor.constraints:
                         successor.constraints.append(old_constraint)
+
+                seen = {}
+                conflict = False
+                for c in successor.constraints:
+                    key = (c["agent_id"], tuple(c["location"]), c["timestep"])
+                    if key in seen and seen[key] != c["positive"]:
+                        conflict = True
+                        break
+                    seen[key] = c["positive"]
+                if conflict:
+                    logging.debug(f"Skipping successor {successor.id} due to contradictory constraints")
+                    continue
 
                 constraint_agent = constraint["agent_id"]
                 agent_path = self.single_agent_planners[constraint_agent].find_path(
@@ -365,12 +383,47 @@ class CBSSolver(object):
                             successor, constraint
                         )
 
-                        for agent in violating_agents:
+                        for agent, conflict_type in violating_agents:
                             if agent == constraint_agent:
                                 continue
 
+                            violating_constraints = successor.constraints.copy()
+                            if conflict_type == "vertex":
+                                ind = 0 if len(constraint["location"]) == 1 else 1
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": [constraint["location"][ind]],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+                            elif conflict_type == "edge":
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": constraint["location"][::-1],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+                            else:
+                                current_location = get_location(
+                                    successor.paths[agent], constraint["timestep"]
+                                )
+                                previous_location = get_location(
+                                    successor.paths[agent],
+                                    constraint["timestep"] - 1,
+                                )
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": [previous_location, current_location],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+
                             agent_path = self.single_agent_planners[agent].find_path(
-                                constraints=successor.constraints,
+                                # constraints=successor.constraints,
+                                constraints=violating_constraints,
                                 edge_attribute=self.edge_attributes[0],
                                 max_time=self.max_time // self.num_agents,
                                 experience=current_node.paths[agent] if self.use_experience else None,
@@ -400,11 +453,14 @@ class CBSSolver(object):
                                     break
                             else:
                                 successor.paths[agent] = agent_path
+                                successor.constraints = violating_constraints
 
                     if not skip:
                         successor.collisions = detect_collisions(
                             successor.paths, self.graph_waypoints, self.collision_radius
                         )
+                        if len(successor.collisions) > len(current_node.collisions):
+                            continue
                         successor.cost = self.compute_sum_of_costs(successor.paths)
                         self.push_node(successor)
 

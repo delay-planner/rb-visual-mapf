@@ -65,8 +65,8 @@ def location_collision(path1: List[int], path2: List[int], timestep: int, graph_
         if segments_intersect(
             graph_waypoints[position1], graph_waypoints[next_position1],
             graph_waypoints[position2], graph_waypoints[next_position2]
-        ):
-            return [position1, next_position1], timestep + 1, "edge"
+        ) and len(set([position1, next_position1, position2, next_position2])) == 4:
+            return [position1, next_position1, position2, next_position2], timestep + 1, "intersection"
 
     return None
 
@@ -200,6 +200,21 @@ def standard_split(collision: Dict) -> List[Dict]:
                 "final": False,
             }
         )
+    elif collision["type"] == "intersection":
+        constraints.append({
+            "agent_id": collision["agent_A"],
+            "location": collision["location"][:2],  # [from, to]
+            "timestep": collision["timestep"],
+            "positive": False,
+            "final": False,
+        })
+        constraints.append({
+            "agent_id": collision["agent_B"],
+            "location": collision["location"][2:],  # [from, to]
+            "timestep": collision["timestep"],
+            "positive": False,
+            "final": False,
+        })
 
     return constraints
 
@@ -208,11 +223,25 @@ def disjoint_split(collision: Dict) -> List[Dict]:
     agents = [collision["agent_A"], collision["agent_B"]]
     agent_choice = random.randint(0, 1)
     agent = agents[agent_choice]
-    location = (
-        collision["location"]
-        if agent_choice == 0
-        else list(reversed(collision["location"]))
-    )
+
+    if collision["type"] == "vertex":
+        location = collision["location"]
+
+    elif collision["type"] == "edge":
+        location = (
+            collision["location"] if agent == collision["agent_A"]
+            else list(reversed(collision["location"]))
+        )
+
+    elif collision["type"] == "intersection":
+        if agent == collision["agent_A"]:
+            location = collision["location"][:2]
+        else:
+            location = collision["location"][2:]
+
+    else:
+        raise ValueError(f"Unknown collision type: {collision['type']}")
+
     return [
         {
             "agent_id": agent,
