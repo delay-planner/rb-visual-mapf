@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple, Union
 
 from pud.mapf.cbs import CBSNode, CBSSolver
 from pud.mapf.single_agent_planner import RiskBudgetedAStar
-from pud.mapf.utils import detect_collisions, standard_split
+from pud.mapf.utils import detect_collisions, get_location, standard_split
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
 
 
@@ -461,15 +461,50 @@ class RiskBoundedCBSSolver(CBSSolver):
                             violating_agents = self.extract_violating_agents(
                                 successor, constraint
                             )
-                            for agent in violating_agents:
+                            for agent, conflict_type in violating_agents:
                                 if agent == constraint_agent:
                                     continue
+
+                                violating_constraints = successor.constraints.copy()
+                                if conflict_type == "vertex":
+                                    ind = 0 if len(constraint["location"]) == 1 else 1
+                                    violating_constraints.append({
+                                        "agent_id": agent,
+                                        "location": [constraint["location"][ind]],
+                                        "timestep": constraint["timestep"],
+                                        "positive": False,
+                                        "final": False
+                                    })
+                                elif conflict_type == "edge":
+                                    violating_constraints.append({
+                                        "agent_id": agent,
+                                        "location": constraint["location"][::-1],
+                                        "timestep": constraint["timestep"],
+                                        "positive": False,
+                                        "final": False
+                                    })
+                                else:
+                                    current_location = get_location(
+                                        successor.paths[agent], constraint["timestep"]
+                                    )
+                                    previous_location = get_location(
+                                        successor.paths[agent],
+                                        constraint["timestep"] - 1,
+                                    )
+                                    violating_constraints.append({
+                                        "agent_id": agent,
+                                        "location": [previous_location, current_location],
+                                        "timestep": constraint["timestep"],
+                                        "positive": False,
+                                        "final": False
+                                    })
 
                                 # Recompute their paths with their risk allocation
                                 agent_path = self.single_agent_planners[
                                     agent
                                 ].find_constrained_path(
-                                    constraints=successor.constraints,
+                                    # constraints=successor.constraints,
+                                    constraints=violating_constraints,
                                     risk_budget=current_node.risk_allocation[agent],
                                     experience=(
                                         current_node.paths[agent]
@@ -484,6 +519,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                                     logging.debug("Path found for violating agent {}".format(agent))
                                     successor.paths[agent] = agent_path
                                     successor.paths_found[agent] = True
+                                    successor.constraints = violating_constraints
                                 else:
                                     # If we cannot find a path for this violating agent then keep track of them so
                                     # that we can recompute the risk allocation and re-insert the node into the open
@@ -498,7 +534,7 @@ class RiskBoundedCBSSolver(CBSSolver):
                             if not all(successor.paths_found):
                                 failing_violating_agents = [
                                     agent
-                                    for agent in violating_agents
+                                    for agent, _ in violating_agents
                                     if not successor.paths_found[agent]
                                 ]
                                 new_allocation = self.reallocate_risk(
