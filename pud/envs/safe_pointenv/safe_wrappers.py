@@ -2,11 +2,13 @@ import gym
 import pickle
 import gym.spaces
 import numpy as np
-from typing import Union, List
+from typing import List, Union
+from numpy.typing import NDArray
 
 from pud.envs.wrappers import TimeLimit
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.algos.cbfs.cbfs_eval import sample_precompiled_grid_policies
+
 
 class SafeGoalConditionedPointWrapper(gym.Wrapper):
     """
@@ -20,6 +22,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         Perhaps only good for training
         Distance constraints, but there may not exist viable solutions, but trajectories whose step cost < cost limit
     """
+
     def __init__(
         self,
         env: SafePointEnv,
@@ -40,7 +43,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             least this far from the initial observation.
           max_dist: (float) When the constraint is enforced, ensure the goal is at
             most this far from the initial observation.
-          reset_blend: (float) the probability of running the reset with balanced sampling, 0 means only running the original reset, 1 means running only the balanced reset
+          reset_blend: (float) the probability of running the reset with balanced sampling,
+                       0 means only running the original reset, 1 means running only the balanced reset
           threshold_distance: (float) States are considered equivalent if they are
             at most this far away from one another.
         """
@@ -60,38 +64,38 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             }
         )
         # Load CBFS sample policies on grid
-        self.env: SafePointEnv # for auto-complete
+        self.env: SafePointEnv  # for auto-complete
 
     def get_prob_constraint(self):
         return self._prob_constraint
 
-    def set_prob_constraint(self, other_pc:float):
+    def set_prob_constraint(self, other_pc: float):
         self._prob_constraint = other_pc
 
     def normalize_obs(self, obs):
         return np.array(
             [obs[0] / float(self.env._height), obs[1] / float(self.env._width)],
-            dtype=self.observation_space["observation"].dtype,
+            dtype=self.observation_space["observation"].dtype,  # type: ignore
         )
 
-    def de_normalize_obs(self, obs:np.ndarray):
+    def de_normalize_obs(self, obs: np.ndarray):
         """reverse of _normalize_obs"""
         return np.array(
             [
-                obs[0] * float(self.env._height), 
+                obs[0] * float(self.env._height),
                 obs[1] * float(self.env._width),
             ],
-        dtype=self.observation_space["observation"].dtype
+            dtype=self.observation_space["observation"].dtype,  # type: ignore
         )
 
-    def de_normalize_goal_conditioned_obs(self, obs:dict):
+    def de_normalize_goal_conditioned_obs(self, obs: dict):
         """reverse of _normalize_obs"""
         out = {
             "observation": self.de_normalize_obs(obs["observation"]),
             "goal": self.de_normalize_obs(obs["goal"]),
         }
         return out
-    
+
     def step(self, action):
         """
         The safe_pointenv does NOT use normalized observations, the goal-conditioned env does
@@ -101,7 +105,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         """
         obs, _, _, info = self.env.step(action)
         rew = -1.0
-        done = self._is_done(obs, self._goal)
+        done = bool(self._is_done(obs, self._goal))
         info["success"] = done
         return (
             {
@@ -131,7 +135,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
             self._min_cost = min_cost
         if max_cost is not None:
             self._max_cost = max_cost
-    
+
     def _is_done(self, obs, goal):
         """
         Determines whether observation equals goal
@@ -160,11 +164,8 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         }, info
 
     def _sample_goal(self, obs):
-        """Sampled a goal observation. 
+        """Sampled a goal observation.
         use only unconstrained samples"""
-        #if np.random.random() < self._prob_constraint:
-        #    return self._sample_goal_constrained(obs, self._min_dist, self._max_dist)
-        #else:
         return self._sample_goal_unconstrained(obs)
 
     def _sample_goal_constrained(self, obs, min_dist, max_dist):
@@ -222,6 +223,7 @@ class SafeGoalConditionedPointWrapper(gym.Wrapper):
         apsp = self.env._apsp
         return np.max(apsp[np.isfinite(apsp)])
 
+
 class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
     def __init__(
         self,
@@ -233,21 +235,23 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
         max_cost=1000,
         threshold_distance=1.0,
     ):
-        """Reset using problems (start-goal pairs) from an external queue. If the queue is empty, use the default reset method
+        """
+        Reset using problems (start-goal pairs) from an external queue.
+        If the queue is empty, use the default reset method
         """
         super(SafeGoalConditionedPointQueueWrapper, self).__init__(
-                env=env,
-                prob_constraint=prob_constraint,
-                min_dist=min_dist,
-                max_dist=max_dist,
-                min_cost=min_cost,
-                max_cost=max_cost,
-                threshold_distance=threshold_distance,
-                )
+            env=env,
+            prob_constraint=prob_constraint,
+            min_dist=min_dist,
+            max_dist=max_dist,
+            min_cost=min_cost,
+            max_cost=max_cost,
+            threshold_distance=threshold_distance,
+        )
         self.pb_Q = []
-        # by default, don't pop from Q because there are many 
-        # redundant reset from parent classes
-        self.use_q = False  
+        # By default, don't pop from Q because there are many
+        # Redundant reset from parent classes
+        self.use_q = False
         self.verbose = True
 
     def get_Q_size(self):
@@ -256,28 +260,29 @@ class SafeGoalConditionedPointQueueWrapper(SafeGoalConditionedPointWrapper):
     def set_use_q(self, status: bool):
         self.use_q = status
 
-    def append_pbs(self, pb_list:List[tuple]):
+    def append_pbs(self, pb_list: List[tuple]):
         self.pb_Q.extend(pb_list)
-    
-    def set_pbs(self, pb_list:List[tuple]):
-        """replace the problem Q with a new one, 
-        intended for update pbs for training"""
+
+    def set_pbs(self, pb_list: List[tuple]):
+        """
+        Replace the problem Q with a new one, intended for update pbs for training
+        """
         assert isinstance(pb_list, list)
         self.pb_Q = pb_list
 
-    def set_verbose(self, new_verbose:bool):
+    def set_verbose(self, new_verbose: bool):
         self.verbose = new_verbose
-    
+
     def reset(self):
-        if self.use_q and np.random.rand()<self._prob_constraint:
-            if len(self.pb_Q)>0:
+        if self.use_q and np.random.rand() < self._prob_constraint:
+            if len(self.pb_Q) > 0:
                 new_pb = self.pb_Q.pop(0)
-                return self.reset_alt(**new_pb)
+                return self.reset_alt(**new_pb)  # type: ignore
             if self.verbose:
                 print("[WARN]: queue from goal conditioned env is empty")
         return self.reset_orig()
 
-    def reset_alt(self, start: np.ndarray, goal: np.ndarray, info: dict={}):
+    def reset_alt(self, start: NDArray, goal: NDArray, info: dict = {}):
         """reset using alternative source, start and goal are assumed to be de-normalized"""
         self._goal = goal
         obs, new_info = self.env.reset_manual(start_state=start)
@@ -301,18 +306,17 @@ class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
         threshold_distance=1.0,
         cbfs_policy_path: str = "",  # path to pre-compiled sample policies on grid
     ):
-        """Balance the expected accumulated costs by blending reset with a precompiled sample policy on grid. 
-        """
+        """Balance the expected accumulated costs by blending reset with a precompiled sample policy on grid."""
         self.reset_blend = reset_blend
         super(SafeGoalConditionedPointBlendWrapper, self).__init__(
-                env=env,
-                prob_constraint=prob_constraint,
-                min_dist=min_dist,
-                max_dist=max_dist,
-                min_cost=min_cost,
-                max_cost=max_cost,
-                threshold_distance=threshold_distance,
-                )
+            env=env,
+            prob_constraint=prob_constraint,
+            min_dist=min_dist,
+            max_dist=max_dist,
+            min_cost=min_cost,
+            max_cost=max_cost,
+            threshold_distance=threshold_distance,
+        )
 
         # Load CBFS sample policies on grid
         self.load_cbfs_grid_policy(cbfs_policy_path)
@@ -394,22 +398,6 @@ class SafeGoalConditionedPointBlendWrapper(SafeGoalConditionedPointWrapper):
         info = {"cost": cost}
         return new_state, info
 
-def set_safe_env_difficulty(
-    eval_env: SafeGoalConditionedPointWrapper,
-    difficulty: float,
-    min_cost: float = 0.0,
-    max_cost: float = 1.0,
-):
-    assert 0 <= difficulty <= 1
-    max_goal_dist = eval_env.max_goal_dist
-    eval_env.set_sample_goal_args(
-        prob_constraint=1,
-        min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
-        max_dist=max_goal_dist * (difficulty + 0.05),
-        min_cost=min_cost,
-        max_cost=max_cost,
-    )
-
 
 class SafeTimeLimit(TimeLimit):
     def __init__(self, env, duration, terminate_on_timeout=False):
@@ -438,6 +426,23 @@ class SafeTimeLimit(TimeLimit):
         observation, info = self.env.reset()
         observation["first_step"] = True
         return observation, info
+
+
+def set_safe_env_difficulty(
+    eval_env: Union[SafeTimeLimit, SafeGoalConditionedPointWrapper],
+    difficulty: float,
+    min_cost: float = 0.0,
+    max_cost: float = 1.0,
+):
+    assert 0 <= difficulty <= 1
+    max_goal_dist = eval_env.max_goal_dist
+    eval_env.set_sample_goal_args(
+        prob_constraint=1,
+        min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
+        max_dist=max_goal_dist * (difficulty + 0.05),
+        min_cost=min_cost,
+        max_cost=max_cost,
+    )
 
 
 def safe_env_load_fn(

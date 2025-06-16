@@ -1,12 +1,11 @@
-from pud.dependencies import *
-
-from typing import Tuple, Dict, Union, List
-import numpy as np
 import gym
+import numpy as np
+from typing import List
 from copy import deepcopy
 
+
 class VectorCollector:
-    def __init__(self, policy, buffer, envs:List[gym.Env], initial_collect_steps=0):
+    def __init__(self, policy, buffer, envs: List[gym.Env], initial_collect_steps=0):
         self.buffer = buffer
         self.env = envs
         self.num_envs = len(envs)
@@ -16,8 +15,9 @@ class VectorCollector:
         self.states = [env.reset() for env in envs]
         self.initial_collect_steps = initial_collect_steps
 
-        assert self.initial_collect_steps % self.num_envs == 0, "initial collect steps must be divisible by num_envs"
-
+        assert (
+            self.initial_collect_steps % self.num_envs == 0
+        ), "initial collect steps must be divisible by num_envs"
 
     def step(self, num_steps):
         num_steps = num_steps // self.num_envs
@@ -27,8 +27,10 @@ class VectorCollector:
                 actions = [env.action_space.sample() for env in self.env]
             else:
                 b_states = {
-                    "observation": np.stack([st["observation"] for st in self.states], axis=0),
-                    "goal": np.stack([st["goal"] for st in self.states], axis=0),
+                    "observation": np.stack(
+                        [st["observation"] for st in self.states], axis=0  # type: ignore
+                    ),
+                    "goal": np.stack([st["goal"] for st in self.states], axis=0),  # type: ignore
                 }
                 actions = self.policy.select_action(b_states)
                 if len(actions.shape) == 1:
@@ -37,15 +39,22 @@ class VectorCollector:
             next_states = [None] * self.num_envs
             for ii, act in enumerate(actions):
                 env_ii = self.env[ii]
-                next_state, reward, done, info = env_ii.step(np.copy(act))
-                next_states[ii] = next_state
-                if info.get('last_step', False):
-                    self.buffer.add(self.states[ii], act, info['terminal_observation'], reward, done)
+                result = env_ii.step(np.copy(act))
+                if len(result) == 5:
+                    next_state, reward, done, truncated, info = result
+                    done = done or truncated
                 else:
-                    self.buffer.add(self.states[ii], act, next_state, reward, done)                    
+                    next_state, reward, done, info = result
+                next_states[ii] = next_state
+                if info.get("last_step", False):
+                    self.buffer.add(
+                        self.states[ii], act, info["terminal_observation"], reward, done
+                    )
+                else:
+                    self.buffer.add(self.states[ii], act, next_state, reward, done)
 
                 self.steps += 1
-            
+
             self.states = next_states
 
     @classmethod
@@ -53,7 +62,7 @@ class VectorCollector:
         rb_vec = []
         for _ in range(num_states):
             rb_vec.append(eval_env.reset())
-        rb_vec = np.array([x['observation'] for x in rb_vec])
+        rb_vec = np.array([x["observation"] for x in rb_vec])
         return rb_vec
 
     @classmethod
@@ -68,13 +77,15 @@ class VectorCollector:
         state = eval_env.reset()
         while c < n:
             action = policy.select_action(state)
-            state, reward, done, info = eval_env.step(np.copy(action))
-            if not by_episode: c += 1
+            state, reward, done, _ = eval_env.step(np.copy(action))
+            if not by_episode:
+                c += 1
 
             r += reward
             if done:
                 rewards.append(r)
-                if by_episode: c += 1
+                if by_episode:
+                    c += 1
                 r = 0
         return rewards
 
@@ -90,7 +101,7 @@ class VectorCollector:
 
         rewards = []
         trajs = []
-        success =  []
+        success = []
 
         state = eval_env.reset()
         traj.append(state)
@@ -100,21 +111,26 @@ class VectorCollector:
                 print("episode {}, action: {}".format(c, action))
 
             state, reward, done, info = eval_env.step(np.copy(action))
-            if not by_episode: c += 1
-            
+            if not by_episode:
+                c += 1
 
             if not done:
                 traj.append(deepcopy(state))
             else:
                 traj.append(info["terminal_observation"])
-            
+
             if verbose:
-                print("obs:{}, action:{} goal:{}".format(info["grid"]["observation"], action, info["grid"]["goal"]))
-            
+                print(
+                    "obs:{}, action:{} goal:{}".format(
+                        info["grid"]["observation"], action, info["grid"]["goal"]
+                    )
+                )
+
             r += reward
             if done:
                 rewards.append(r)
-                if by_episode: c += 1
+                if by_episode:
+                    c += 1
                 r = 0
                 trajs.append(traj)
                 success.append(not info["timed_out"])
@@ -132,13 +148,13 @@ class VectorCollector:
             done = False
 
             while True:
-                state['goal'] = goal
+                state["goal"] = goal
                 try:
                     action = search_policy.select_action(state)
                 except Exception as e:
                     raise e
 
-                state, reward, done, info = eval_env.step(np.copy(action))
+                state, _, done, _ = eval_env.step(np.copy(action))
                 c += 1
 
                 if done or c >= num_steps or search_policy.reached_final_waypoint:
@@ -151,16 +167,16 @@ class VectorCollector:
         ep_reward_list = []
 
         state = eval_env.reset()
-        ep_goal = state['goal']
+        ep_goal = state["goal"]
         while True:
-            ep_observation_list.append(state['observation'])
-            action = policy.select_action(state) # NOTE: state['goal'] may be modified
-            ep_waypoint_list.append(state['goal'])
+            ep_observation_list.append(state["observation"])
+            action = policy.select_action(state)  # NOTE: state['goal'] may be modified
+            ep_waypoint_list.append(state["goal"])
             state, reward, done, info = eval_env.step(np.copy(action))
 
             ep_reward_list.append(reward)
             if done:
-                ep_observation_list.append(info['terminal_observation']['observation'])
+                ep_observation_list.append(info["terminal_observation"]["observation"])
                 break
 
         return ep_goal, ep_observation_list, ep_waypoint_list, ep_reward_list

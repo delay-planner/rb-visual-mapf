@@ -5,17 +5,18 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
+from pud.algos.policies import GaussianPolicy
 from pud.algos.ddpg import GoalConditionedCritic
+from pud.utils import set_env_seed, set_global_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.runners.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper, 
+    SafeGoalConditionedPointWrapper,
     SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointBlendWrapper,
     safe_env_load_fn,
 )
-from pud.utils import set_env_seed, set_global_seed
-from pud.runners.crl_runner_v3 import train_eval, eval_pointenv_cost_constrained_dists
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -25,73 +26,61 @@ if __name__ == "__main__":
         default="configs/config_SafePointEnv.yaml",
         help="Training configuration",
     )
-    parser.add_argument('--env',
+    parser.add_argument(
+        "--env", type=str, default="", help="terminal override of training env"
+    )
+    parser.add_argument(
+        "--resize_factor", type=int, default=-1, help="override default resize factor"
+    )
+    parser.add_argument(
+        "--action_noise", type=float, default=-1, help="action noise from env"
+    )
+    parser.add_argument("--actor_lr", type=float, default=-1, help="actor lr")
+    parser.add_argument("--critic_lr", type=float, default=-1, help="critic lr")
+    parser.add_argument("--cost_name", type=str, default="", help="override cost type")
+    parser.add_argument(
+        "--cost_radius", type=float, default=-1, help="override cost type"
+    )
+    parser.add_argument("--cost_max", type=float, default=-1, help="override if > 0")
+    parser.add_argument("--cost_N", type=int, default=0, help="override if > 0")
+    parser.add_argument(
+        "--ckpt",
         type=str,
         default="",
-        help="terminal override of training env")
-    parser.add_argument("--resize_factor",
-        type=int,
-        default=-1,
-        help="override default resize factor")
-    parser.add_argument("--action_noise",
-        type=float,
-        default=-1,
-        help="action noise from env")
-    parser.add_argument("--actor_lr",
-        type=float,
-        default=-1,
-        help="actor lr")
-    parser.add_argument("--critic_lr",
-        type=float,
-        default=-1,
-        help="critic lr")
-    parser.add_argument("--cost_name",
-        type=str,
-        default="",
-        help="override cost type")
-    parser.add_argument("--cost_radius",
-        type=float,
-        default=-1,
-        help="override cost type")
-    parser.add_argument("--cost_max",
-        type=float,
-        default=-1,
-        help="override if > 0")
-    parser.add_argument("--cost_N",
-        type=int,
-        default=0,
-        help="override if > 0")
-    parser.add_argument("--ckpt",
-        type=str,
-        default="",
-        help="if non-empty, load the checkpoint into agent model")
-    parser.add_argument("--i_start",
+        help="if non-empty, load the checkpoint into agent model",
+    )
+    parser.add_argument(
+        "--i_start",
         type=int,
         default=1,
-        help="override the start iteration index, for resume training")
-    parser.add_argument("--collect_steps",
+        help="override the start iteration index, for resume training",
+    )
+    parser.add_argument(
+        "--collect_steps",
         type=int,
         default=-1,
-        help="override the number of steps per agent update")
-    parser.add_argument("--num_iterations",
-        type=int,
-        default=-1,
-        help="override num of iterations")
-    parser.add_argument("--cost_limit",
-        type=float,
-        default=-1,
-        help="override cost limit")
-    parser.add_argument("--lambda_lr",
-        type=float,
-        default=-1,
-        help="override lagrange lr")
-    parser.add_argument("--illustration_pb_file",
+        help="override the number of steps per agent update",
+    )
+    parser.add_argument(
+        "--num_iterations", type=int, default=-1, help="override num of iterations"
+    )
+    parser.add_argument(
+        "--cost_limit", type=float, default=-1, help="override cost limit"
+    )
+    parser.add_argument(
+        "--lambda_lr", type=float, default=-1, help="override lagrange lr"
+    )
+    parser.add_argument(
+        "--illustration_pb_file",
         type=str,
-        help="problems that serve as illustration and evaluation set")
+        help="problems that serve as illustration and evaluation set",
+    )
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
-    parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
+    parser.add_argument(
+        "--visual", action="store_true", help="generate and save visual trajs"
+    )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -173,8 +162,10 @@ if __name__ == "__main__":
     obs_dim = env.observation_space["observation"].shape[0]  # type: ignore
     goal_dim = obs_dim
     state_dim = obs_dim + goal_dim
+
+    assert env.action_space.shape is not None
     action_dim = env.action_space.shape[0]
-    max_action = float(env.action_space.high[0])
+    max_action = float(env.action_space.high[0])  # type: ignore
     print(
         f"Observation dimension: {obs_dim},\n"
         f"Goal dimension: {goal_dim},\n"
@@ -223,31 +214,32 @@ if __name__ == "__main__":
     bk_dir.mkdir(parents=True, exist_ok=True)
     with open(bk_dir.joinpath("bk_config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    
+
     tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
 
-    from pud.algos.policies import GaussianPolicy
-    # gaussian policy seems just add exploration noise, the evaluation code
+    # Gaussian policy seems just add exploration noise, the evaluation code
     # does not use it
     policy = GaussianPolicy(agent)
 
     turn_on_lag = False
 
-    train_eval(policy,
-            agent,
-            replay_buffer,
-            env,
-            eval_env,
-            eval_func=eval_pointenv_cost_constrained_dists,
-            tensorboard_writer=tb,
-            pbar=args.pbar,
-            ckpt_dir=ckpt_dir,
-            vis_dir=vis_dir,
-            i_start=args.i_start,
-            turn_on_lag=turn_on_lag,
-            illustration_pb_file=args.illustration_pb_file,
-            **cfg.runner,
-            )
-    torch.save(agent.state_dict(), 
-        ckpt_dir.joinpath('agent.pth'),
-        )
+    train_eval(
+        policy,
+        agent,
+        replay_buffer,
+        env,
+        eval_env,
+        eval_func=eval_pointenv_cost_constrained_dists,
+        tensorboard_writer=tb,
+        pbar=args.pbar,
+        ckpt_dir=ckpt_dir,
+        vis_dir=vis_dir,
+        i_start=args.i_start,
+        turn_on_lag=turn_on_lag,
+        illustration_pb_file=args.illustration_pb_file,
+        **cfg.runner,
+    )
+    torch.save(
+        agent.state_dict(),
+        ckpt_dir.joinpath("agent.pth"),
+    )

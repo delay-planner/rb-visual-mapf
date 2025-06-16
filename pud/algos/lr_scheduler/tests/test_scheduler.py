@@ -1,27 +1,54 @@
 import unittest
-
-from pud.algos.lr_scheduler.scheduler import (PiecewiseLinearSchedulerUp, PiecewiseLinearSchedulerDown, HybridScheduler)
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+
+from pud.algos.lr_scheduler.scheduler import (
+    HybridScheduler,
+    PiecewiseLinearSchedulerUp,
+    PiecewiseLinearSchedulerDown,
+)
 
 """
 python pud/algos/lr_scheduler/tests/test_scheduler.py TestScheduler.test_linear_up
-
 python pud/algos/lr_scheduler/tests/test_scheduler.py TestScheduler.test_linear_down
-
 python pud/algos/lr_scheduler/tests/test_scheduler.py TestScheduler.test_hybrid_scheduler
-
-
 """
 
-def plot(x, y, ax:plt.Axes, start:float, stop:float):
-        ax.plot([start] * 100, np.linspace(-0.5, 1, 100), marker='o', color='r', linestyle='-', linewidth=2, markersize=2)
 
-        ax.plot([stop] * 100, np.linspace(-0.5, 1, 100), marker='o', color='r', linestyle='-', linewidth=2, markersize=2)
+def plot(x, y, ax: Axes, start: float, stop: float):
+    ax.plot(
+        [start] * 100,
+        np.linspace(-0.5, 1, 100),
+        marker="o",
+        color="r",
+        linestyle="-",
+        linewidth=2,
+        markersize=2,
+    )
 
-        ax.plot(x, y, marker='o', color='b', linestyle='-', linewidth=2, markersize=2, label='schedule')
+    ax.plot(
+        [stop] * 100,
+        np.linspace(-0.5, 1, 100),
+        marker="o",
+        color="r",
+        linestyle="-",
+        linewidth=2,
+        markersize=2,
+    )
 
-        ax.legend()
+    ax.plot(
+        x,
+        y,
+        marker="o",
+        color="b",
+        linestyle="-",
+        linewidth=2,
+        markersize=2,
+        label="schedule",
+    )
+
+    ax.legend()
 
 
 class TestScheduler(unittest.TestCase):
@@ -36,7 +63,7 @@ class TestScheduler(unittest.TestCase):
         y = [sched_u(xi) for xi in x]
         plot(x, y, ax, start, stop)
 
-        fname = 'pud/algos/lr_scheduler/output/linear_sched_up.png'
+        fname = "pud/algos/lr_scheduler/output/linear_sched_up.png"
         fig.savefig(fname=fname, dpi=320)
         plt.close(fig)
 
@@ -51,7 +78,7 @@ class TestScheduler(unittest.TestCase):
         y = [sched_u(xi) for xi in x]
         plot(x, y, ax, start, stop)
 
-        fname = 'pud/algos/lr_scheduler/output/linear_sched_down.png'
+        fname = "pud/algos/lr_scheduler/output/linear_sched_down.png"
         fig.savefig(fname=fname, dpi=320)
         plt.close(fig)
 
@@ -71,10 +98,10 @@ class TestScheduler(unittest.TestCase):
         y = [sched(xi) for xi in x]
         plot(x, y, ax, 0, 100)
 
-        fname = 'pud/algos/lr_scheduler/output/linear_sched_hybrid.png'
+        fname = "pud/algos/lr_scheduler/output/linear_sched_hybrid.png"
         fig.savefig(fname=fname, dpi=320)
         plt.close(fig)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

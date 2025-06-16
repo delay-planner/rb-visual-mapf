@@ -12,7 +12,7 @@ def orientation(p, q, r):
       1 if they make a clockwise turn,
      -1 if they make a counter-clockwise turn.
     """
-    # compute the 2D “cross-product” of (q–p) × (r–q)
+    # Compute the 2D “cross-product” of (q–p) × (r–q)
     val = (q[1] - p[1])*(r[0] - q[0]) - (q[0] - p[0])*(r[1] - q[1])
     if abs(val) < 1e-9:
         return 0
@@ -32,6 +32,7 @@ def segments_intersect(A, B, C, D):
     Return True if segment AB intersects segment CD.
     A, B, C, D are (x,y) pairs (tuples, lists, or numpy arrays)
     """
+
     o1 = orientation(A, B, C)
     o2 = orientation(A, B, D)
     o3 = orientation(C, D, A)

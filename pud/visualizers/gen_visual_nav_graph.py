@@ -7,20 +7,41 @@ from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from pud.algos.vision.vision_agent import LagVisionUVFDDPG, VisionUVFDDPG
 from pud.algos.policies import VectorGaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.buffers.visual_buffer import VisualReplayBuffer
-from pud.envs.safe_pointenv.pb_sampler import load_pb_set, sample_cost_pbs_by_agent, sample_pbs_by_agent
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
+from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper
 from pud.envs.safe_habitatenv.unit_tests.train_uvddpg_vec_habitat import setup_logger
-from pud.envs.habitat_navigation_env import (
-    GoalConditionedHabitatPointWrapper,
-    habitat_env_load_fn,
+from pud.envs.safe_pointenv.pb_sampler import (
+    load_pb_set,
+    sample_pbs_by_agent,
 )
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
     safe_habitat_env_load_fn,
+)
+from pud.algos.policies import (
+    VisualSearchPolicy,
+    VisualConstrainedSearchPolicy,
+    VisualMultiAgentSearchPolicy,
+    VisualConstrainedMultiAgentSearchPolicy,
+)
+from pud.visualizers.visualize import (
+    visualize_cost_graph,
+    visualize_combined_graph,
+    visualize_pairwise_dists,
+    visualize_pairwise_costs,
+    visualize_combined_graph_ensemble,
+)
+from pud.visualizers.visualize_habitat import (
+    visualize_graph,
+    visualize_buffer,
+    visualize_trajectory,
+    visualize_search_path,
+    visualize_compare_search,
+    visualize_graph_ensemble,
 )
 
 
@@ -33,22 +54,66 @@ def setup_args_parser(parser):
     parser.add_argument("--figsavedir", type=str, help="Directory to save figures")
     parser.add_argument("--cost_max", type=float, default=-1, help="Override if > 0")
     parser.add_argument("--cost_name", type=str, default="", help="Override cost type")
-    parser.add_argument("--cost_radius", type=float, default=-1, help="Override cost type")
-    parser.add_argument("--cost_limit", type=float, default=-1, help="Override cost limit")
-    parser.add_argument("--lambda_lr", type=float, default=-1, help="Override lagrange lr")
-    parser.add_argument("--eval_interval", type=int, default=-1, help="Evaluation interval")
-    parser.add_argument("--actor_lr", type=float, default=-1, help="Learning rate for actor")
-    parser.add_argument("--critic_lr", type=float, default=-1, help="Learning rate for critic")
-    parser.add_argument("--visual", action="store_true", help="Generate and save visual trajs")
-    parser.add_argument("--embedding_size", type=int, default=-1, help="Size of the embeddings")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose printing/logging")
-    parser.add_argument("--device", type=str, default="cpu", help="Device to run on. cpu | cuda")
-    parser.add_argument("--apsp_path", type=str, default="", help="Supply pre-computed apsp path")
-    parser.add_argument("--num_iterations", type=int, default=-1, help="Override num of iterations")
-    parser.add_argument("--num_envs", type=int, default=1, help="Number of envs for batch inference")
-    parser.add_argument("--replay_buffer_size", type=int, default=-1, help="Maximum replay buffer size")
-    parser.add_argument("--encoder", type=str, default="VisualEncoder", help="VisualRGBEncoder | VisualEncoder")
-    parser.add_argument("--ckpt", type=str, default="", help="If non-empty, load the checkpoint into agent model")
+    parser.add_argument(
+        "--cost_radius", type=float, default=-1, help="Override cost type"
+    )
+    parser.add_argument(
+        "--cost_limit", type=float, default=-1, help="Override cost limit"
+    )
+    parser.add_argument(
+        "--lambda_lr", type=float, default=-1, help="Override lagrange lr"
+    )
+    parser.add_argument(
+        "--eval_interval", type=int, default=-1, help="Evaluation interval"
+    )
+    parser.add_argument(
+        "--actor_lr", type=float, default=-1, help="Learning rate for actor"
+    )
+    parser.add_argument(
+        "--critic_lr", type=float, default=-1, help="Learning rate for critic"
+    )
+    parser.add_argument(
+        "--visual", action="store_true", help="Generate and save visual trajs"
+    )
+    parser.add_argument(
+        "--embedding_size", type=int, default=-1, help="Size of the embeddings"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose printing/logging"
+    )
+    parser.add_argument(
+        "--device", type=str, default="cpu", help="Device to run on. cpu | cuda"
+    )
+    parser.add_argument(
+        "--apsp_path", type=str, default="", help="Supply pre-computed apsp path"
+    )
+    parser.add_argument(
+        "--num_iterations", type=int, default=-1, help="Override num of iterations"
+    )
+    parser.add_argument(
+        "--num_envs", type=int, default=1, help="Number of envs for batch inference"
+    )
+    parser.add_argument(
+        "--replay_buffer_size", type=int, default=-1, help="Maximum replay buffer size"
+    )
+    parser.add_argument(
+        "--encoder",
+        type=str,
+        default="VisualEncoder",
+        help="VisualRGBEncoder | VisualEncoder",
+    )
+    parser.add_argument(
+        "--constrained_ckpt",
+        type=str,
+        default="",
+        help="If non-empty, load the checkpoint into agent model",
+    )
+    parser.add_argument(
+        "--unconstrained_ckpt",
+        type=str,
+        default="",
+        help="If non-empty, load the checkpoint into agent model",
+    )
     parser.add_argument(
         "--cfg",
         type=str,
@@ -59,7 +124,7 @@ def setup_args_parser(parser):
         "--i_start",
         type=int,
         default=1,
-        help="Override the start iteration index, for resume training"
+        help="Override the start iteration index, for resume training",
     )
     parser.add_argument(
         "--collect_steps",
@@ -138,14 +203,14 @@ def setup_env(args):
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
     logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())  # type: ignore
 
-    shutil.copy("launch_jobs/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
+    shutil.copy("launch_jobs/cloud/cloud_debug_vec_habitat.sh", logger["bk"].as_posix())
     shutil.copy(
         "pud/envs/safe_habitatenv/unit_tests/train_uvddpg_vec_habitat.py",
         logger["bk"].as_posix(),
     )
-    shutil.copy("pud/vision_agent.py", logger["bk"].as_posix())
-    shutil.copy("pud/runner_vec.py", logger["bk"].as_posix())
-    shutil.copy("pud/visual_models.py", logger["bk"].as_posix())
+    shutil.copy("pud/runners/runner_vec.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/vision/visual_models.py", logger["bk"].as_posix())
+    shutil.copy("pud/algos/vision/vision_agent.py", logger["bk"].as_posix())
 
     set_global_seed(cfg.seed)
 
@@ -170,7 +235,7 @@ def setup_env(args):
         gym_env_wrappers=gym_env_wrappers,  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
         terminate_on_timeout=True,
-        )
+    )
     set_env_seed(eval_env, cfg.seed + 1)
 
     cfg.agent["action_dim"] = eval_env.action_space.shape[0]  # type: ignore
@@ -191,8 +256,8 @@ def setup_env(args):
         state_dict = torch.load(args.resume)
         agent.load_state_dict(state_dict)
 
-    ckpt_file = args.ckpt
-    agent.load_state_dict(torch.load(ckpt_file))
+    ckpt_file = args.constrained_ckpt
+    agent.load_state_dict(torch.load(ckpt_file, map_location=cfg.device))
     agent.to(device=cfg.device)
     agent.eval()
 
@@ -253,36 +318,33 @@ if __name__ == "__main__":
 
     assert isinstance(figdir, Path)
 
-    from pud.visualizers.visualize_habitat import visualize_trajectory
     # We'll give the agent lots of time to try to find the goal.
     eval_env.duration = 100  # type: ignore
-    visualize_trajectory(agent, eval_env, difficulty=0.5, outpath=figdir.joinpath("vis_traj.jpg").as_posix())
-
-    # eval_env._set_sample_goal_args(  # type: ignore
-    #     prob_constraint=1.0,
-    #     min_dist=0.0,
-    #     max_dist=np.inf,
-    # )
+    visualize_trajectory(
+        agent,
+        eval_env,
+        difficulty=0.5,
+        outpath=figdir.joinpath("vis_traj.jpg").as_posix(),
+    )
 
     rb_vec_grid, rb_vec_visual = sample_initial_states(eval_env, replay_buffer.max_size)  # type: ignore
 
-    from pud.visualizers.visualize_habitat import visualize_buffer
-    visualize_buffer(rb_vec_grid, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix())
+    visualize_buffer(
+        rb_vec_grid, eval_env, outpath=figdir.joinpath("vis_buffer.jpg").as_posix()
+    )
 
     pdist = agent.get_pairwise_dist(rb_vec_visual, aggregate=None)  # type: ignore
     pcost = agent.get_pairwise_cost(rb_vec_visual, aggregate=None)  # type: ignore
 
-    from pud.visualizers.visualize import visualize_cost_graph
     visualize_cost_graph(
         pcost=pcost,
         rb_vec=rb_vec_grid,
         eval_env=eval_env,
         edges_to_display=10,
         cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
-        outpath=figdir.joinpath("vis_cost_graph.jpg").as_posix()
+        outpath=figdir.joinpath("vis_cost_graph.jpg").as_posix(),
     )
 
-    from pud.visualizers.visualize import visualize_combined_graph
     visualize_combined_graph(
         cutoff=7,
         pdist=pdist,
@@ -291,32 +353,38 @@ if __name__ == "__main__":
         rb_vec=rb_vec_grid,
         edges_to_display=10,
         cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
-        outpath=figdir.joinpath("vis_combined_graph.jpg").as_posix()
+        outpath=figdir.joinpath("vis_combined_graph.jpg").as_posix(),
     )
 
-    from pud.visualizers.visualize import visualize_pairwise_dists, visualize_pairwise_costs
     visualize_pairwise_dists(pdist, outpath=figdir.joinpath("vis_pdist.jpg").as_posix())  # type: ignore
     visualize_pairwise_costs(
         pcost,
         n_bins=cfg.agent_cost_kwargs.cost_N,  # type: ignore
         cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
-        outpath=figdir.joinpath("vis_pcost.jpg").as_posix()
+        outpath=figdir.joinpath("vis_pcost.jpg").as_posix(),
     )
 
-    from pud.visualizers.visualize_habitat import visualize_graph
-    visualize_graph(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph.jpg").as_posix())
+    visualize_graph(
+        rb_vec_grid,
+        eval_env,
+        pdist,
+        outpath=figdir.joinpath("vis_graph.jpg").as_posix(),
+    )
 
-    from pud.visualizers.visualize_habitat import visualize_graph_ensemble
-    visualize_graph_ensemble(rb_vec_grid, eval_env, pdist, outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix())
+    visualize_graph_ensemble(
+        rb_vec_grid,
+        eval_env,
+        pdist,
+        outpath=figdir.joinpath("vis_graph_ensemble.jpg").as_posix(),
+    )
 
-    from pud.visualizers.visualize import visualize_combined_graph_ensemble
     visualize_combined_graph_ensemble(
         rb_vec_grid,
         eval_env,
         pdist,
         pcost,
         cfg.agent_cost_kwargs.cost_limit,  # type: ignore
-        outpath=figdir.joinpath("vis_combined_graph_ensemble.jpg").as_posix()
+        outpath=figdir.joinpath("vis_combined_graph_ensemble.jpg").as_posix(),
     )
 
     if "safe" in type(eval_env.env).__name__.lower():  # type: ignore
@@ -327,7 +395,7 @@ if __name__ == "__main__":
         queue_env = True
 
         if len(args.illustration_pb_file) > 0:
-            problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)   # type: ignore
+            problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
         else:
             problems = sample_pbs_by_agent(
                 K=10,
@@ -345,7 +413,6 @@ if __name__ == "__main__":
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
         eval_env.set_use_q(True)  # type: ignore
 
-    from pud.algos.policies import VisualSearchPolicy, VisualConstrainedSearchPolicy
     search_policy = VisualSearchPolicy(
         agent,
         (rb_vec_grid, rb_vec_visual),
@@ -356,11 +423,15 @@ if __name__ == "__main__":
     )
     eval_env.duration = 300  # type: ignore
 
-    from pud.visualizers.visualize_habitat import visualize_search_path
-    visualize_search_path(search_policy, eval_env, difficulty=0.9, outpath=figdir.joinpath("vis_search.jpg").as_posix())
+    visualize_search_path(
+        search_policy,
+        eval_env,
+        difficulty=0.9,
+        outpath=figdir.joinpath("vis_search.jpg").as_posix(),
+    )
 
     eval_env.set_pbs(pb_list=problems.copy()) if queue_env else None  # type: ignore
-    from pud.visualizers.visualize_habitat import visualize_compare_search
+
     visualize_compare_search(
         agent,
         search_policy,
@@ -377,6 +448,7 @@ if __name__ == "__main__":
         open_loop=True,
         no_waypoint_hopping=True,
         max_cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        ckpts={"unconstrained": args.unconstrained_ckpt, "constrained": args.constrained_ckpt},
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -384,7 +456,7 @@ if __name__ == "__main__":
         constrained_search_policy,
         eval_env,
         difficulty=0.9,
-        outpath=figdir.joinpath("vis_constrained_search.jpg").as_posix()
+        outpath=figdir.joinpath("vis_constrained_search.jpg").as_posix(),
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -393,10 +465,9 @@ if __name__ == "__main__":
         constrained_search_policy,
         eval_env,
         difficulty=0.9,
-        outpath=figdir.joinpath("vis_compare_constrained.jpg").as_posix()
+        outpath=figdir.joinpath("vis_compare_constrained.jpg").as_posix(),
     )
 
-    from pud.algos.policies import VisualMultiAgentSearchPolicy, VisualConstrainedMultiAgentSearchPolicy
     num_agents = 4
     ma_search_policy = VisualMultiAgentSearchPolicy(
         agent,
@@ -414,7 +485,7 @@ if __name__ == "__main__":
         eval_env,
         num_agents=4,
         difficulty=0.9,
-        outpath=figdir.joinpath("vis_multi_agent_search.jpg").as_posix()
+        outpath=figdir.joinpath("vis_multi_agent_search.jpg").as_posix(),
     )
 
     eval_env.set_pbs(pb_list=problems.copy()) if queue_env else None  # type: ignore
@@ -435,7 +506,8 @@ if __name__ == "__main__":
         pcost=pcost,
         open_loop=True,
         no_waypoint_hopping=True,
-        max_cost_limit=cfg.agent.cost_limit,  # type: ignore
+        max_cost_limit=cfg.agent_cost_kwargs.cost_limit,  # type: ignore
+        ckpts={"unconstrained": args.unconstrained_ckpt, "constrained": args.constrained_ckpt},
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -444,7 +516,7 @@ if __name__ == "__main__":
         eval_env,
         num_agents=4,
         difficulty=0.9,
-        outpath=figdir.joinpath("vis_constrained_multi_agent_search.jpg").as_posix()
+        outpath=figdir.joinpath("vis_constrained_multi_agent_search.jpg").as_posix(),
     )
 
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -454,5 +526,5 @@ if __name__ == "__main__":
         eval_env,
         num_agents=4,
         difficulty=0.9,
-        outpath=figdir.joinpath("vis_compare_constrained_multi_agent.jpg").as_posix()
+        outpath=figdir.joinpath("vis_compare_constrained_multi_agent.jpg").as_posix(),
     )

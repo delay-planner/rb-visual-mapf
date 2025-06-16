@@ -1,16 +1,18 @@
 import torch
 import numpy as np
+
 from pud.buffers.buffer import ReplayBuffer
 from pud.algos.data_struct import inp_to_numpy
 
-class VisualReplayBuffer (ReplayBuffer):
+
+class VisualReplayBuffer(ReplayBuffer):
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
         super(VisualReplayBuffer, self).__init__(
-                obs_dim=2, 
-                goal_dim=2, 
-                action_dim=action_dim, 
-                max_size=max_size,
-                )
+            obs_dim=2,
+            goal_dim=2,
+            action_dim=action_dim,
+            max_size=max_size,
+        )
 
         obs_shape, goal_shape = None, None
         if isinstance(obs_dim, tuple):
@@ -35,9 +37,11 @@ class VisualReplayBuffer (ReplayBuffer):
         super().add(state, action, next_state, reward, done)
 
 
-class ConstrainedVisualReplayBuffer (VisualReplayBuffer):
+class ConstrainedVisualReplayBuffer(VisualReplayBuffer):
     def __init__(self, obs_dim, goal_dim, action_dim, max_size=int(1e6)):
-        super(ConstrainedVisualReplayBuffer, self).__init__(obs_dim, goal_dim, action_dim, max_size)
+        super(ConstrainedVisualReplayBuffer, self).__init__(
+            obs_dim, goal_dim, action_dim, max_size
+        )
         self.cost = np.zeros((max_size, 1))
 
     def add(self, state, action, next_state, reward, cost, done):
@@ -45,17 +49,17 @@ class ConstrainedVisualReplayBuffer (VisualReplayBuffer):
         super().add(state, action, next_state, reward, done)
 
     def sample_w_cost(self, batch_size):
-        """a separate method to sample with cost, leave the original sample method for compat reason"""
+        """A separate method to sample with cost, leave the original sample method for compat reason"""
         ind = np.random.randint(0, self.size, size=batch_size)
 
         batch = (
             dict(
                 observation=torch.FloatTensor(self.observation[ind]),
-                goal=torch.FloatTensor(self.goal[ind]), 
+                goal=torch.FloatTensor(self.goal[ind]),
             ),
             dict(
                 observation=torch.FloatTensor(self.next_observation[ind]),
-                goal=torch.FloatTensor(self.next_goal[ind]), 
+                goal=torch.FloatTensor(self.next_goal[ind]),
             ),
             torch.FloatTensor(self.action[ind]),
             torch.FloatTensor(self.reward[ind]),

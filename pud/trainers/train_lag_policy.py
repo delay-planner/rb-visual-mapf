@@ -1,69 +1,66 @@
 """
-This is the 2nd stage of policy training, it takes a policy without Lagrange Penalty and train a new policy with Lagrange Multiplier to respect cost constraints
+This is the 2nd stage of policy training, it takes a policy without Lagrange Penalty and train a new policy with
+Lagrange Multiplier to respect cost constraints
 """
 
 import yaml
 import torch
+import shutil
 import argparse
-import numpy as np
 from pathlib import Path
 from dotmap import DotMap
-import shutil
 from torch.utils.tensorboard.writer import SummaryWriter
 
+
+from pud.algos.policies import GaussianPolicy
 from pud.algos.ddpg import GoalConditionedCritic
+from pud.utils import set_env_seed, set_global_seed
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
+from pud.runners.runner_lag import train_eval, eval_pointenv_cost_constrained_dists
 from pud.envs.safe_pointenv.safe_wrappers import (
+    safe_env_load_fn,
     SafeGoalConditionedPointWrapper,
     SafeGoalConditionedPointQueueWrapper,
     SafeGoalConditionedPointBlendWrapper,
-    safe_env_load_fn,
 )
-from pud.utils import set_env_seed, set_global_seed
-from pud.runners.runner_lag import train_eval, eval_pointenv_cost_constrained_dists
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt",
-        type=str,
-        help="policy checkpoint")
+    parser.add_argument("--ckpt", type=str, help="policy checkpoint")
     parser.add_argument(
         "--cfg",
         type=str,
         help="Training configuration",
     )
-    parser.add_argument("--collect_steps",
+    parser.add_argument(
+        "--collect_steps",
         type=int,
         default=-1,
-        help="override the number of steps per agent update")
-    parser.add_argument("--num_iterations",
-        type=int,
-        default=-1,
-        help="override num of iterations")
-    parser.add_argument("--eval_interval",
-        type=int,
-        default=-1,
-        help="")
-    parser.add_argument("--initial_collect_steps",
-        type=int,
-        default=-1,
-        help="")
-    parser.add_argument("--cost_limit",
-        type=float,
-        default=-1,
-        help="override cost limit")
-    parser.add_argument("--lambda_lr",
-        type=float,
-        default=-1,
-        help="override lagrange lr")
-    parser.add_argument("--illustration_pb_file",
+        help="override the number of steps per agent update",
+    )
+    parser.add_argument(
+        "--num_iterations", type=int, default=-1, help="override num of iterations"
+    )
+    parser.add_argument("--eval_interval", type=int, default=-1, help="")
+    parser.add_argument("--initial_collect_steps", type=int, default=-1, help="")
+    parser.add_argument(
+        "--cost_limit", type=float, default=-1, help="override cost limit"
+    )
+    parser.add_argument(
+        "--lambda_lr", type=float, default=-1, help="override lagrange lr"
+    )
+    parser.add_argument(
+        "--illustration_pb_file",
         type=str,
-        help="problems that serve as illustration and evaluation set")
+        help="problems that serve as illustration and evaluation set",
+    )
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
-    parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
+    parser.add_argument(
+        "--visual", action="store_true", help="generate and save visual trajs"
+    )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -130,8 +127,10 @@ if __name__ == "__main__":
 
     goal_dim = obs_dim
     state_dim = obs_dim + goal_dim
+
+    assert env.action_space.shape is not None
     action_dim = env.action_space.shape[0]
-    max_action = float(env.action_space.high[0])
+    max_action = float(env.action_space.high[0])  # type: ignore
     print(
         f"Observation dimension: {obs_dim},\n"
         f"Goal dimension: {goal_dim},\n"
@@ -161,22 +160,24 @@ if __name__ == "__main__":
     agent.to(torch.device(args.device))
     agent_g.to(torch.device(args.device))
 
-    agent_g.load_state_dict(torch.load(args.ckpt))
     agent.load_state_dict(torch.load(args.ckpt))
+    agent_g.load_state_dict(torch.load(args.ckpt))
 
-    # check lambda_lr
+    # Check lambda_lr
     if args.lambda_lr > 0:
-        assert agent.lagrange.lambda_optimizer.state_dict()["param_groups"][0]["lr"] == args.lambda_lr
+        assert (
+            agent.lagrange.lambda_optimizer.state_dict()["param_groups"][0]["lr"]
+            == args.lambda_lr
+        )
 
     agent_g.eval()
-
     print(agent)
 
     replay_buffer = ConstrainedReplayBuffer(
         obs_dim, goal_dim, action_dim, **cfg.replay_buffer
     )
 
-    # create a lag dir inside the original training dir
+    # Create a lag dir inside the original training dir
     path_ckpt = Path(args.ckpt)
     log_dir = path_ckpt.parent.parent.joinpath("lag")
     from datetime import datetime
@@ -200,28 +201,28 @@ if __name__ == "__main__":
     shutil.copy("launch_jobs/local_lag_train.sh", bk_dir.as_posix())
     shutil.copy("pud/algos/runner_lag.py", bk_dir.as_posix())
 
-
     tb = SummaryWriter(log_dir=tfevent_dir.as_posix())
 
-    from pud.algos.policies import GaussianPolicy
-    # gaussian policy seems just add exploration noise, the evaluation code
+    # Gaussian policy seems just add exploration noise, the evaluation code
     # does not use it
     policy = GaussianPolicy(agent)
 
-    train_eval(policy,
-            agent,
-            agent_g,
-            replay_buffer,
-            env,
-            eval_env,
-            eval_func=eval_pointenv_cost_constrained_dists,
-            tensorboard_writer=tb,
-            pbar=args.pbar,
-            illustration_pb_file=args.illustration_pb_file,
-            ckpt_dir=ckpt_dir,
-            vis_dir=vis_dir,
-            **cfg.runner,
-            )
-    torch.save(agent.state_dict(), 
-        ckpt_dir.joinpath('agent.pth'),
-        )
+    train_eval(
+        policy,
+        agent,
+        agent_g,
+        replay_buffer,
+        env,
+        eval_env,
+        eval_func=eval_pointenv_cost_constrained_dists,
+        tensorboard_writer=tb,
+        pbar=args.pbar,
+        illustration_pb_file=args.illustration_pb_file,
+        ckpt_dir=ckpt_dir,
+        vis_dir=vis_dir,
+        **cfg.runner,
+    )
+    torch.save(
+        agent.state_dict(),
+        ckpt_dir.joinpath("agent.pth"),
+    )

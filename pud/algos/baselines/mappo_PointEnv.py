@@ -196,7 +196,7 @@ def train(cfg):
         in_keys=[("agents", "observation", "goal_conditioned_state")],
         out_keys=[("agents", "loc"), ("agents", "scale")],
     )
-    policy_module = TensorDictSequential(gc_module, policy_mod)
+    policy_module = TensorDictSequential([gc_module, policy_mod])
 
     policy = ProbabilisticActor(
         module=policy_module,
@@ -239,7 +239,7 @@ def train(cfg):
         out_keys=[("agents", "state_value")],
     )
 
-    critic = TensorDictSequential(gc_module, critic_mod)
+    critic = TensorDictSequential([gc_module, critic_mod])
 
     collector = SyncDataCollector(
         transformedEnv,

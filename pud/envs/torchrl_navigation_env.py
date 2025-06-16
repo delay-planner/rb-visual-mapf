@@ -8,17 +8,19 @@ from matplotlib import pyplot as plt
 from tensordict import TensorDict
 from torchrl.envs.utils import check_env_specs
 from torchrl.envs import EnvBase, TransformedEnv, StepCounter
-from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
+from torchrl.data import (
+    BoundedTensorSpec,
+    CompositeSpec,
+    UnboundedContinuousTensorSpec,
+    DiscreteTensorSpec,
+)
 
 from pud.envs.simple_navigation_env import WALLS, thin_walls, plot_walls, resize_walls
 
 
 # Helper functions
 def _normalize_obs(self, obs):
-    return np.array([
-        obs[:, 0] / float(self._height),
-        obs[:, 1] / float(self._width)
-    ]).T
+    return np.array([obs[:, 0] / float(self._height), obs[:, 1] / float(self._width)]).T
 
 
 def _compute_apsp(self, walls):
@@ -48,9 +50,9 @@ def _compute_apsp(self, walls):
                     g.add_edge((i, j), (i + di, j + dj))
 
     # dist[i, j, k, l] is path from (i, j) -> (k, l)
-    dist = np.full((height, width, height, width), np.float32('inf'))
-    for ((i1, j1), dist_dict) in nx.shortest_path_length(g):
-        for ((i2, j2), d) in dist_dict.items():
+    dist = np.full((height, width, height, width), np.float32("inf"))
+    for (i1, j1), dist_dict in nx.shortest_path_length(g):
+        for (i2, j2), d in dist_dict.items():
             dist[i1, j1, i2, j2] = d
     return dist
 
@@ -58,14 +60,19 @@ def _compute_apsp(self, walls):
 def _get_distance(self, obs, goal):
     discretized_obs = self._discretize_state(obs)
     discretized_goal = self._discretize_state(goal)
-    return self._apsp[discretized_obs[:, 0], discretized_obs[:, 1], discretized_goal[:, 0], discretized_goal[:, 1]]
+    return self._apsp[
+        discretized_obs[:, 0],
+        discretized_obs[:, 1],
+        discretized_goal[:, 0],
+        discretized_goal[:, 1],
+    ]
 
 
 def _discretize_state(self, state, resolution=1.0):
     discretized_states = np.floor(resolution * state).astype(np.int64)
     # Round down to the nearest cell if at the boundary.
-    row_mask = (discretized_states[:, 0] == self._height)
-    column_mask = (discretized_states[:, 1] == self._width)
+    row_mask = discretized_states[:, 0] == self._height
+    column_mask = discretized_states[:, 1] == self._width
     discretized_states[row_mask, 0] -= 1
     discretized_states[column_mask, 1] -= 1
     return discretized_states
@@ -79,7 +86,9 @@ def _discretize_single_state(self, state):
 
 
 def _is_blocked(self, agent_id, state):
-    unbatched_obs_space = self.unbatched_observation_spec["agents", "observation", "state"][agent_id].space
+    unbatched_obs_space = self.unbatched_observation_spec[
+        "agents", "observation", "state"
+    ][agent_id].space
     low = unbatched_obs_space.low.cpu().numpy()
     high = unbatched_obs_space.high.cpu().numpy()
     if not np.all(state >= low) or not np.all(state <= high):
@@ -89,7 +98,9 @@ def _is_blocked(self, agent_id, state):
 
 
 def _is_state_blocked(self, agent_id, state):
-    obs_space = self.unbatched_observation_spec["agents", "observation", "state"][agent_id].space
+    obs_space = self.unbatched_observation_spec["agents", "observation", "state"][
+        agent_id
+    ].space
     low = obs_space.low.cpu().numpy()
     high = obs_space.high.cpu().numpy()
     if not np.all(state >= low) or not np.all(state <= high):
@@ -102,7 +113,10 @@ def _sample_empty_state(self, agent_id):
     candidate_states = np.where(self._walls == 0)
     num_candidate_states = len(candidate_states[0])
     state_index = np.random.choice(num_candidate_states, size=self.batch_size[0])
-    state = np.array([candidate_states[0][state_index], candidate_states[1][state_index]], dtype=np.float32).T
+    state = np.array(
+        [candidate_states[0][state_index], candidate_states[1][state_index]],
+        dtype=np.float32,
+    ).T
     # state += np.random.uniform(size=2)
     assert not self._is_blocked(agent_id, state)
     return state
@@ -110,9 +124,14 @@ def _sample_empty_state(self, agent_id):
 
 def _set_env_difficulty(self, difficulty):
     self._difficulty = difficulty
-    self._set_sample_goal_args(prob_constraint=1.0,
-                               min_dist=max(0, np.max(self._apsp[np.isfinite(self._apsp)]) * (self._difficulty - 0.05)),
-                               max_dist=np.max(self._apsp[np.isfinite(self._apsp)]) * (self._difficulty + 0.05))
+    self._set_sample_goal_args(
+        prob_constraint=1.0,
+        min_dist=max(
+            0, np.max(self._apsp[np.isfinite(self._apsp)]) * (self._difficulty - 0.05)
+        ),
+        max_dist=np.max(self._apsp[np.isfinite(self._apsp)])
+        * (self._difficulty + 0.05),
+    )
 
 
 # Goal Sampling Functions
@@ -129,15 +148,19 @@ def _set_sample_goal_args(self, prob_constraint=None, min_dist=None, max_dist=No
 
 def _sample_goal(self, agent_id, obs):
     if np.random.random() < self._prob_constraint:
-        return self._sample_goal_constrained(agent_id, obs, self._min_dist, self._max_dist)
+        return self._sample_goal_constrained(
+            agent_id, obs, self._min_dist, self._max_dist
+        )
     else:
         return self._sample_goal_unconstrained(agent_id, obs)
 
 
 def _sample_goal_constrained(self, agent_id, obs, min_dist, max_dist):
     discretized_state = self._discretize_state(obs)
-    mask = np.logical_and(self._apsp[discretized_state[:, 0], discretized_state[:, 1]] >= min_dist,
-                          self._apsp[discretized_state[:, 0], discretized_state[:, 1]] <= max_dist)
+    mask = np.logical_and(
+        self._apsp[discretized_state[:, 0], discretized_state[:, 1]] >= min_dist,
+        self._apsp[discretized_state[:, 0], discretized_state[:, 1]] <= max_dist,
+    )
     mask = np.logical_and(mask, self._walls == 0)
     goals = []
     for b in range(self.batch_size[0]):
@@ -146,16 +169,23 @@ def _sample_goal_constrained(self, agent_id, obs, min_dist, max_dist):
         if num_candidate_states == 0:
             return (obs, None)
         goal_index = np.random.choice(num_candidate_states)
-        goal = np.array([candidate_states[0][goal_index], candidate_states[1][goal_index]], dtype=np.float32).T
+        goal = np.array(
+            [candidate_states[0][goal_index], candidate_states[1][goal_index]],
+            dtype=np.float32,
+        ).T
         # goal += np.random.uniform(size=2)
         goals.append(goal)
     goals = np.array(goals)
     dist_to_goal = self._get_distance(obs, goals)
     if not (np.all(min_dist <= dist_to_goal) and np.all(dist_to_goal <= max_dist)):
         # Find the index of the goals that are not within the constraints
-        bad_goal_index = np.where(np.logical_or(dist_to_goal < min_dist, dist_to_goal > max_dist))[0][0]
+        bad_goal_index = np.where(
+            np.logical_or(dist_to_goal < min_dist, dist_to_goal > max_dist)
+        )[0][0]
         statement = f"Goals {goals[bad_goal_index]} are not within constraints."
-        debug = f"Dist: {dist_to_goal[bad_goal_index]}. Min: {min_dist}. Max: {max_dist}"
+        debug = (
+            f"Dist: {dist_to_goal[bad_goal_index]}. Min: {min_dist}. Max: {max_dist}"
+        )
         assert False, statement + debug
     if self._is_blocked(agent_id, goals):
         assert False, "Goals are blocked."
@@ -175,10 +205,12 @@ def _reset(self, tensordict):
         agent_goal = None
         while agent_goal is None:
             agent_observation = self._sample_empty_state(agent_id)
-            (agent_observation, agent_goal) = self._sample_goal(agent_id, agent_observation)
+            (agent_observation, agent_goal) = self._sample_goal(
+                agent_id, agent_observation
+            )
             count += 1
             if count > 1000:
-                print('WARNING: Unable to find goal within constraints.')
+                print("WARNING: Unable to find goal within constraints.")
 
         agent_observation = self._normalize_obs(agent_observation)
         agent_goal = self._normalize_obs(agent_goal)
@@ -186,8 +218,12 @@ def _reset(self, tensordict):
             {
                 "observation": TensorDict(
                     {
-                        "state": torch.tensor(agent_observation, dtype=torch.float32).to(self.device),
-                        "goal": torch.tensor(agent_goal, dtype=torch.float32).to(self.device),
+                        "state": torch.tensor(
+                            agent_observation, dtype=torch.float32
+                        ).to(self.device),
+                        "goal": torch.tensor(agent_goal, dtype=torch.float32).to(
+                            self.device
+                        ),
                     },
                     batch_size=self.batch_size[0],
                 ),
@@ -220,13 +256,19 @@ def _step(self, tensordict):
         state = tensordict["agents", "observation", "state"][:, agent_id]
 
         if self.action_noise > 0:
-            noise = torch.normal(0, self.action_noise, action.shape, device=action.device)
+            noise = torch.normal(
+                0, self.action_noise, action.shape, device=action.device
+            )
             action += noise
 
         action = torch.clamp(
             action,
-            min=self.unbatched_action_spec["agents", "action"][agent_id].space.low.to(self.device),
-            max=self.unbatched_action_spec["agents", "action"][agent_id].space.high.to(self.device),
+            min=self.unbatched_action_spec["agents", "action"][agent_id].space.low.to(
+                self.device
+            ),
+            max=self.unbatched_action_spec["agents", "action"][agent_id].space.high.to(
+                self.device
+            ),
         )
 
         goal_np = goal.cpu().numpy()
@@ -242,7 +284,10 @@ def _step(self, tensordict):
                     if not self._is_state_blocked(agent_id, new_state):
                         denormalized_state[b] = new_state
 
-        agent_done = np.linalg.norm(denormalized_goal - denormalized_state, axis=-1) < threshold_distance
+        agent_done = (
+            np.linalg.norm(denormalized_goal - denormalized_state, axis=-1)
+            < threshold_distance
+        )
         agent_dones.append(agent_done)
 
         normalized_state = self._normalize_obs(denormalized_state)
@@ -255,8 +300,12 @@ def _step(self, tensordict):
             {
                 "observation": TensorDict(
                     {
-                        "state": torch.tensor(normalized_state, dtype=torch.float32).to(self.device),
-                        "goal": torch.tensor(goal_np, dtype=torch.float32).to(self.device),
+                        "state": torch.tensor(normalized_state, dtype=torch.float32).to(
+                            self.device
+                        ),
+                        "goal": torch.tensor(goal_np, dtype=torch.float32).to(
+                            self.device
+                        ),
                     },
                     batch_size=[batch_size],
                 ),
@@ -293,7 +342,9 @@ def _make_spec(self):
         low=torch.tensor([-1.0, -1.0], dtype=torch.float32),
         high=torch.tensor([1.0, 1.0], dtype=torch.float32),
     )
-    self.agent_reward_spec = UnboundedContinuousTensorSpec(shape=torch.Size((1,)), dtype=torch.float32)
+    self.agent_reward_spec = UnboundedContinuousTensorSpec(
+        shape=torch.Size((1,)), dtype=torch.float32
+    )
 
     action_specs = []
     reward_specs = []
@@ -306,31 +357,43 @@ def _make_spec(self):
     self.unbatched_action_spec = CompositeSpec(
         {
             "agents": CompositeSpec(
-                {"action": torch.stack(action_specs, dim=0)}, shape=(self.num_agents,)
+                {"action": torch.stack(action_specs, dim=0)},
+                shape=torch.Size([self.num_agents]),
             )
         },
     )
     self.unbatched_reward_spec = CompositeSpec(
         {
             "agents": CompositeSpec(
-                {"reward": torch.stack(reward_specs, dim=0)}, shape=(self.num_agents,)
+                {"reward": torch.stack(reward_specs, dim=0)},
+                shape=torch.Size([self.num_agents]),
             )
         },
     )
     self.unbatched_observation_spec = CompositeSpec(
         {
             "agents": CompositeSpec(
-                {"observation": torch.stack(observation_specs, dim=0)}, shape=(self.num_agents,)
+                {"observation": torch.stack(observation_specs, dim=0)},
+                shape=torch.Size([self.num_agents]),
             )
         },
     )
-    self.unbatched_done_spec = DiscreteTensorSpec(n=2, shape=torch.Size((1,)), dtype=torch.bool)
+    self.unbatched_done_spec = DiscreteTensorSpec(
+        n=2, shape=torch.Size((1,)), dtype=torch.bool
+    )
 
-    self.action_spec = self.unbatched_action_spec.expand(*self.batch_size, *self.unbatched_action_spec.shape)
-    self.reward_spec = self.unbatched_reward_spec.expand(*self.batch_size, *self.unbatched_reward_spec.shape)
-    self.observation_spec = self.unbatched_observation_spec.expand(*self.batch_size,
-                                                                   *self.unbatched_observation_spec.shape)
-    self.done_spec = self.unbatched_done_spec.expand(*self.batch_size, *self.unbatched_done_spec.shape)
+    self.action_spec = self.unbatched_action_spec.expand(
+        *self.batch_size, *self.unbatched_action_spec.shape
+    )
+    self.reward_spec = self.unbatched_reward_spec.expand(
+        *self.batch_size, *self.unbatched_reward_spec.shape
+    )
+    self.observation_spec = self.unbatched_observation_spec.expand(
+        *self.batch_size, *self.unbatched_observation_spec.shape
+    )
+    self.done_spec = self.unbatched_done_spec.expand(
+        *self.batch_size, *self.unbatched_done_spec.shape
+    )
 
     self.group_map = {"agents": [str(i) for i in range(self.num_agents)]}
 
@@ -346,20 +409,36 @@ def _render(self, tensordict, mode="human"):
         ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
-            agent_state = tensordict["agents", "observation", "state"][agent_id].cpu().numpy()
-            agent_goal = tensordict["agents", "observation", "goal"][agent_id].cpu().numpy()
-            plt.plot(agent_state[0], agent_state[1], color=agent_colors[agent_id], marker="o")
-            plt.plot(agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x")
+            agent_state = (
+                tensordict["agents", "observation", "state"][agent_id].cpu().numpy()
+            )
+            agent_goal = (
+                tensordict["agents", "observation", "goal"][agent_id].cpu().numpy()
+            )
+            plt.plot(
+                agent_state[0], agent_state[1], color=agent_colors[agent_id], marker="o"
+            )
+            plt.plot(
+                agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x"
+            )
             plt.show(block=False)
     elif mode == "rgb_array":
         fig, ax = plt.subplots()
         ax = plot_walls(self._walls, ax)
         agent_colors = ["b", "r", "g", "c", "m", "y", "k"]
         for agent_id in range(self.num_agents):
-            agent_state = tensordict["agents", "observation", "state"][0][agent_id].cpu().numpy()
-            agent_goal = tensordict["agents", "observation", "goal"][0][agent_id].cpu().numpy()
-            plt.plot(agent_state[0], agent_state[1], color=agent_colors[agent_id], marker="o")
-            plt.plot(agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x")
+            agent_state = (
+                tensordict["agents", "observation", "state"][0][agent_id].cpu().numpy()
+            )
+            agent_goal = (
+                tensordict["agents", "observation", "goal"][0][agent_id].cpu().numpy()
+            )
+            plt.plot(
+                agent_state[0], agent_state[1], color=agent_colors[agent_id], marker="o"
+            )
+            plt.plot(
+                agent_goal[0], agent_goal[1], color=agent_colors[agent_id], marker="x"
+            )
         fig = plt.gcf()
         fig.tight_layout(pad=0)
         fig.canvas.draw()
@@ -378,17 +457,19 @@ class MultiAgentPointEnv(EnvBase):
         "render_fps": 30,
     }
 
-    def __init__(self,
-                 walls,
-                 num_agents=2,
-                 batch_size=10,
-                 seed=None,
-                 resize_factor=5,
-                 thin=False,
-                 action_noise=1.0,
-                 apsp_path=None,
-                 reward_type="dense",
-                 device="cpu"):
+    def __init__(
+        self,
+        walls,
+        num_agents=2,
+        batch_size=10,
+        seed=None,
+        resize_factor=5,
+        thin=False,
+        action_noise=1.0,
+        apsp_path=None,
+        reward_type="dense",
+        device="cpu",
+    ):
         super().__init__(device=device, batch_size=torch.Size([batch_size]))
 
         if thin and resize_factor > 1:
@@ -411,24 +492,30 @@ class MultiAgentPointEnv(EnvBase):
 
         print("Computing all-pairs shortest paths.")
         if self._apsp_path is None or self._apsp_path == "":
-            apsp_pickle_str = "pud/envs/precompiles/" + walls + "_" + str(resize_factor) + "_apsp.pkl"
+            apsp_pickle_str = (
+                "pud/envs/precompiles/" + walls + "_" + str(resize_factor) + "_apsp.pkl"
+            )
             self._apsp_path = Path(os.getcwd()).parent.parent.parent / apsp_pickle_str
             self._apsp = self._compute_apsp(self._walls)
             import pickle
+
             with open(self._apsp_path, "wb") as f:
                 pickle.dump(self._apsp, f)
         else:
             self._apsp_path = Path(os.getcwd()).parent.parent.parent / self._apsp_path
             import pickle
+
             with open(self._apsp_path, "rb") as f:
                 self._apsp = pickle.load(f)
         print("Done computing all-pairs shortest paths.")
 
         (self._height, self._width) = self._walls.shape
 
-        self._set_sample_goal_args(prob_constraint=self._prob_constraint,
-                                   min_dist=max(0, self.max_goal_dist * (self._difficulty - 0.05)),
-                                   max_dist=self.max_goal_dist * (self._difficulty + 0.05))
+        self._set_sample_goal_args(
+            prob_constraint=self._prob_constraint,
+            min_dist=max(0, self.max_goal_dist * (self._difficulty - 0.05)),
+            max_dist=self.max_goal_dist * (self._difficulty + 0.05),
+        )
 
         self._make_spec()
         if seed is None:
@@ -470,7 +557,8 @@ if __name__ == "__main__":
         resize_factor=5,
         thin=False,
         action_noise=1.0,
-        device="cuda:0")
+        device="cuda:0",
+    )
     check_env_specs(env)
 
     transformed_env = TransformedEnv(env, StepCounter(max_steps=20))

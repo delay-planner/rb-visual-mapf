@@ -1,27 +1,20 @@
 import unittest
 import habitat_sim
 import numpy as np
+from pathlib import Path
+from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from tqdm.auto import tqdm
-from pathlib import Path
 
 """
-mostly copied from 
-habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
+Mostly copied from habitat-sim/examples/tutorials/nb_python/ReplicaCAD_quickstart.py
 """
 
 """
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints
-
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
-
-python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints_w_topdown_maps
-
-
 python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.plot_map
-
-
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.load_hatbitat_cad
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints  # noqa
+python pud/envs/safe_habitatenv/unit_tests/test_replica_cad_barebone.py TestReplicaCADBarebone.vis_handed_crafted_waypoints_w_topdown_maps
 """
 
 
@@ -41,7 +34,7 @@ def make_cfg(settings):
     if "scene_light_setup" in settings:
         sim_cfg.scene_light_setup = settings["scene_light_setup"]
 
-    # Note: all sensors must have the same resolution
+    # Note: All sensors must have the same resolution
     sensor_specs = []
     color_sensor_1st_person_spec = habitat_sim.CameraSensorSpec()
     color_sensor_1st_person_spec.uuid = "color_sensor_1st_person"
@@ -80,17 +73,22 @@ def make_default_settings():
     }
     return settings
 
+
 class TestReplicaCADBarebone(unittest.TestCase):
     def test_construct_sim(self):
-        scene_dataset = "external_data/replica_cad/replica_cad_baked_lighting/replicaCAD_baked.scene_dataset_config.json"
+        scene_dataset = (
+            "external_data/replica_cad/replica_cad_baked_lighting/"
+            "replicaCAD_baked.scene_dataset_config.json"
+        )
         settings = make_default_settings()
         settings["scene_dataset"] = scene_dataset
 
         cfg = make_cfg(settings)
-        sim = habitat_sim.Simulator(cfg)
+        _ = habitat_sim.Simulator(cfg)
 
     def vis_handed_crafted_waypoints(self):
         from pud.envs.habitat_navigation_env import HabitatNavigationEnv
+
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
             sensor_type="rgb",
@@ -98,17 +96,19 @@ class TestReplicaCADBarebone(unittest.TestCase):
         )
 
         height, width = env._walls.shape
-        waypoints = np.loadtxt("pud/envs/safe_habitatenv/unit_tests/waypoints.txt", delimiter=",")
-        # waypoints in 2d grid
-        waypoints = waypoints * np.array([height,width], dtype=float)
+        waypoints = np.loadtxt(
+            "pud/envs/safe_habitatenv/unit_tests/waypoints.txt", delimiter=","
+        )
+        # Waypoints in 2d grid
+        waypoints = waypoints * np.array([height, width], dtype=float)
         obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints]
-        
+
         assert env.sensor_type == "rgb"
         pbar = tqdm(total=len(obs_at_waypoints))
         for i_obs, obs_cat in enumerate(obs_at_waypoints):
             fig, ax = plt.subplots(nrows=2, ncols=2)
             for i in range(4):
-                ax[i%2,i//2].imshow((obs_cat[i]).astype(dtype="uint8"))
+                ax[i % 2, i // 2].imshow((obs_cat[i]).astype(dtype="uint8"))
 
             target_dir = Path("temp/trace_bounds/")
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +120,7 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
     def vis_handed_crafted_waypoints_w_topdown_maps(self):
         from pud.envs.habitat_navigation_env import HabitatNavigationEnv
+
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
             sensor_type="rgb",
@@ -128,38 +129,44 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
         height, width = env._walls.shape
         waypoints = np.loadtxt("runs/tmp_plots/waypoints.txt", delimiter=",")
-        #waypoints = np.fliplr(waypoints)
-        # waypoints in 2d grid
-        waypoints_map = waypoints * np.array([height,width], dtype=float)
+        waypoints_map = waypoints * np.array([height, width], dtype=float)
         obs_at_waypoints = [env.get_sensor_obs_at_grid_xy(wp) for wp in waypoints_map]
-        
+
         assert env.sensor_type == "rgb"
         pbar = tqdm(total=len(obs_at_waypoints))
         for i_obs, obs_cat in enumerate(obs_at_waypoints):
             fig = plt.figure(layout="constrained")
             gs = GridSpec(nrows=2, ncols=3, figure=fig)
             for i in range(4):
-                axi = fig.add_subplot(gs[i%2,i//2])
+                axi = fig.add_subplot(gs[i % 2, i // 2])
                 axi.imshow((obs_cat[i]).astype(dtype="uint8"))
-            
-            ax_wall = fig.add_subplot(gs[:,-1])
-            walls = env._walls.copy()
-            for (i, j) in zip(*np.where(walls)):
-                x = np.array([i, i+1]) / float(height)
-                y0 = np.array([j, j]) / float(width)
-                y1 = np.array([j+1, j+1]) / float(width)
-                ax_wall.fill_between(x, y0, y1, color='grey')
 
-            ax_wall.set_xlim([0, 1])
-            ax_wall.set_ylim([0, 1])
+            ax_wall = fig.add_subplot(gs[:, -1])
+            walls = env._walls.copy()
+            for i, j in zip(*np.where(walls)):
+                x = np.array([i, i + 1]) / float(height)
+                y0 = np.array([j, j]) / float(width)
+                y1 = np.array([j + 1, j + 1]) / float(width)
+                ax_wall.fill_between(x, y0, y1, color="grey")
+
+            ax_wall.set_xlim((0, 1))
+            ax_wall.set_ylim((0, 1))
             ax_wall.set_xticks([])
             ax_wall.set_yticks([])
-            ax_wall.set_aspect('equal', adjustable='box')
+            ax_wall.set_aspect("equal", adjustable="box")
 
-            
-            ax_wall.plot([waypoints[i_obs][0]], [waypoints[i_obs][1]], 'ro')
-            ax_wall.plot(waypoints[:,0], waypoints[:,1], color="y", linestyle="--", linewidth=2)
-            ax_wall.plot(waypoints[i_obs][0], waypoints[i_obs][1], marker="o", color="red", markersize=6, zorder=4)
+            ax_wall.plot([waypoints[i_obs][0]], [waypoints[i_obs][1]], "ro")
+            ax_wall.plot(
+                waypoints[:, 0], waypoints[:, 1], color="y", linestyle="--", linewidth=2
+            )
+            ax_wall.plot(
+                waypoints[i_obs][0],
+                waypoints[i_obs][1],
+                marker="o",
+                color="red",
+                markersize=6,
+                zorder=4,
+            )
 
             target_dir = Path("runs/tmp_plots/trace_bounds/")
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -170,8 +177,13 @@ class TestReplicaCADBarebone(unittest.TestCase):
             pbar.update()
 
     def plot_map(self):
-        """plot the walls and trajectory"""
-        from pud.envs.habitat_navigation_env import HabitatNavigationEnv, plot_wall, plot_traj
+        """Plot the walls and trajectory"""
+        from pud.envs.habitat_navigation_env import (
+            HabitatNavigationEnv,
+            plot_wall,
+            plot_traj,
+        )
+
         env = HabitatNavigationEnv(
             env_type="ReplicaCAD",
             sensor_type="rgb",
@@ -182,9 +194,16 @@ class TestReplicaCADBarebone(unittest.TestCase):
 
         fig, ax = plt.subplots()
         plot_wall(env.walls, ax=ax)
-        # waypoints in 2d grid
-        waypoints_map = waypoints * np.array([height,width], dtype=float)
-        plot_traj(waypoints_map, walls=env.walls, ax=ax, color="y", linestyle="--", linewidth=2)
+        waypoints_map = waypoints * np.array([height, width], dtype=float)
+        plot_traj(
+            waypoints_map,
+            walls=env.walls,
+            ax=ax,
+            color="y",
+            linestyle="--",
+            linewidth=2,
+            normalize=False,
+        )
         ax.set_title("Test Case: Plot Map")
         fig.savefig("runs/tmp_plots/test_plot_traj.jpg", dpi=300)
 
@@ -199,12 +218,12 @@ class TestReplicaCADBarebone(unittest.TestCase):
         env_config = habitat_config["env"]
 
         env = habitat_env_load_fn(
-            #device=config_file["device"],
             max_episode_steps=20,
             **env_config,
-            )
+        )
 
         self.assertIsNotNone(env, "env should not be None")
+
 
 if __name__ == "__main__":
     unittest.main()

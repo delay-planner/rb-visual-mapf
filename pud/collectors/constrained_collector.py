@@ -2,50 +2,24 @@ from __future__ import annotations
 
 import logging
 import numpy as np
+from typing import Union
+
 from pud.collectors.collector import Collector
-from typing import Union, List, Tuple
-from pud.algos.policies import BasePolicy, GaussianPolicy, SearchPolicy
+from pud.algos.policies import BasePolicy, GaussianPolicy
 from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
-
-
-# def calc_cost_class_inds(
-#    cost: Union[float, List[float], np.ndarray], cost_classes: np.ndarray
-# ) -> Union[int, np.ndarray]:
-#    """Class-independent method to discretize the float cost into classes"""
-#    ret_scalar = False
-#    if isinstance(cost, float):
-#        ret_scalar = True
-
-#        cost = np.array([cost])
-#    elif isinstance(cost, list):
-#        cost = np.array(cost)
-
-#    # Clip the cost range, otherwise the argmin trick will not work
-#    cost = np.clip(cost, cost_classes[0], cost_classes[-1])
-
-#    num_bins = int(len(cost_classes))
-#    cost = np.expand_dims(cost, -1)
-#    class_mat = (cost_classes >= cost).astype(float)  # batch_size, num_bins
-#    class_mat = class_mat * np.arange(-num_bins, 0)
-#    class_inds = np.argmin(class_mat, axis=-1)
-
-#    if ret_scalar:
-#        return int(class_inds)
-#    return class_inds
 
 
 def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
     """
     Run evaluation and records the initial states for each episode
-    until the pb Q from the env is empty
-    """
-    # verify the eval_env has an non-empty Q of pbs
-    assert hasattr(eval_env, "pb_Q")
-    """At the end of the last pb in the Q, the step will trigger another
+    until the pb Q from the env is empty. At the end of the last pb in the Q, the step will trigger another
     reset, and it should be safely handled by the reset_orig, suppress the warning
-    message by turning off verbose"""
+    message by turning off verbose
+    """
+    # Verify the eval_env has an non-empty Q of pbs
+    assert hasattr(eval_env, "pb_Q")
     bk_prob_constriant = eval_env.get_prob_constraint()
-    eval_env.set_prob_constraint(1.0)  # only use from the pb Q
+    eval_env.set_prob_constraint(1.0)  # Only use from the pb Q
     eval_env.set_verbose(False)
     eval_env.set_use_q(True)
 
@@ -67,7 +41,7 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
         )
         return key
 
-    c = 0  # count
+    c = 0
     n = eval_env.get_Q_size()
 
     if n == 0:
@@ -78,9 +52,9 @@ def eval_agent_from_Q(policy, eval_env, collect_trajs=False):
 
     while c < n:
         action = policy.select_action(state)
-        """when episode ends:
-        - state is the new state of the new epsiode
-        - reward, done, info are from the last step of the terminated epsiode
+        """When episode ends:
+            - state is the new state of the new epsiode
+            - reward, done, info are from the last step of the terminated epsiode
         """
         state, reward, done, info = eval_env.step(np.copy(action))
 
@@ -136,7 +110,7 @@ class ConstrainedCollector(Collector):
 
         self.past_eps = []
         self.num_eps = 0
-        self.state, info = env.reset()
+        self.state, _ = env.reset()
         self._reset_log()
 
     def _reset_log(self) -> None:
@@ -208,7 +182,7 @@ class ConstrainedCollector(Collector):
     def sample_initial_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
-            s0, info = eval_env.reset()
+            s0, _ = eval_env.reset()
             rb_vec.append(s0)
         rb_vec = np.array([x["observation"] for x in rb_vec])
         return rb_vec
@@ -227,7 +201,7 @@ class ConstrainedCollector(Collector):
     def sample_initial_unconstrained_visual_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
-            state, info = eval_env.reset()
+            state, _ = eval_env.reset()
             rb_vec.append(state)
         rb_vec_grid = np.array([x["grid"]["observation"] for x in rb_vec])
         rb_vec_visual = np.array([x["observation"] for x in rb_vec])
@@ -245,8 +219,8 @@ class ConstrainedCollector(Collector):
         """
         by_episode: if True, evals `n` episodes; otherwise, evals `n` environment steps
         """
-        c = 0  # count
-        r = 0  # reward
+        c = 0
+        r = 0
         rewards = []
 
         co = 0
@@ -307,8 +281,7 @@ class ConstrainedCollector(Collector):
             }
             return key
 
-        c = 0  # count
-
+        c = 0
         r, co, max_co, cum_co = [0.0] * 4
         state, info = eval_env.reset()
         cur_key = new_record(state)
@@ -345,7 +318,7 @@ class ConstrainedCollector(Collector):
         c = 0
         while c < num_steps:
             goal = search_policy.get_goal_in_rb()
-            state, info = eval_env.reset()
+            state, _ = eval_env.reset()
             done = False
 
             while True:
@@ -630,10 +603,10 @@ class ConstrainedCollector(Collector):
                     continue
 
                 if wait:
-                    for other_agent_id in range(agent_id + 1, num_agents):
-                        if agent_id == other_agent_id:
-                            continue
+                    if agent_id in wait_agents:
+                        continue
 
+                    for other_agent_id in range(agent_id + 1, num_agents):
                         agent_state = np.array(state["agent_observations"][agent_id])
                         agent_state *= denormalize_factor
                         other_agent_state = np.array(
@@ -644,9 +617,6 @@ class ConstrainedCollector(Collector):
                         if np.linalg.norm(agent_state - other_agent_state) < 1.0:
                             # Wait if the distance is less than MAX_ACTION
                             wait_agents.append(other_agent_id)
-
-                    if agent_id in wait_agents:
-                        continue
 
                 if isinstance(policy, BasePolicy):
                     state["agent_waypoints"][agent_id] = agent_goals[agent_id]
@@ -863,6 +833,9 @@ class ConstrainedCollector(Collector):
                     continue
 
                 if wait:
+                    if agent_id in wait_agents:
+                        continue
+
                     for other_agent_id in range(agent_id + 1, num_agents):
                         if agent_id == other_agent_id:
                             continue
@@ -876,9 +849,6 @@ class ConstrainedCollector(Collector):
                         if np.linalg.norm(agent_state - other_agent_state) < 1.0:
                             # Wait if the distance is less than MAX_ACTION
                             wait_agents.append(other_agent_id)
-
-                    if agent_id in wait_agents:
-                        continue
 
                 if isinstance(policy, BasePolicy):
                     assert len(agent_goals[agent_id]) == 2 and isinstance(

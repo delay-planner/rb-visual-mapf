@@ -1,8 +1,8 @@
-import torch
-#torch.autograd.set_detect_anomaly(True)
-
 import yaml
+import torch
+import shutil
 import argparse
+from typing import List
 from pathlib import Path
 from dotmap import DotMap
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -10,24 +10,23 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from pud.algos.policies import VectorGaussianPolicy
 from pud.utils import set_env_seed, set_global_seed
 from pud.algos.vision.vision_agent import VisionUVFDDPG
-from pud.algos.ddpg import GoalConditionedCritic
-from pud.envs.habitat_navigation_env import GoalConditionedHabitatPointWrapper, habitat_env_load_fn
-#from pud.algos.constrained_buffer import ConstrainedReplayBuffer
 from pud.buffers.visual_buffer import VisualReplayBuffer
-from pud.collectors.collector import Collector
+from pud.runners.runner_visual import train_eval, eval_pointenv_dists
+from pud.envs.habitat_navigation_env import (
+    habitat_env_load_fn,
+    GoalConditionedHabitatPointWrapper,
+)
 from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
     SafeGoalConditionedHabitatPointWrapper,
     SafeGoalConditionedHabitatPointQueueWrapper,
 )
-from pud.runners.runner_visual import train_eval, eval_pointenv_dists
-from tqdm.auto import tqdm
-import shutil
-from typing import List
 
-def setup_logger(root_dir:str, subdir_names:List[str], tag_time:bool=False):
+
+def setup_logger(root_dir: str, subdir_names: List[str], tag_time: bool = False):
     log_dir = Path(root_dir)
     if tag_time:
         from datetime import datetime
+
         now = datetime.now()
         date_time = now.strftime("%Y-%m-%d-%H-%M-%S")
         log_dir = log_dir.joinpath(date_time)
@@ -41,6 +40,7 @@ def setup_logger(root_dir:str, subdir_names:List[str], tag_time:bool=False):
 
     return logger
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -49,89 +49,70 @@ if __name__ == "__main__":
         default="configs/config_HabitatReplicaCAD.yaml",
         help="Training configuration",
     )
-    parser.add_argument("--cost_name",
+    parser.add_argument("--cost_name", type=str, default="", help="override cost type")
+    parser.add_argument(
+        "--cost_radius", type=float, default=-1, help="override cost type"
+    )
+    parser.add_argument("--cost_max", type=float, default=-1, help="override if > 0")
+    parser.add_argument("--cost_N", type=int, default=0, help="override if > 0")
+    parser.add_argument("--embedding_size", type=int, default=-1, help="")
+    parser.add_argument(
+        "--ckpt",
         type=str,
         default="",
-        help="override cost type")
-    parser.add_argument("--cost_radius",
-        type=float,
-        default=-1,
-        help="override cost type")
-    parser.add_argument("--cost_max",
-        type=float,
-        default=-1,
-        help="override if > 0")
-    parser.add_argument("--cost_N",
-        type=int,
-        default=0,
-        help="override if > 0")
-    parser.add_argument("--embedding_size",
-        type=int,
-        default=-1,
-        help="")
-    parser.add_argument("--ckpt",
-        type=str,
-        default="",
-        help="if non-empty, load the checkpoint into agent model")
-    parser.add_argument("--i_start",
+        help="if non-empty, load the checkpoint into agent model",
+    )
+    parser.add_argument(
+        "--i_start",
         type=int,
         default=1,
-        help="override the start iteration index, for resume training")
-    parser.add_argument("--collect_steps",
+        help="override the start iteration index, for resume training",
+    )
+    parser.add_argument(
+        "--collect_steps",
         type=int,
         default=-1,
-        help="override the number of steps per agent update")
-    parser.add_argument("--num_iterations",
-        type=int,
-        default=-1,
-        help="override num of iterations")
-    parser.add_argument("--eval_interval",
-        type=int,
-        default=-1,
-        help="evaluation interval")
-    parser.add_argument("--cost_limit",
-        type=float,
-        default=-1,
-        help="override cost limit")
-    parser.add_argument("--scene",
-        type=str,
-        default="",
-        help="override scene")
-    parser.add_argument("--actor_lr",
-        type=float,
-        default=-1,
-        help="")
-    parser.add_argument("--critic_lr",
-        type=float,
-        default=-1,
-        help="")
-    parser.add_argument("--lambda_lr",
-        type=float,
-        default=-1,
-        help="override lagrange lr")
-    parser.add_argument("--replay_buffer_size",
-        type=int,
-        default=-1,
-        help="max replay buffer size")
-    parser.add_argument("--apsp_path",
-        type=str,
-        default="",
-        help="supply pre-computed apsp path")
-    parser.add_argument("--encoder",
+        help="override the number of steps per agent update",
+    )
+    parser.add_argument(
+        "--num_iterations", type=int, default=-1, help="override num of iterations"
+    )
+    parser.add_argument(
+        "--eval_interval", type=int, default=-1, help="evaluation interval"
+    )
+    parser.add_argument(
+        "--cost_limit", type=float, default=-1, help="override cost limit"
+    )
+    parser.add_argument("--scene", type=str, default="", help="override scene")
+    parser.add_argument("--actor_lr", type=float, default=-1, help="")
+    parser.add_argument("--critic_lr", type=float, default=-1, help="")
+    parser.add_argument(
+        "--lambda_lr", type=float, default=-1, help="override lagrange lr"
+    )
+    parser.add_argument(
+        "--replay_buffer_size", type=int, default=-1, help="max replay buffer size"
+    )
+    parser.add_argument(
+        "--apsp_path", type=str, default="", help="supply pre-computed apsp path"
+    )
+    parser.add_argument(
+        "--encoder",
         type=str,
         default="VisualRGBEncoder",
-        help="VisualRGBEncoder | VisualEncoder")
-    parser.add_argument("--illustration_pb_file",
+        help="VisualRGBEncoder | VisualEncoder",
+    )
+    parser.add_argument(
+        "--illustration_pb_file",
         type=str,
-        help="problems that serve as illustration and evaluation set")
-    parser.add_argument("--resume",
-        type=str,
-        default="",
-        help="resume training")
+        help="problems that serve as illustration and evaluation set",
+    )
+    parser.add_argument("--resume", type=str, default="", help="resume training")
     parser.add_argument("--logdir", type=str, default="", help="Override ckpt dir")
     parser.add_argument("--device", type=str, default="cuda:0", help="cpu or cuda")
     parser.add_argument("--pbar", action="store_true", help="Show progress bar")
-    parser.add_argument("--visual", action="store_true", help="generate and save visual trajs")
+    parser.add_argument(
+        "--visual", action="store_true", help="generate and save visual trajs"
+    )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose printing/logging"
     )
@@ -181,13 +162,13 @@ if __name__ == "__main__":
 
     # Custom Logging
     logger = setup_logger(
-        root_dir=cfg.ckpt_dir, 
+        root_dir=cfg.ckpt_dir,
         subdir_names=["ckpt", "tfevent", "bk", "imgs"],
         tag_time=True,
-        )
+    )
     with open(logger["bk"].joinpath("config.yaml"), "w") as f:
         yaml.safe_dump(data=cfg.toDict(), stream=f, allow_unicode=True, indent=4)
-    logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())
+    logger["tb"] = SummaryWriter(log_dir=logger["tfevent"].as_posix())  # type: ignore
 
     shutil.copy("launch_jobs/local_train_habitat.sh", logger["bk"].as_posix())
     shutil.copy("launch_jobs/cloud_train_habitat.sh", logger["bk"].as_posix())
@@ -213,35 +194,31 @@ if __name__ == "__main__":
     env = habitat_env_load_fn(
         **cfg.env.toDict(),
         max_episode_steps=cfg.time_limit.max_episode_steps,
-        gym_env_wrappers= (
-            GoalConditionedHabitatPointWrapper,
-        ),  # type: ignore
+        gym_env_wrappers=(GoalConditionedHabitatPointWrapper,),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
         device=cfg.device,
         terminate_on_timeout=False,
-        )
+    )
 
     eval_env = habitat_env_load_fn(
         **cfg.env.toDict(),
         max_episode_steps=cfg.time_limit.max_episode_steps,
-        gym_env_wrappers= (
-            GoalConditionedHabitatPointWrapper,
-        ),  # type: ignore
+        gym_env_wrappers=(GoalConditionedHabitatPointWrapper,),  # type: ignore
         wrapper_kwargs=gym_env_wrapper_kwargs,
         device=cfg.device,
         terminate_on_timeout=True,
-        )
-    set_env_seed(eval_env, cfg.seed+1)
+    )
+    set_env_seed(eval_env, cfg.seed + 1)
 
+    assert env.action_space.shape is not None
     cfg.agent["action_dim"] = env.action_space.shape[0]
-    cfg.agent["max_action"] = float(env.action_space.high[0])
-    
+    cfg.agent["max_action"] = float(env.action_space.high[0])  # type: ignore
+
     agent = VisionUVFDDPG(
         width=cfg.env.simulator_settings.width,
         height=cfg.env.simulator_settings.height,
         in_channels=4,
         act_fn=torch.nn.SELU,
-        #act_fn=torch.nn.ReLU,
         encoder=args.encoder,
         device=cfg.device,
         **cfg.agent.toDict(),
@@ -253,34 +230,22 @@ if __name__ == "__main__":
         state_dict = torch.load(args.resume)
         agent.load_state_dict(state_dict)
 
-    # load pretrained encoder
-    #encoder_ckpt = torch.load("runs/pretrain/test/ckpt/enc/enc_059000.ckpt")
-    #agent.actor.encoder.load_state_dict(encoder_ckpt.state_dict())
-    #agent.actor_target.encoder.load_state_dict(encoder_ckpt.state_dict())
-    #for ii in range(len(agent.critic.critics)):
-    #    agent.critic.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
-    #    agent.critic_target.critics[ii].encoder.load_state_dict(encoder_ckpt.state_dict())
-
-    #obs = env.reset()
-    #done_count = 0
-    #num_steps = 200
-    #for _ in tqdm(range(num_steps), total=num_steps):
-    #    #at = env.action_space.sample()
-    #    at = agent.select_action(obs)
-    #    agent.get_q_values(obs)
-    #    new_obs, rew, done, info = env.step(at)
-    #    if done:
-    #        done_count += 1
-
-    #    obs = new_obs
-
-    # test collector
     replay_buffer = VisualReplayBuffer(
-        obs_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
-        goal_dim=(4, cfg.env.simulator_settings.width, cfg.env.simulator_settings.height, 4),
+        obs_dim=(
+            4,
+            cfg.env.simulator_settings.width,
+            cfg.env.simulator_settings.height,
+            4,
+        ),
+        goal_dim=(
+            4,
+            cfg.env.simulator_settings.width,
+            cfg.env.simulator_settings.height,
+            4,
+        ),
         action_dim=env.action_space.shape[0],
         max_size=cfg.replay_buffer.max_size,
-        )
+    )
 
     policy = VectorGaussianPolicy(agent, noise_scale=0.2)
 
@@ -291,8 +256,8 @@ if __name__ == "__main__":
         env=env,
         eval_env=eval_env,
         eval_func=eval_pointenv_dists,
-        #pbar=args.pbar,
         logger=logger,
         **cfg.runner,
+        # pbar=args.pbars
     )
     torch.save(agent.state_dict(), logger["ckpt"].joinpath("agent.pth"))

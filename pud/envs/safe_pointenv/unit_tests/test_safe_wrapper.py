@@ -1,25 +1,21 @@
 import unittest
-
-import numpy as np
 from termcolor import cprint
 
 from pud.envs.safe_pointenv.safe_pointenv import SafePointEnv
 from pud.envs.safe_pointenv.safe_wrappers import (
-    SafeGoalConditionedPointWrapper, SafeGoalConditionedPointBlendWrapper, safe_env_load_fn, set_safe_env_difficulty)
-from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent
+    safe_env_load_fn,
+    set_safe_env_difficulty,
+    SafeGoalConditionedPointWrapper,
+    SafeGoalConditionedPointBlendWrapper,
+)
 
 """
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_no_constraint
-
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint
-
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_strict_req
-
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
-
-python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_safe_env_difficulty
-
 python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_type_checking
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_safe_env_load_fn
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_no_constraint
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_set_safe_env_difficulty
+python pud/envs/safe_pointenv/unit_tests/test_safe_wrapper.py TestSafeWrapper.test_reset_with_constraint_strict_req
 """
 
 
@@ -27,7 +23,6 @@ class TestSafeWrapper(unittest.TestCase):
     def setUp(self):
         env_kwargs = {
             "walls": "CentralObstacle",
-            # "walls": "FourRooms",
             "resize_factor": 5,
             "thin": False,
             "cost_limit": 1,
@@ -48,10 +43,10 @@ class TestSafeWrapper(unittest.TestCase):
 
     def test_type_checking(self):
         blend_env = SafeGoalConditionedPointBlendWrapper(
-                    env=self.p_env,
-                    reset_blend=1.0,
-                    cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
-                )
+            env=self.p_env,
+            reset_blend=1.0,
+            cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl",
+        )
         blend_env.reset()
         assert isinstance(blend_env, SafeGoalConditionedPointBlendWrapper)
         assert isinstance(blend_env, SafeGoalConditionedPointWrapper)
@@ -61,8 +56,7 @@ class TestSafeWrapper(unittest.TestCase):
         set_safe_env_difficulty(self.w_env, 0.5)
 
     def test_safe_env_load_fn(self):
-        """load env wrappers with args"""
-        # args for SafeGoalConditionedPointWrapper
+        """Load env wrappers with args"""
         wrapper_kwargs = [
             dict(cbfs_policy_path="pud/envs/precompiles/central_obstacle_v2.pkl"),
         ]
@@ -92,7 +86,7 @@ class TestSafeWrapper(unittest.TestCase):
             max_cost=1.0,
         )
         for _ in range(100):
-            out, info = self.w_env.reset()
+            _, _ = self.w_env.reset()
 
     def test_reset_with_constraint(self):
         max_cost = 0.5
@@ -109,15 +103,15 @@ class TestSafeWrapper(unittest.TestCase):
             self.assertTrue(self.w_env.get_state_cost(out["goal"]) <= max_cost)
 
     def test_reset_with_constraint_strict_req(self):
-        """very strict requirement on reference distances, which may be an empty set"""
+        """Very strict requirement on reference distances, which may be an empty set"""
         target_dists = [2, 5, 10, 15]
 
         for i in range(len(target_dists)):
             min_dist, max_dist = target_dists[i], target_dists[i]
             cost_levels = list(self.w_env.pi_cbfs["trajs"][min_dist].keys())
             cost_levels.sort()
-            for l in range(len(cost_levels)):
-                max_cost, min_cost = cost_levels[l], cost_levels[l]
+            for level in range(len(cost_levels)):
+                max_cost, min_cost = cost_levels[level], cost_levels[level]
 
                 if max_cost in self.w_env.pi_cbfs["trajs"][min_dist]:
                     self.w_env.set_sample_goal_args(
@@ -139,14 +133,14 @@ class TestSafeWrapper(unittest.TestCase):
                 else:
                     cprint(
                         "[WARN] target cost={}, target distance={} not found".format(
-                            cost_levels[l], target_dists[i]
+                            cost_levels[level], target_dists[i]
                         )
                     )
 
     def test_step(self):
         self.w_env.reset()
         at = self.w_env.action_space.sample()
-        next_state, reward, done, info = self.w_env.step(at)
+        _, _, _, _ = self.w_env.step(at)
 
     def test_cbfs_sample(self):
         self.w_env.cbfs_sample(min_cost=0, max_cost=1.0, min_dist=1.0, max_dist=10)

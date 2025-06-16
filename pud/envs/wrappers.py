@@ -1,5 +1,4 @@
 import gym
-import gym.wrappers
 
 
 # https://www.tensorflow.org/agents/tutorials/2_environments_tutorial#using_standard_environments
@@ -28,19 +27,27 @@ class TimeLimit(gym.Wrapper):
 
     def reset(self):
         self.step_count = 0
-        observation = self.env.reset()
+        reset_result = self.env.reset()
+        if len(reset_result) == 2:
+            observation, _ = reset_result
+        else:
+            observation = reset_result
         observation["first_step"] = True
         return observation
 
     def step(self, action, num_agents=None):
-        observation, reward, done, info = self.env.step(action)  # type: ignore
+        step_result = self.env.step(action)
+        if len(step_result) == 5:
+            observation, reward, done, _, info = step_result
+        else:
+            observation, reward, done, info = step_result
 
         self.step_count += 1
         timed_out = self.step_count >= self.duration
         if timed_out or done:
             info["timed_out"] = timed_out
-            info["terminal_observation"] = observation
             info["last_step"] = True
+            info["terminal_observation"] = observation
             done = done if not self.terminate_on_timeout else True
 
             if num_agents is None:

@@ -1,179 +1,227 @@
-from pud.dependencies import *
+import gym
+import numpy as np
+import networkx as nx
+import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from gym.spaces import Box, Dict
+
+from pud.envs.wrappers import TimeLimit
 
 WALLS = {
-    'Small':
-        np.array([[0, 0, 0, 0],
-                  [0, 0, 0, 0],
-                  [0, 0, 0, 0],
-                  [0, 0, 0, 0]]),
-    'Cross':
-        np.array([[0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 1, 1, 1, 1, 1, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0]]),
-    "CenterDot":
-        np.array([[0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0],
-                  [0, 0, 1, 0, 0],
-                  [0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0]]),
-    "Line":
-        np.array([[0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 1, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0]]),
-    "L": 
-            np.array([[0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 1, 0, 0, 0, 0],
-                      [0, 0, 1, 0, 0, 0, 0],
-                      [0, 0, 1, 0, 0, 0, 0],
-                      [0, 0, 1, 1, 1, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0]]),
-    "LQuarter": 
-            np.array([[0, 0, 0, 1, 1, 1, 1],
-                      [0, 0, 0, 1, 1, 1, 1],
-                      [0, 0, 0, 1, 1, 1, 1],
-                      [0, 0, 0, 1, 1, 1, 1],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0]]),
-    'FourRooms':
-        np.array([[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]]),
-    'FourRoomsModified':
-       np.array([[0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                 [1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1],
-                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]]),
-    'CentralObstacle':
-        np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]),
-    'Spiral5x5':
-        np.array([[0, 0, 0, 0, 0],
-                  [0, 1, 1, 1, 1],
-                  [0, 1, 0, 0, 1],
-                  [0, 1, 1, 0, 1],
-                  [0, 0, 0, 0, 1]]),
-    'Spiral7x7':
-        np.array([[1, 1, 1, 1, 1, 1, 1],
-                  [1, 0, 0, 0, 0, 0, 0],
-                  [1, 0, 1, 1, 1, 1, 0],
-                  [1, 0, 1, 0, 0, 1, 0],
-                  [1, 0, 1, 1, 0, 1, 0],
-                  [1, 0, 0, 0, 0, 1, 0],
-                  [1, 1, 1, 1, 1, 1, 0]]),
-    'Spiral9x9':
-        np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 1, 1, 1, 1, 1, 1, 1, 1],
-                  [0, 1, 0, 0, 0, 0, 0, 0, 1],
-                  [0, 1, 0, 1, 1, 1, 1, 0, 1],
-                  [0, 1, 0, 1, 0, 0, 1, 0, 1],
-                  [0, 1, 0, 1, 1, 0, 1, 0, 1],
-                  [0, 1, 0, 0, 0, 0, 1, 0, 1],
-                  [0, 1, 1, 1, 1, 1, 1, 0, 1],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 1]]),
-    'Spiral11x11':
-        np.array([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
-                  [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0],
-                  [1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0],
-                  [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0],
-                  [1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0],
-                  [1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0],
-                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]]),
-    'Maze3x3':
-        np.array([[0, 0, 0],
-                  [1, 1, 0],
-                  [0, 0, 0]]),
-    'Maze6x6':
-        np.array([[0, 0, 1, 0, 0, 0],
-                  [1, 0, 1, 0, 1, 0],
-                  [0, 0, 1, 0, 1, 1],
-                  [0, 1, 1, 0, 0, 1],
-                  [0, 0, 1, 1, 0, 1],
-                  [1, 0, 0, 0, 0, 1]]),
-    'Maze11x11':
-        np.array([[0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-                  [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-                  [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-                  [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
-                  [1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
-                  [1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0],
-                  [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0],
-                  [0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0],
-                  [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]),
-    'Tunnel':
-        np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0],
-                  [0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-                  [0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                  [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
-                  [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0],
-                  [0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
-                  [0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0],
-                  [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0],
-                  [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0],
-                  [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-                  [0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0],
-                  [0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0],
-                  [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]]),
-    'U':
-        np.array([[0, 0, 0],
-                  [0, 1, 0],
-                  [0, 1, 0],
-                  [0, 1, 0],
-                  [1, 1, 0],
-                  [0, 1, 0],
-                  [0, 1, 0],
-                  [0, 1, 0],
-                  [0, 0, 0]]),
-    'Tree':
-        np.array([
+    "Small": np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]),
+    "Cross": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "CenterDot": np.array(
+        [
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ]
+    ),
+    "Line": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "L": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "LQuarter": np.array(
+        [
+            [0, 0, 0, 1, 1, 1, 1],
+            [0, 0, 0, 1, 1, 1, 1],
+            [0, 0, 0, 1, 1, 1, 1],
+            [0, 0, 0, 1, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "FourRooms": np.array(
+        [
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "FourRoomsModified": np.array(
+        [
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "CentralObstacle": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "Spiral5x5": np.array(
+        [
+            [0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1],
+            [0, 1, 0, 0, 1],
+            [0, 1, 1, 0, 1],
+            [0, 0, 0, 0, 1],
+        ]
+    ),
+    "Spiral7x7": np.array(
+        [
+            [1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0],
+            [1, 0, 1, 1, 1, 1, 0],
+            [1, 0, 1, 0, 0, 1, 0],
+            [1, 0, 1, 1, 0, 1, 0],
+            [1, 0, 0, 0, 0, 1, 0],
+            [1, 1, 1, 1, 1, 1, 0],
+        ]
+    ),
+    "Spiral9x9": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1],
+            [0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [0, 1, 0, 1, 1, 1, 1, 0, 1],
+            [0, 1, 0, 1, 0, 0, 1, 0, 1],
+            [0, 1, 0, 1, 1, 0, 1, 0, 1],
+            [0, 1, 0, 0, 0, 0, 1, 0, 1],
+            [0, 1, 1, 1, 1, 1, 1, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1],
+        ]
+    ),
+    "Spiral11x11": np.array(
+        [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0],
+            [1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0],
+            [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0],
+            [1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0],
+            [1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+        ]
+    ),
+    "Maze3x3": np.array([[0, 0, 0], [1, 1, 0], [0, 0, 0]]),
+    "Maze6x6": np.array(
+        [
+            [0, 0, 1, 0, 0, 0],
+            [1, 0, 1, 0, 1, 0],
+            [0, 0, 1, 0, 1, 1],
+            [0, 1, 1, 0, 0, 1],
+            [0, 0, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 1],
+        ]
+    ),
+    "Maze11x11": np.array(
+        [
+            [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+            [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+            [1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "Tunnel": np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+            [0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+            [0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+            [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0],
+            [0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        ]
+    ),
+    "U": np.array(
+        [
+            [0, 0, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [1, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 0, 0],
+        ]
+    ),
+    "Tree": np.array(
+        [
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
             [1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1],
@@ -187,9 +235,10 @@ WALLS = {
             [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0],
             [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0],
             [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0],
-        ]),
-    'UMulti':
-        np.array([
+        ]
+    ),
+    "UMulti": np.array(
+        [
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
@@ -210,9 +259,10 @@ WALLS = {
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ]),
-    'FlyTrapSmall':
-        np.array([
+        ]
+    ),
+    "FlyTrapSmall": np.array(
+        [
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
             [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
             [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0],
@@ -228,9 +278,10 @@ WALLS = {
             [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0],
             [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-        ]),
-    'FlyTrapBig':
-        np.array([
+        ]
+    ),
+    "FlyTrapBig": np.array(
+        [
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
@@ -254,36 +305,415 @@ WALLS = {
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
-        ]),
-    'Galton':
-        np.array([
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-                1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1,
-                0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1,
-                0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1,
-                0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-                0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1,
-                0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-            [0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1,
-                0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-            [0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1,
-                0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1,
-                0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        ]),
+        ]
+    ),
+    "Galton": np.array(
+        [
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            [
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+            ],
+            [
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+            ],
+            [
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+            ],
+        ]
+    ),
 }
 
 
@@ -312,20 +742,20 @@ def thin_wall_width(walls, factor):
       walls: 0/1 array indicating obstacle locations
       factor: (int) factor by which to rescale the environment
     """
-    assert walls.ndim == 2 
-    height, width = walls.shape 
+    assert walls.ndim == 2
+    height, width = walls.shape
 
     to_the_left = walls
     to_the_right = np.zeros_like(to_the_left)
-    to_the_right[:,:-1] = walls[:,1:]
-    to_the_right[:,-1] = walls[:,-1]
+    to_the_right[:, :-1] = walls[:, 1:]
+    to_the_right[:, -1] = walls[:, -1]
     filling = to_the_left + to_the_right == 2
     filling = filling.astype(int)
-         
+
     expanded = np.repeat(filling, factor, axis=1)
-    expanded[:,0::factor] = walls
-    
-    assert expanded.shape == (height, width*factor)
+    expanded[:, 0::factor] = walls
+
+    assert expanded.shape == (height, width * factor)
     return expanded
 
 
@@ -339,17 +769,16 @@ def thin_walls(walls, factor):
     """
     assert walls.ndim == 2
     height, width = walls.shape
-            
+
     thinned = thin_wall_width(thin_wall_width(walls, factor).T, factor).T
-    assert thinned.shape == (height*factor, width*factor)
+    assert thinned.shape == (height * factor, width * factor)
     return thinned
 
 
 class PointEnv(gym.Env):
     """Abstract class for 2D navigation environments."""
 
-    def __init__(self, walls=None, resize_factor=1,
-                 action_noise=1.0, thin=False):
+    def __init__(self, walls=None, resize_factor=1, action_noise=1.0, thin=False):
         """Initialize the point environment.
 
         Args:
@@ -358,6 +787,8 @@ class PointEnv(gym.Env):
           action_noise: (float) Standard deviation of noise to add to actions. Use 0
             to add no noise.
         """
+        if walls is None or walls not in WALLS:
+            raise ValueError(f"Invalid walls argument: {walls}")
         if thin and resize_factor > 1:
             self._walls = thin_walls(WALLS[walls], resize_factor)
         elif not thin and resize_factor > 1:
@@ -369,14 +800,14 @@ class PointEnv(gym.Env):
         self._height = height
         self._width = width
         self._action_noise = action_noise
-        self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, -1.0]),
-            high=np.array([1.0, 1.0]),
-            dtype=np.float32)
-        self.observation_space = gym.spaces.Box(
+        self.action_space = Box(
+            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32
+        )
+        self.observation_space = Box(
             low=np.array([0.0, 0.0]),
             high=np.array([self._height, self._width]),
-            dtype=np.float32)
+            dtype=np.float32,
+        )
         self.reset()
 
     def sample_empty_state(self):
@@ -387,9 +818,10 @@ class PointEnv(gym.Env):
         candidate_states = np.where(self._walls == 0)
         num_candidate_states = len(candidate_states[0])
         state_index = np.random.choice(num_candidate_states)
-        state = np.array([candidate_states[0][state_index],
-                          candidate_states[1][state_index]],
-                         dtype=np.float32)
+        state = np.array(
+            [candidate_states[0][state_index], candidate_states[1][state_index]],
+            dtype=np.float32,
+        )
         state += np.random.uniform(size=2)
         assert not self._is_blocked(state)
         return state
@@ -416,15 +848,18 @@ class PointEnv(gym.Env):
         return (i, j)
 
     def _is_blocked(self, state):
-        assert state.dtype == self.observation_space.dtype, "state data type NOT matches observation_space"
+        assert (
+            state.dtype == self.observation_space.dtype
+        ), "state data type NOT matches observation_space"
         if not self.observation_space.contains(state):
             return True
         (i, j) = self._discretize_state(state)
-        return (self._walls[i, j] == 1)
+        return self._walls[i, j] == 1
 
     def step(self, action):
         if self._action_noise > 0:
             action += np.random.normal(0, self._action_noise)
+        assert isinstance(self.action_space, Box)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action)
         num_substeps = 10
@@ -472,9 +907,9 @@ class PointEnv(gym.Env):
                         g.add_edge((i, j), (i + di, j + dj))
 
         # dist[i, j, k, l] is path from (i, j) -> (k, l)
-        dist = np.full((height, width, height, width), np.float32('inf'))
-        for ((i1, j1), dist_dict) in nx.shortest_path_length(g):
-            for ((i2, j2), d) in dist_dict.items():
+        dist = np.full((height, width, height, width), np.float32("inf"))
+        for (i1, j1), dist_dict in nx.shortest_path_length(g):
+            for (i2, j2), d in dist_dict.items():
                 dist[i1, j1, i2, j2] = d
         return dist
 
@@ -482,8 +917,9 @@ class PointEnv(gym.Env):
 class GoalConditionedPointWrapper(gym.Wrapper):
     """Wrapper that appends goal to observation produced by environment."""
 
-    def __init__(self, env, prob_constraint=0.8, min_dist=0, max_dist=4,
-                 threshold_distance=1.0):
+    def __init__(
+        self, env, prob_constraint=0.8, min_dist=0, max_dist=4, threshold_distance=1.0
+    ):
         """Initialize the environment.
 
         Args:
@@ -502,16 +938,18 @@ class GoalConditionedPointWrapper(gym.Wrapper):
         self._min_dist = min_dist
         self._max_dist = max_dist
         super(GoalConditionedPointWrapper, self).__init__(env)
-        self.observation_space = gym.spaces.Dict({
-            'observation': env.observation_space,
-            'goal': env.observation_space,
-        })
+        self.observation_space = Dict(
+            {
+                "observation": env.observation_space,
+                "goal": env.observation_space,
+            }
+        )
 
     def normalize_obs(self, obs):
-        return np.array([
-            obs[0] / float(self.env._height),
-            obs[1] / float(self.env._width)
-        ])
+        assert isinstance(self.env.unwrapped, PointEnv)
+        return np.array(
+            [obs[0] / float(self.env.unwrapped._height), obs[1] / float(self.env.unwrapped._width)]
+        )
 
     def reset(self):
         goal = None
@@ -521,20 +959,29 @@ class GoalConditionedPointWrapper(gym.Wrapper):
             (obs, goal) = self._sample_goal(obs)
             count += 1
             if count > 1000:
-                print('WARNING: Unable to find goal within constraints.')
+                print("WARNING: Unable to find goal within constraints.")
         self._goal = goal
-        return {'observation': self.normalize_obs(obs),
-                'goal': self.normalize_obs(self._goal)}
+        return {
+            "observation": self.normalize_obs(obs),
+            "goal": self.normalize_obs(self._goal),
+        }
 
     def step(self, action):
-        obs, _, _, _ = self.env.step(action)
+        step_result = self.env.step(action)
+        obs = step_result[0]
         rew = -1.0
         done = self._is_done(obs, self._goal)
-        return {'observation': self.normalize_obs(obs),
-                'goal': self.normalize_obs(self._goal)}, rew, done, {}
+        return (
+            {
+                "observation": self.normalize_obs(obs),
+                "goal": self.normalize_obs(self._goal),
+            },
+            rew,
+            done,
+            {},
+        )
 
-    def set_sample_goal_args(self, prob_constraint=None,
-                             min_dist=None, max_dist=None):
+    def set_sample_goal_args(self, prob_constraint=None, min_dist=None, max_dist=None):
         assert prob_constraint is not None
         assert min_dist is not None
         assert max_dist is not None
@@ -566,22 +1013,25 @@ class GoalConditionedPointWrapper(gym.Wrapper):
           observation: observation (without goal).
           goal: a goal observation.
         """
-        (i, j) = self.env._discretize_state(obs)
-        mask = np.logical_and(self.env._apsp[i, j] >= min_dist,
-                              self.env._apsp[i, j] <= max_dist)
-        mask = np.logical_and(mask, self.env._walls == 0)
+        assert isinstance(self.env.unwrapped, PointEnv)
+        (i, j) = self.env.unwrapped._discretize_state(obs)
+        mask = np.logical_and(
+            self.env.unwrapped._apsp[i, j] >= min_dist, self.env.unwrapped._apsp[i, j] <= max_dist
+        )
+        mask = np.logical_and(mask, self.env.unwrapped._walls == 0)
         candidate_states = np.where(mask)
         num_candidate_states = len(candidate_states[0])
         if num_candidate_states == 0:
             return (obs, None)
         goal_index = np.random.choice(num_candidate_states)
-        goal = np.array([candidate_states[0][goal_index],
-                         candidate_states[1][goal_index]],
-                        dtype=np.float32)
+        goal = np.array(
+            [candidate_states[0][goal_index], candidate_states[1][goal_index]],
+            dtype=np.float32,
+        )
         goal += np.random.uniform(size=2)
-        dist_to_goal = self.env._get_distance(obs, goal)
+        dist_to_goal = self.env.unwrapped._get_distance(obs, goal)
         assert min_dist <= dist_to_goal <= max_dist
-        assert not self.env._is_blocked(goal)
+        assert not self.env.unwrapped._is_blocked(goal)
         return (obs, goal)
 
     def _sample_goal_unconstrained(self, obs):
@@ -593,21 +1043,24 @@ class GoalConditionedPointWrapper(gym.Wrapper):
           observation: observation (without goal).
           goal: a goal observation.
         """
-        return (obs, self.env._sample_empty_state())
+        assert isinstance(self.env.unwrapped, PointEnv)
+        return (obs, self.env.unwrapped._sample_empty_state())
 
     @property
     def max_goal_dist(self):
-        apsp = self.env._apsp
+        assert isinstance(self.env.unwrapped, PointEnv)
+        apsp = self.env.unwrapped._apsp
         return np.max(apsp[np.isfinite(apsp)])
 
 
-from pud.envs.wrappers import TimeLimit
-def env_load_fn(environment_name,
-                max_episode_steps=None,
-                resize_factor=1,
-                gym_env_wrappers=(GoalConditionedPointWrapper,),
-                terminate_on_timeout=False,
-                thin=False):
+def env_load_fn(
+    environment_name,
+    max_episode_steps=None,
+    resize_factor=1,
+    gym_env_wrappers=(GoalConditionedPointWrapper,),
+    terminate_on_timeout=False,
+    thin=False,
+):
     """Loads the selected environment and wraps it with the specified wrappers.
 
     Args:
@@ -623,30 +1076,30 @@ def env_load_fn(environment_name,
     Returns:
       An environment instance.
     """
-    env = PointEnv(walls=environment_name,
-                   resize_factor=resize_factor,
-                   thin=thin)
+    env = PointEnv(walls=environment_name, resize_factor=resize_factor, thin=thin)
 
     for wrapper in gym_env_wrappers:
         env = wrapper(env)
 
-    if max_episode_steps > 0:
-        env = TimeLimit(env, max_episode_steps, terminate_on_timeout=terminate_on_timeout)
+    if max_episode_steps is not None and max_episode_steps > 0:
+        env = TimeLimit(
+            env, max_episode_steps, terminate_on_timeout=terminate_on_timeout
+        )
 
     return env
 
 
-def plot_walls(walls, ax:plt.axes):
+def plot_walls(walls, ax: Axes):
     (height, width) = walls.shape
-    # only plot walls
-    for (i, j) in zip(*np.where(walls)):
-        x = np.array([i, i+1]) / float(height)
+    # Only plot walls
+    for i, j in zip(*np.where(walls)):
+        x = np.array([i, i + 1]) / float(height)
         y0 = np.array([j, j]) / float(width)
-        y1 = np.array([j+1, j+1]) / float(width)
-        ax.fill_between(x, y0, y1, color='grey')
-    
-    ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
+        y1 = np.array([j + 1, j + 1]) / float(width)
+        ax.fill_between(x, y0, y1, color="grey")
+
+    ax.set_xlim((0, 1))
+    ax.set_ylim((0, 1))
     ax.set_xticks([])
     ax.set_yticks([])
     return ax
@@ -655,18 +1108,20 @@ def plot_walls(walls, ax:plt.axes):
 def set_env_difficulty(eval_env, difficulty):
     assert 0 <= difficulty <= 1
     max_goal_dist = eval_env.max_goal_dist
-    eval_env.set_sample_goal_args(prob_constraint=1,
-                                  min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
-                                  max_dist=max_goal_dist * (difficulty + 0.05))
+    eval_env.set_sample_goal_args(
+        prob_constraint=1,
+        min_dist=max(0, max_goal_dist * (difficulty - 0.05)),
+        max_dist=max_goal_dist * (difficulty + 0.05),
+    )
 
 
 if __name__ == "__main__":
 
     plt.figure(figsize=(12, 7))
     for index, (name, walls) in enumerate(WALLS.items()):
-        plt.subplot(3, 6, index + 1)
+        ax = plt.subplot(3, 6, index + 1)
         plt.title(name)
-        plot_walls(walls)
+        plot_walls(walls, ax)
     plt.subplots_adjust(wspace=0.1, hspace=0.2)
-    plt.suptitle('Navigation Environments', fontsize=20)
+    plt.suptitle("Navigation Environments", fontsize=20)
     plt.show()

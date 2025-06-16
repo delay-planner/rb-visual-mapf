@@ -170,13 +170,18 @@ def extract_episodic_records(
         goal = rollout.get(("next", "agents", "observation", "goal")).cpu().numpy()
         states = rollout.get(("next", "agents", "observation", "state")).cpu().numpy()
         mean_reward = rollout.get(("next", "agents", "reward")).sum(0).mean().item()
-        success = (rollout.get(("next", "done"))[-1] == 1 and rollout.get(("next", "truncated"))[-1] == 0).item()
-        records.append({
-            "goal": goal,
-            "states": states,
-            "success": success,
-            "mean_reward": mean_reward,
-        })
+        success = (
+            rollout.get(("next", "done"))[-1] == 1
+            and rollout.get(("next", "truncated"))[-1] == 0
+        ).item()
+        records.append(
+            {
+                "goal": goal,
+                "states": states,
+                "success": success,
+                "mean_reward": mean_reward,
+            }
+        )
 
     save_path = Path(__file__).parent / "plots/data/baselines" / logger.exp_name
     save_path = save_path.with_suffix(".npy")

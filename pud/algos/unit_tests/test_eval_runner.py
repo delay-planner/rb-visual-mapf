@@ -3,17 +3,19 @@ import torch
 import argparse
 import numpy as np
 from dotmap import DotMap
+from gym.spaces import Box
 
+from pud.algos.policies import GaussianPolicy
 from pud.algos.ddpg import GoalConditionedCritic
-from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
-from pud.envs.safe_pointenv.safe_wrappers import (
-    #SafeGoalConditionedPointWrapper, 
-    SafeGoalConditionedPointQueueWrapper,
-    #SafeGoalConditionedPointBlendWrapper,
-    safe_env_load_fn,
-)
 from pud.utils import set_env_seed, set_global_seed
-#from pud.runners.crl_runner_v2 import train_eval, eval_pointenv_cost_constrained_dists
+from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
+from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent
+from pud.collectors.constrained_collector import eval_agent_from_Q
+from pud.envs.safe_pointenv.safe_wrappers import (
+    safe_env_load_fn,
+    SafeGoalConditionedPointQueueWrapper,
+)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -29,10 +31,8 @@ if __name__ == "__main__":
     cfg = {}
     with open(args.cfg, "r") as f:
         cfg = yaml.safe_load(f)
-    # For dot completion
     cfg = DotMap(cfg)
 
-    # Override cfs from terminal
     cfg.device = args.device
     cfg.pprint()
 
@@ -59,7 +59,9 @@ if __name__ == "__main__":
 
     goal_dim = obs_dim
     state_dim = obs_dim + goal_dim
+    assert eval_env.action_space.shape is not None
     action_dim = eval_env.action_space.shape[0]
+    assert isinstance(eval_env.action_space, Box)
     max_action = float(eval_env.action_space.high[0])
     print(
         f"Observation dimension: {obs_dim},\n"
@@ -71,7 +73,7 @@ if __name__ == "__main__":
 
     agent = DRLDDPGLag(
         # DDPG args
-        state_dim,  # concatenating obs and goal
+        state_dim,  # Concatenating obs and goal
         action_dim,
         max_action,
         CriticCls=GoalConditionedCritic,
@@ -80,25 +82,22 @@ if __name__ == "__main__":
     )
     agent.to(torch.device(args.device))
 
-    from pud.algos.policies import GaussianPolicy
-    # gaussian policy seems just add exploration noise, the evaluation code
-    # does not use it
     policy = GaussianPolicy(agent)
-
     print(agent)
 
-    from pud.collectors.constrained_collector import ConstrainedCollector as Collector
-    from pud.collectors.constrained_collector import eval_agent_from_Q
-    from pud.envs.safe_pointenv.pb_sampler import sample_pbs_by_agent, calc_pairwise_cost
-
+    assert isinstance(eval_env, SafeGoalConditionedPointQueueWrapper)
     eval_env.set_use_q(True)
     eval_env.set_verbose(True)
 
-    # test one special problem
-    pb_list = [{'start': np.array([0, 0]),
-                'goal': np.array([0, 0]),
-                'info': {'prediction': 1.0}},]
-    eval_env.set_pbs(pb_list=pb_list)
+    # Test one special problem
+    pb_list = [
+        {
+            "start": np.array([0, 0]),
+            "goal": np.array([0, 0]),
+            "info": {"prediction": 1.0},
+        },
+    ]
+    eval_env.set_pbs(pb_list=[(pb["start"], pb["goal"], pb["info"]) for pb in pb_list])
     target_init_states = {
         "observation": eval_env.normalize_obs(pb_list[0]["start"]),
         "goal": eval_env.normalize_obs(pb_list[0]["goal"]),
@@ -107,17 +106,16 @@ if __name__ == "__main__":
     eval_env.set_prob_constraint(1.0)
     eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
     assert eval_env.get_Q_size() == 0
-    
+
     pbs = sample_pbs_by_agent(
-        env=eval_env,
+        K=5,
         agent=agent,
+        env=eval_env,
         num_states=100,
         target_val=1.0,
-        pval_f=calc_pairwise_cost,
-        K=5,
-        ensemble_agg="max"
+        ensemble_agg="max",
     )
-    eval_env.append_pbs(pbs)
+    eval_env.append_pbs([(pb["start"], pb["goal"], pb["info"]) for pb in pbs])
     eval_stats = eval_agent_from_Q(policy=agent, eval_env=eval_env)
 
     for i in range(len(pbs)):
@@ -129,17 +127,11 @@ if __name__ == "__main__":
             eval_stats[i]["init_states"]["goal"],
             eval_env.normalize_obs(pbs[i]["goal"]),
         )
-        
 
-    ## logging
+    # Logging
     attr = "cum_costs"
     attr_vals = []
     attr_pred = []
     for id in eval_stats:
-        attr_vals.append(
-            eval_stats[id][attr]
-        )
-        attr_pred.append(
-            eval_stats[id]["init_info"]["prediction"]
-        )
-        
+        attr_vals.append(eval_stats[id][attr])
+        attr_pred.append(eval_stats[id]["init_info"]["prediction"])

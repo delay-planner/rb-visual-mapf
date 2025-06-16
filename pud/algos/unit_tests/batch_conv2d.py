@@ -1,6 +1,7 @@
-import unittest
 import torch
+import unittest
 from torch import nn
+
 
 class TestBatchConv2d(unittest.TestCase):
     def test_batch_conv2d(self):

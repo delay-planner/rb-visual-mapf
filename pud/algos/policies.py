@@ -1,11 +1,12 @@
-from pathlib import Path
 import time
-from typing import Dict, Tuple, Union
-import scipy
 import torch
+import scipy
 import logging
 import numpy as np
 import networkx as nx
+from pathlib import Path
+from typing import Union
+
 from pud.mapf.bocbs import BiObjectiveCBSSolver
 from pud.mapf.cbs import CBSNode, CBSSolver
 from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
@@ -37,25 +38,6 @@ class GaussianPolicy(BasePolicy):
         ).astype(action.dtype)
         action = action.clip(-self.agent.max_action, self.agent.max_action)
         return action
-
-
-# unfinished and un-needed
-# class VectorCategoricalPolicy(BasePolicy):
-#    def __init__(self, agent, noise_scale=1.0):
-#        super().__init__(agent)
-#        self.noise_scale = noise_scale
-
-#    def select_action(self, state):
-#        action = super().select_action(state)
-#        noise_dist = scipy.stats.truncnorm(
-#                        -self.agent.max_action-action,
-#                        self.agent.max_action-action,
-#                        loc=np.zeros_like(action),
-#                        scale=self.agent.max_action*self.noise_scale)
-#        noise = noise_dist.rvs(size=action.shape).astype(action.dtype)
-#        action = action + noise
-#        action = action.clip(-self.agent.max_action, self.agent.max_action)
-#        return action
 
 
 class VectorGaussianPolicy(BasePolicy):
@@ -96,7 +78,7 @@ class SearchPolicy(BasePolicy):
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -119,6 +101,7 @@ class SearchPolicy(BasePolicy):
 
         self.aggregate = aggregate
         self.open_loop = open_loop
+        self.waypoint_reach_threshold = 2.0
         self.max_search_steps = max_search_steps
         self.weighted_path_planning = weighted_path_planning
 
@@ -189,7 +172,7 @@ class SearchPolicy(BasePolicy):
 
     def set_cleanup(
         self, cleanup
-    ):  # if True, will prune edges when fail to reach waypoint after `attempt_cutoff`
+    ):  # If True, will prune edges when fail to reach waypoint after `attempt_cutoff`
         self.cleanup = cleanup
 
     def build_rb_graph(self, rb_vec):
@@ -358,7 +341,7 @@ class SearchPolicy(BasePolicy):
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
-            # assert type(solution) is Tuple[Dict, Dict, bool]
+            assert type(solution) is tuple and len(solution) == 3
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
@@ -426,9 +409,8 @@ class SearchPolicy(BasePolicy):
         waypoints = [self.rb_vec[i] for i in self.waypoint_indices]
         return waypoints
 
-    def reached_waypoint(self, dist_to_waypoint, state, waypoint_index):
-        # return dist_to_waypoint < self.max_search_steps
-        return dist_to_waypoint < 2.0
+    def reached_waypoint(self, dist_to_waypoint):
+        return dist_to_waypoint < self.waypoint_reach_threshold
 
     def select_action(self, state):
         goal = state["goal"]
@@ -438,7 +420,6 @@ class SearchPolicy(BasePolicy):
 
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
-                # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec, state)
 
             if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
@@ -450,16 +431,15 @@ class SearchPolicy(BasePolicy):
                         self.planning_graph.remove_edge(src_node, dest_node)
                     else:
                         self.g.remove_edge(src_node, dest_node)
-                # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec, state)
 
-            waypoint, waypoint_index = self.get_current_waypoint()
+            waypoint, _ = self.get_current_waypoint()
             state["goal"] = waypoint
             dist_to_waypoint = self.agent.get_dist_to_goal(
                 {k: [v] for k, v in state.items()}
             )[0]
 
-            if self.reached_waypoint(dist_to_waypoint, state, waypoint_index):
+            if self.reached_waypoint(dist_to_waypoint):
                 if not self.reached_final_waypoint:
                     self.waypoint_attempts = 0
 
@@ -468,7 +448,7 @@ class SearchPolicy(BasePolicy):
                     self.reached_final_waypoint = True
                     self.waypoint_counter = len(self.waypoint_indices) - 1
 
-                waypoint, waypoint_index = self.get_current_waypoint()
+                waypoint, _ = self.get_current_waypoint()
                 state["goal"] = waypoint
                 dist_to_waypoint = self.agent.get_dist_to_goal(
                     {k: [v] for k, v in state.items()}
@@ -479,7 +459,7 @@ class SearchPolicy(BasePolicy):
             )
         else:
             # Closed loop, replan waypoint at each step
-            waypoint, waypoint_index, dist_to_goal_via_waypoint = (
+            waypoint, _, dist_to_goal_via_waypoint = (
                 self.get_closest_waypoint(state)
             )
 
@@ -518,7 +498,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -575,7 +555,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
                     g.add_edge(i, j, weight=float(length), step=1.0, cost=float(cost))
         self.g = g
 
-    def get_pairwise_cost_to_rb(self, state, masked=True):
+    def get_pairwise_cost_to_rb(self, state):
         self.agent.load_state_dict(
             torch.load(
                 self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True
@@ -696,7 +676,7 @@ class VisualSearchPolicy(SearchPolicy):
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -721,7 +701,7 @@ class VisualSearchPolicy(SearchPolicy):
         self.rb_vec_grid, self.rb_vec = rb_vec
 
         if self.planning_graph is None:
-            self.build_rb_graph(self.rb_vec_grid)
+            self.build_rb_graph(self.rb_vec)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -779,7 +759,7 @@ class VisualSearchPolicy(SearchPolicy):
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
-            # assert type(solution) is Tuple[Dict, Dict, bool]
+            assert type(solution) is tuple and len(solution) == 3
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
@@ -847,7 +827,6 @@ class VisualSearchPolicy(SearchPolicy):
 
         if self.open_loop or self.cleanup:
             if state.get("first_step", False):
-                # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec_grid, state)
 
             if self.cleanup and (self.waypoint_attempts >= self.attempt_cutoff):
@@ -859,7 +838,6 @@ class VisualSearchPolicy(SearchPolicy):
                         self.planning_graph.remove_edge(src_node, dest_node)
                     else:
                         self.g.remove_edge(src_node, dest_node)
-                # self.initialize_path(state)
                 self.initialize_path_using_CBS(self.rb_vec_grid, state)
 
             waypoint, waypoint_index = self.get_current_waypoint()
@@ -869,7 +847,7 @@ class VisualSearchPolicy(SearchPolicy):
                 {k: [v] for k, v in state.items()}
             )[0]
 
-            if self.reached_waypoint(dist_to_waypoint, state, waypoint_index):
+            if self.reached_waypoint(dist_to_waypoint):
                 if not self.reached_final_waypoint:
                     self.waypoint_attempts = 0
 
@@ -930,7 +908,7 @@ class VisualConstrainedSearchPolicy(ConstrainedSearchPolicy, VisualSearchPolicy)
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -974,7 +952,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -1113,13 +1091,13 @@ class MultiAgentSearchPolicy(SearchPolicy):
             solution = cbs_solver.find_paths()
 
             # TODO: Temporary code here for now. Remove after collection step is done!
-            # assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             if isinstance(cbs_solver, CBSSolver):
                 if "lb_save_path" in self.cbs_config.keys() and self.cbs_config[
                     "edge_attributes"
                 ] == ["cost"]:
-                    lb_data = []
                     lb_cost = 0
+                    lb_data = []
+                    assert type(solution) is CBSNode, "Solution is not a CBSNode"
                     for path in solution.paths:
                         lb_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["lb_save_path"]).exists():
@@ -1131,8 +1109,9 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config[
                     "edge_attributes"
                 ] == ["step"]:
-                    ub_data = []
                     ub_cost = 0
+                    ub_data = []
+                    assert type(solution) is CBSNode, "Solution is not a CBSNode"
                     for path in solution.paths:
                         ub_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["ub_save_path"]).exists():
@@ -1149,7 +1128,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
-            # assert type(solution) is Tuple[Dict, Dict, bool]
+            assert type(solution) is tuple and len(solution) == 3
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
@@ -1299,7 +1278,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                     self.rb_vec, state["composite_starts"], state["composite_goals"]
                 )
 
-            waypoints, waypoint_indices = self.get_current_waypoints()
+            waypoints, _ = self.get_current_waypoints()
 
             dist_to_goal_via_waypoints = []
             for agent_id in range(self.n_agents):
@@ -1310,9 +1289,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                     {k: [v] for k, v in state_copy.items()}
                 )[0]
 
-                if self.reached_waypoint(
-                    dist_to_waypoint, state_copy, waypoint_indices[agent_id]
-                ):
+                if self.reached_waypoint(dist_to_waypoint):
                     if not self.augmented_reached_final_waypoints[agent_id]:
                         self.augmented_waypoint_attempts[agent_id] = 0
 
@@ -1325,7 +1302,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                             len(self.augmented_waypoint_indices[agent_id]) - 1
                         )
 
-                    waypoints, waypoint_indices = self.get_current_waypoints()
+                    waypoints, _ = self.get_current_waypoints()
                     state_copy["goal"] = waypoints[agent_id]
                     dist_to_waypoint = self.agent.get_dist_to_goal(
                         {k: [v] for k, v in state_copy.items()}
@@ -1340,7 +1317,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
         else:
             # Closed loop, replan waypoint at each step
-            waypoints, waypoint_indices, dist_to_goal_via_waypoints = (
+            waypoints, _, dist_to_goal_via_waypoints = (
                 self.get_closest_waypoints(state)
             )
 
@@ -1401,7 +1378,7 @@ class ConstrainedMultiAgentSearchPolicy(
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -1447,7 +1424,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",
@@ -1473,7 +1450,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         self.rb_vec_grid, self.rb_vec = rb_vec
 
         if self.planning_graph is None:
-            self.build_rb_graph(self.rb_vec_grid)
+            self.build_rb_graph(self.rb_vec)
         if not self.open_loop:
             pdist2 = self.agent.get_pairwise_dist(
                 self.rb_vec,
@@ -1585,8 +1562,9 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 if "lb_save_path" in self.cbs_config.keys() and self.cbs_config[
                     "edge_attributes"
                 ] == ["cost"]:
-                    lb_data = []
                     lb_cost = 0
+                    lb_data = []
+                    assert type(solution) is CBSNode, "Solution is not a CBSNode"
                     for path in solution.paths:
                         lb_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["lb_save_path"]).exists():
@@ -1598,8 +1576,9 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 elif "ub_save_path" in self.cbs_config.keys() and self.cbs_config[
                     "edge_attributes"
                 ] == ["step"]:
-                    ub_data = []
                     ub_cost = 0
+                    ub_data = []
+                    assert type(solution) is CBSNode, "Solution is not a CBSNode"
                     for path in solution.paths:
                         ub_cost += cbs_solver.compute_cost(path, risk=True)
                     if Path(self.cbs_config["ub_save_path"]).exists():
@@ -1614,7 +1593,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
-            # assert type(solution) is Tuple[Dict, Dict, bool]
+            assert type(solution) is tuple and len(solution) == 3
             all_paths, all_cost_vectors, success = solution
             if not success:
                 raise RuntimeError("Bi-Ojective CBS failed to find a solution")
@@ -1746,8 +1725,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
 
             if state.get("first_step", False):
 
-                # logging.debug("Composite starts: {}".format(composite_starts_grid))
-                # logging.debug("Composite goals: {}".format(composite_goals_grid))
                 logging.debug(f"Composite starts: {composite_starts_grid}")
                 logging.debug(f"Composite goals: {composite_goals_grid}")
                 self.initialize_paths(
@@ -1790,7 +1767,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                     state["composite_goals"],
                 )
 
-            waypoints, waypoint_indices = self.get_current_waypoints()
+            waypoints, _ = self.get_current_waypoints()
             waypoints_grid, waypoints = waypoints
 
             dist_to_goal_via_waypoints = []
@@ -1807,9 +1784,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                     {k: [v] for k, v in state_copy.items()}
                 )[0]
 
-                if self.reached_waypoint(
-                    dist_to_waypoint, state_copy, waypoint_indices[agent_id]
-                ):
+                if self.reached_waypoint(dist_to_waypoint):
                     if not self.augmented_reached_final_waypoints[agent_id]:
                         self.augmented_waypoint_attempts[agent_id] = 0
 
@@ -1822,7 +1797,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                             len(self.augmented_waypoint_indices[agent_id]) - 1
                         )
 
-                    waypoints, waypoint_indices = self.get_current_waypoints()
+                    waypoints, _ = self.get_current_waypoints()
                     waypoints_grid, waypoints = waypoints
 
                     state_copy["goal"] = waypoints[agent_id]
@@ -1840,7 +1815,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
         else:
             # Closed loop, replan waypoint at each step
-            waypoints, waypoint_indices, dist_to_goal_via_waypoints = (
+            waypoints, _, dist_to_goal_via_waypoints = (
                 self.get_closest_waypoints(state)
             )
             waypoints_grid, waypoints = waypoints
@@ -1905,7 +1880,7 @@ class VisualConstrainedMultiAgentSearchPolicy(
             "max_distance": 1,
             "use_experience": True,
             "use_cardinality": True,
-            "collision_radius": 0.1,
+            "collision_radius": 0.0,
             "risk_attribute": "cost",
             "edge_attributes": ["step"],
             "split_strategy": "disjoint",

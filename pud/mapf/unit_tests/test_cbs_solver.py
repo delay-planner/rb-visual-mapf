@@ -391,13 +391,15 @@ class TestCBSSolver(unittest.TestCase):
             np.mean(solver.single_agent_planner_times),
             np.std(solver.single_agent_planner_times)
         ))
-        print("Min / Median / Max / Mean / Std of Low-Level Expansions: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
-            np.min(solver.single_agent_planner_expansions),
-            np.median(solver.single_agent_planner_expansions),
-            np.max(solver.single_agent_planner_expansions),
-            np.mean(solver.single_agent_planner_expansions),
-            np.std(solver.single_agent_planner_expansions)
-        ))
+        print(
+            "Min / Median / Max / Mean / Std of Low-Level Exp: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
+                np.min(solver.single_agent_planner_expansions),
+                np.median(solver.single_agent_planner_expansions),
+                np.max(solver.single_agent_planner_expansions),
+                np.mean(solver.single_agent_planner_expansions),
+                np.std(solver.single_agent_planner_expansions)
+            )
+        )
 
         self.assertTrue(len(paths) == 5)
         self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
@@ -474,7 +476,7 @@ class TestCBSSolver(unittest.TestCase):
             np.mean(solver.single_agent_planner_times),
             np.std(solver.single_agent_planner_times)
         ))
-        print("Min / Median / Max / Mean / Std of Low-Level Expansions: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
+        print("Min / Median / Max / Mean / Std of Low-Level Exp: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
             np.min(solver.single_agent_planner_expansions),
             np.median(solver.single_agent_planner_expansions),
             np.max(solver.single_agent_planner_expansions),
@@ -557,7 +559,7 @@ class TestCBSSolver(unittest.TestCase):
             np.mean(solver.single_agent_planner_times),
             np.std(solver.single_agent_planner_times)
         ))
-        print("Min / Median / Max / Mean / Std of Low-Level Expansions: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
+        print("Min / Median / Max / Mean / Std of Low-Level Exp: {:.2f} / {:.2f} / {:.2f} / {:.2f} / {:.2f}".format(
             np.min(solver.single_agent_planner_expansions),
             np.median(solver.single_agent_planner_expansions),
             np.max(solver.single_agent_planner_expansions),

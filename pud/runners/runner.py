@@ -3,16 +3,16 @@ import numpy as np
 from dotmap import DotMap
 from tqdm.auto import tqdm
 from typing import Optional
+
 from pud.collectors.collector import Collector
-from pud.collectors.constrained_collector import ConstrainedCollector
 from torch.utils.tensorboard.writer import SummaryWriter
+from pud.envs.simple_navigation_env import set_env_difficulty
+from pud.collectors.constrained_collector import ConstrainedCollector
 from pud.envs.safe_pointenv.safe_wrappers import (
     SafeGoalConditionedPointWrapper,
     SafeTimeLimit,
     set_safe_env_difficulty,
 )
-from pud.envs.simple_navigation_env import set_env_difficulty
-from pud.collectors.constrained_collector import ConstrainedCollector
 
 
 def train_eval(
@@ -63,36 +63,27 @@ def train_eval(
                 "Opt/critic_loss", np.mean(opt_info["critic_loss"]), global_step=i
             )
 
-            #if i % eval_interval == 0:
-                #for d_ref in eval_info:
-                    # dotmap has interal attributes like "_ipython_display_"
-                    #if isinstance(d_ref, str) and d_ref.startswith("_"):
-                    #    continue
-                    #tensorboard_writer.add_scalar(
-                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
-                    #    np.mean(eval_info[d_ref]["pred_dist"]),
-                    #    global_step=i,
-                    #)
-                    #tensorboard_writer.add_scalar(
-                    #    "Eval_{:0>2d}/pred_dist".format(d_ref),
-                    #    -np.mean(eval_info[d_ref]["returns"]),
-                    #    global_step=i,
-                    #)
-            
             if i % eval_interval == 0:
                 field_header = "Eval Dist ~ "
                 for d_ref in eval_info:
-                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/mean".format(d_ref),
-                    tag_scalar_dict={
-                        "pred": np.mean(eval_info[d_ref]["pred_dist"]),
-                        "val": -np.mean(eval_info[d_ref]["returns"]),
-                        }, global_step=i)
+                    tensorboard_writer.add_scalars(
+                        field_header + "{:0>2d}/mean".format(d_ref),
+                        tag_scalar_dict={
+                            "pred": np.mean(eval_info[d_ref]["pred_dist"]),
+                            "val": -np.mean(eval_info[d_ref]["returns"]),
+                        },
+                        global_step=i,
+                    )
 
-                    tensorboard_writer.add_scalars(field_header+"{:0>2d}/std".format(d_ref),
-                    tag_scalar_dict={
-                        "pred": np.std(eval_info[d_ref]["pred_dist"]),
-                        "val": -np.std(eval_info[d_ref]["returns"]),
-                        }, global_step=i)
+                    tensorboard_writer.add_scalars(
+                        field_header + "{:0>2d}/std".format(d_ref),
+                        tag_scalar_dict={
+                            "pred": np.std(eval_info[d_ref]["pred_dist"]),
+                            "val": -np.std(eval_info[d_ref]["returns"]),
+                        },
+                        global_step=i,
+                    )
+
 
 def eval_pointenv_dists(
     agent, eval_env, num_evals=10, eval_distances=[2, 5, 10], verbose=True
@@ -101,7 +92,7 @@ def eval_pointenv_dists(
     for dist in eval_distances:
         eval_env.set_sample_goal_args(
             prob_constraint=1, min_dist=dist, max_dist=dist
-        )  # NOTE: samples goal distances in [min_dist, max_dist] closed interval
+        )  # NOTE: Samples goal distances in [min_dist, max_dist] closed interval
         returns = Collector.eval_agent(agent, eval_env, num_evals)
         # For debugging, it's helpful to check the predicted distances for
         # goals of known distance.
@@ -166,13 +157,12 @@ def take_cleanup_steps(
 
     search_policy.set_cleanup(True)
     cleanup_start = time.perf_counter()
-    # Collector.eval_agent(search_policy, eval_env, num_cleanup_steps, by_episode=False) # random goals in env
     if constrained:
         ConstrainedCollector.step_cleanup(search_policy, eval_env, num_cleanup_steps)
     else:
         Collector.step_cleanup(
             search_policy, eval_env, num_cleanup_steps
-        )  # samples goals from nodes in state graph
+        )  # Samples goals from nodes in state graph
     cleanup_end = time.perf_counter()
     search_policy.set_cleanup(False)
     cleanup_time = cleanup_end - cleanup_start
