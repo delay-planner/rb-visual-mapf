@@ -40,17 +40,19 @@ def ned_to_enu(ned):
 
 
 class DroneController(Node):
-    def __init__(self, drone_ns, drone_id, num_drones, files, waypoint_follow=False):
+    def __init__(self, drone_ns, drone_id, num_drones, files, waypoint_follow=False, gz_version='harmonic'):
         super().__init__(f"drone_controller_{drone_id}")
         self.start_flag = False
         self.drone_ns = drone_ns
         self.drone_id = drone_id
+        self.gz_version = gz_version
         self.num_drones = num_drones
         self.waypoint_follow = waypoint_follow
         config_file, ckpt_file, walls_file = files
 
         self.walls = np.load(walls_file)
         self.normalize_factor = np.array([self.walls.shape[0], self.walls.shape[1]])
+        self.origin_offset = -self.normalize_factor / 2.0
 
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
@@ -110,9 +112,10 @@ class DroneController(Node):
             self.waypoints_callback,
             self.qos_profile
         )
+        vehicle_status_topic_suffix = "_v1" if self.gz_version == 'classic' else ''
         self.status_subscriber = self.create_subscription(
             VehicleStatus,
-            f"{self.drone_ns}/fmu/out/vehicle_status",
+            f"{self.drone_ns}/fmu/out/vehicle_status{vehicle_status_topic_suffix}",
             self.vehicle_status_callback,
             self.qos_profile,
         )
@@ -122,8 +125,10 @@ class DroneController(Node):
             self.start_callback,
             QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
         )
+        # odom_topic = f'/mersdrone_{self.drone_ns}/world' if self.gz_version == 'classic' else f"{self.drone_ns}/fmu/out/vehicle_odometry"
         self.odom_subscriber = self.create_subscription(
             VehicleOdometry,
+            # odom_topic,
             f"{self.drone_ns}/fmu/out/vehicle_odometry",
             self.local_position_callback,
             self.qos_profile,
@@ -181,6 +186,8 @@ class DroneController(Node):
             f"{self.drone_ns}/waypoint_markers",
             10
         )
+        self.wall_publisher = self.create_publisher(MarkerArray, 'wall_markers', 10)
+        self.publish_wall_markers()
 
     def publish_markers(self):
         markers = MarkerArray()
@@ -199,7 +206,67 @@ class DroneController(Node):
             marker.color = self.colors[self.drone_id - 2]
             marker.lifetime = Duration(sec=0)
             markers.markers.append(marker)  # type: ignore
+
+        start_text = Marker()
+        start_text.header.frame_id = 'world'
+        start_text.header.stamp = self.get_clock().now().to_msg()
+        start_text.ns = 'start'
+        start_text.id = 0
+        start_text.type = Marker.TEXT_VIEW_FACING
+        start_text.action = Marker.ADD
+        start_text.pose.position.x = float(self.waypoints[0][0])
+        start_text.pose.position.y = float(self.waypoints[0][1])
+        start_text.pose.position.z = self.altitude + 0.5
+        start_text.text = f"START {self.drone_id - 1}"
+        start_text.scale.z = 0.4
+        start_text.color = self.colors[self.drone_id - 2]
+        start_text.lifetime = Duration(sec=0)
+        markers.markers.append(start_text)  # type: ignore
+
+        goal_text = Marker()
+        goal_text.header.frame_id = 'world'
+        goal_text.header.stamp = self.get_clock().now().to_msg()
+        goal_text.ns = 'goal'
+        goal_text.id = 0
+        goal_text.type = Marker.TEXT_VIEW_FACING
+        goal_text.action = Marker.ADD
+        goal_text.pose.position.x = float(self.waypoints[-1][0])
+        goal_text.pose.position.y = float(self.waypoints[-1][1])
+        goal_text.pose.position.z = self.altitude + 0.5
+        goal_text.text = f"GOAL {self.drone_id - 1}"
+        goal_text.scale.z = 0.4
+        goal_text.color = self.colors[self.drone_id - 2]
+        goal_text.lifetime = Duration(sec=0)
+        markers.markers.append(goal_text)  # type: ignore
+
         self.waypoint_marker_publisher.publish(markers)
+
+    def publish_wall_markers(self, height=5.0, resolution=1.0):
+        marker_array = MarkerArray()
+
+        idx = 0
+        for i, j in zip(*np.where(self.walls == 1)):
+            x = self.origin_offset[0] + (j + 0.5)*resolution
+            y = self.origin_offset[1] + (i + 0.5)*resolution
+
+            marker = Marker()
+            marker.header.frame_id = 'world'
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = 'walls'
+            marker.id = idx
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = float(x)
+            marker.pose.position.y = float(y)
+            marker.pose.position.z = float(height / 2.0)
+            marker.scale.x = marker.scale.y = resolution
+            marker.scale.z = height
+            marker.color = ColorRGBA(r=0.3, g=0.3, b=0.3, a=1.0)
+            marker.lifetime = Duration(sec=0)
+            marker_array.markers.append(marker)  # type: ignore
+            idx += 1
+
+        self.wall_publisher.publish(marker_array)
 
     def waypoints_callback(self, msg: Float32MultiArray):
         # Waypoints are in global ENU frame with first entry as home, last entry as goal
@@ -208,7 +275,8 @@ class DroneController(Node):
         self.publish_markers()
 
         self.home = self.waypoints[0][:2].copy()
-        self.state = self.home.copy()
+        # State needs to be in the coordinate frame that the GCRL policy was trained with i.e origin is bottom left corner of the walls matrix not the origin of simulator!
+        self.state = self.home.copy() - self.origin_offset
         self.next_location = np.zeros(2)
         self.get_logger().info(f"Received {len(self.waypoints)} waypoints")
 
@@ -243,6 +311,20 @@ class DroneController(Node):
         self.get_logger().info(f"Drone {self.drone_id} received start signal.")
 
     def local_position_callback(self, msg):
+        # if self.gz_version == 'harmonic':
+        #     # Local position is in NED frame
+        #     self.local_position[0] = msg.position[0]
+        #     self.local_position[1] = msg.position[1]
+        # else:
+        #     # Global position coming from VICON is in ENU frame
+        #     # Extract the local position from the global location
+        #     self.local_position[0] = msg.pose.position.x - self.home[0]
+        #     self.local_position[1] = msg.pose.position.y - self.home[1]
+
+        #     # Convert to NED
+        #     self.local_position = enu_to_ned(self.local_position)
+        
+        # TODO: Replace this with the correct version above after debugging
         # Local position is in NED frame
         self.local_position[0] = msg.position[0]
         self.local_position[1] = msg.position[1]
@@ -369,6 +451,7 @@ class DroneController(Node):
                     self.current_wp_index += 1
 
     def command_callback(self):
+        # Uses the low-level trained GC-RL policy
         if self.offboard_mode and self.start_flag:
             if hasattr(self, "waypoints"):
                 if self.current_wp_index < len(self.waypoints):
@@ -389,11 +472,12 @@ class DroneController(Node):
                             self.get_logger().info(f"Mission completed for {self.drone_ns}")
                             return
 
+
                     # Updates the low-level waypoints towards the next location
                     if np.linalg.norm(local_enu_position - self.next_location) < self.distance_threshold:
                         # Input to the agent is normalized global ENU positions
-                        observation = self.state / np.array(self.normalize_factor)
-                        goal = self.waypoints[self.current_wp_index][:2].copy() / np.array(self.normalize_factor)
+                        observation = self.state / self.normalize_factor
+                        goal = (self.waypoints[self.current_wp_index][:2].copy() - self.origin_offset) / self.normalize_factor 
                         state = {
                             "observation": observation,
                             "goal": goal,
@@ -401,7 +485,8 @@ class DroneController(Node):
                         action = self.agent.select_action(state)
                         # Output of applying the action is in global ENU frame
                         observation = self.step(action)
-
+                        observation += self.origin_offset
+                        
                         self.next_location = observation - self.home
 
                     for drone_ns, other_position in self.other_agent_positions.items():
@@ -480,12 +565,19 @@ def main(args=None):
         type=str,
         help='Path to the walls file'
     )
+    parser.add_argument(
+        '--gz_version',
+        type=str,
+        default="harmonic",
+        choices=['harmonic', 'classic'],
+        help='Gazebo version to use'
+    )
     args, _ = parser.parse_known_args()
 
     drone_ids = [int(x) for x in args.drone_ids.split(',')]
     drone_namespaces = args.drone_namespaces.split(',')
     drone_nodes = [
-        DroneController(ns, nid, len(drone_ids), (args.config_file, args.ckpt_file, args.walls_file))
+        DroneController(ns, nid, len(drone_ids), (args.config_file, args.ckpt_file, args.walls_file), gz_version=args.gz_version)
         for _, (ns, nid) in enumerate(zip(drone_namespaces, drone_ids))
     ]
 

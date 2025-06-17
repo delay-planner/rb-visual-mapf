@@ -4,19 +4,22 @@ import numpy as np
 from pathlib import Path
 from rclpy.node import Node
 import xml.etree.ElementTree as ET
+
 from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, extract_walls
 
 
 class WallSpawnerNode(Node):
-    def __init__(self, height=5.0, resolution=1.0, origin=(0.0, 0.0)):
+    def __init__(self, height=5.0, resolution=1.0):
         super().__init__('wall_spawner_node')
         args = argument_parser()
         walls, starts = extract_walls(args)
 
+        suffix = Path(args.sdf_path).suffix.lower()
         with open(args.sdf_path, 'r') as f:
             template_sdf = f.read()
 
-        x0, y0 = origin
+        rows, cols = walls.shape
+        x0, y0 = -(cols * resolution) / 2.0, -(rows * resolution) / 2.0
         obstacles = []
         for i, j in zip(*np.where(walls == 1)):
             x = x0 + (j + 0.5)*resolution
@@ -54,7 +57,7 @@ class WallSpawnerNode(Node):
             obstacles.append(sdf)
 
         world_with_walls = template_sdf.replace("</world>", "\n" + "\n".join(obstacles) + "\n</world>")
-        output_sdf_path = args.sdf_path.replace('.sdf', '_walls.sdf')
+        output_sdf_path = args.sdf_path.replace(suffix, '_walls' + suffix)
         Path(output_sdf_path).write_text(world_with_walls)
 
         tree = ET.parse(output_sdf_path)
@@ -70,9 +73,14 @@ class WallSpawnerNode(Node):
         world.set('name', current_name + '_walls')
         tree.write(output_sdf_path)
 
-        starts_file_path = args.sdf_path.replace('.sdf', '_starts.txt')
-        np.savetxt(starts_file_path, starts, fmt='%.5f', delimiter=',')
-        np.save(args.sdf_path.replace('.sdf', '_walls_matrix.npy'), walls)
+
+        adjusted_starts = np.array(starts) + np.array([x0, y0, 0.0])
+        print("Before adjusting: ", starts)
+        print("After adjusting: ", adjusted_starts)
+        starts_file_path = args.sdf_path.replace(suffix, '_starts.txt')
+        np.savetxt(starts_file_path, adjusted_starts, fmt='%.5f', delimiter=',')
+        np.save(args.sdf_path.replace(suffix, '_walls_matrix.npy'), walls)
+            
 
 
 def main():

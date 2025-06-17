@@ -251,6 +251,9 @@ def generate_wps(args, debug=False):
         waypoints = constrained_ma_search_policy.get_augmented_waypoints()
 
     wps = []
+    cols, rows = eval_env.get_map().shape
+    origin = np.array([-cols / 2.0, -rows / 2.0, 0.0])
+
     for agent_id in range(args.num_agents):
 
         agent_goal = goals[agent_id]
@@ -267,7 +270,8 @@ def generate_wps(args, debug=False):
 
         waypoint_vec = np.array([agent_start, *waypoint_vec, agent_goal])
         denormed = [denormalize(wp, eval_env.unwrapped._height, eval_env.unwrapped._width) for wp in waypoint_vec]
-        wps.append(denormed)
+        denormed_adjusted = np.array(denormed) + origin
+        wps.append(denormed_adjusted)
 
     if debug:
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -290,6 +294,7 @@ def generate_wps(args, debug=False):
             outpath=figdir.joinpath("vis_compare_constrained_multi_agent.jpg").as_posix()
         )
 
+    # Returned wps are denormalized and shifted to match the origin of simulation/hardware environment
     return wps
 
 

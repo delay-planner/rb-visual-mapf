@@ -5,9 +5,6 @@ from pud.algos.data_struct import arg_topk
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
 from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 from pud.envs.safe_pointenv.safe_wrappers import SafeGoalConditionedPointWrapper
-from pud.envs.safe_habitatenv.safe_habitat_wrappers import (
-    SafeGoalConditionedHabitatPointWrapper,
-)
 
 
 def calc_pairwise_cost(agent: DRLDDPGLag, rb_vec: np.ndarray, ensemble_agg="max"):
@@ -31,7 +28,7 @@ def calc_pairwise_dist(agent: DRLDDPGLag, rb_vec: np.ndarray, ensemble_agg="max"
 
 
 def sample_pbs_by_agent(
-    env: Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper],
+    env: Union[SafeGoalConditionedPointWrapper],
     agent: DRLDDPGLag,
     num_states: int = 100,
     min_dist: float = 0,
@@ -200,7 +197,7 @@ def sample_pbs_by_agent_deprecated(
 
 
 def sample_cost_pbs_by_agent(
-    env: Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper],
+    env: Union[SafeGoalConditionedPointWrapper],
     agent: Union[DRLDDPGLag, LagVisionUVFDDPG],
     num_states: int = 100,
     target_val: Union[float, None] = None,
@@ -392,7 +389,7 @@ def sample_cost_pbs_by_agent_deprecated(
 
 def load_pb_set(
     file_path: str,
-    env: Union[SafeGoalConditionedPointWrapper, SafeGoalConditionedHabitatPointWrapper],
+    env: Union[SafeGoalConditionedPointWrapper],
     agent: DRLDDPGLag,
 ):
     pnts = np.loadtxt(fname=file_path, dtype=float, delimiter=",").astype(
