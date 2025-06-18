@@ -459,9 +459,7 @@ class SearchPolicy(BasePolicy):
             )
         else:
             # Closed loop, replan waypoint at each step
-            waypoint, _, dist_to_goal_via_waypoint = (
-                self.get_closest_waypoint(state)
-            )
+            waypoint, _, dist_to_goal_via_waypoint = self.get_closest_waypoint(state)
 
         if (
             (self.no_waypoint_hopping and not self.reached_final_waypoint)
@@ -1125,6 +1123,10 @@ class MultiAgentSearchPolicy(SearchPolicy):
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
+            print("starts: ", starts)
+            print("goals: ", goals)
+            print(error_message)
+            exit(0)
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
@@ -1317,9 +1319,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
         else:
             # Closed loop, replan waypoint at each step
-            waypoints, _, dist_to_goal_via_waypoints = (
-                self.get_closest_waypoints(state)
-            )
+            waypoints, _, dist_to_goal_via_waypoints = self.get_closest_waypoints(state)
 
         # These variables are used by the "get_trajectories" function to update agent's goals with intermediate
         # waypoints
@@ -1815,9 +1815,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 dist_to_goal_via_waypoints.append(dist_to_goal_via_waypoint)
         else:
             # Closed loop, replan waypoint at each step
-            waypoints, _, dist_to_goal_via_waypoints = (
-                self.get_closest_waypoints(state)
-            )
+            waypoints, _, dist_to_goal_via_waypoints = self.get_closest_waypoints(state)
             waypoints_grid, waypoints = waypoints
 
         # These variables are used by the "get_trajectories" function to update agent's goals with intermediate

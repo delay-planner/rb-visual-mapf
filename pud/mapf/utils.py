@@ -13,7 +13,7 @@ def orientation(p, q, r):
      -1 if they make a counter-clockwise turn.
     """
     # Compute the 2D “cross-product” of (q–p) × (r–q)
-    val = (q[1] - p[1])*(r[0] - q[0]) - (q[0] - p[0])*(r[1] - q[1])
+    val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
     if abs(val) < 1e-9:
         return 0
     return 1 if val > 0 else -1
@@ -23,8 +23,9 @@ def on_segment(p, q, r):
     """
     Given collinear p, q, r, return True if q lies on segment pr.
     """
-    return (min(p[0], r[0]) <= q[0] <= max(p[0], r[0]) and
-            min(p[1], r[1]) <= q[1] <= max(p[1], r[1]))
+    return min(p[0], r[0]) <= q[0] <= max(p[0], r[0]) and min(p[1], r[1]) <= q[
+        1
+    ] <= max(p[1], r[1])
 
 
 def segments_intersect(A, B, C, D):
@@ -43,15 +44,37 @@ def segments_intersect(A, B, C, D):
         return True
 
     # Special Cases (collinear & overlapping)
-    if o1 == 0 and on_segment(A, C, B): return True
-    if o2 == 0 and on_segment(A, D, B): return True
-    if o3 == 0 and on_segment(C, A, D): return True
-    if o4 == 0 and on_segment(C, B, D): return True
+    if o1 == 0 and on_segment(A, C, B):
+        return True
+    if o2 == 0 and on_segment(A, D, B):
+        return True
+    if o3 == 0 and on_segment(C, A, D):
+        return True
+    if o4 == 0 and on_segment(C, B, D):
+        return True
 
     return False
 
 
-def location_collision(path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray):
+def segments_radius_intersect(A, B, C, D, radius):
+    D = A - C
+    V = (B - A) - (D - C)
+    a = V.dot(V)
+    b = 2 * D.dot(V)
+    c = D.dot(D)
+
+    if a == 0:
+        return c <= (2 * radius) ** 2
+
+    tau_star = -b / (2 * a)
+    tau = max(0, min(1, tau_star))
+    d2 = a * tau**2 + b * tau + c
+    return d2 <= (2 * radius) ** 2
+
+
+def location_collision(
+    path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray
+):
 
     position1 = get_location(path1, timestep)
     position2 = get_location(path2, timestep)
@@ -63,11 +86,20 @@ def location_collision(path1: List[int], path2: List[int], timestep: int, graph_
         next_position2 = get_location(path2, timestep + 1)
         if position1 == next_position2 and position2 == next_position1:
             return [position1, next_position1], timestep + 1, "edge"
-        if segments_intersect(
-            graph_waypoints[position1], graph_waypoints[next_position1],
-            graph_waypoints[position2], graph_waypoints[next_position2]
-        ) and len(set([position1, next_position1, position2, next_position2])) == 4:
-            return [position1, next_position1, position2, next_position2], timestep + 1, "intersection"
+        if (
+            segments_intersect(
+                graph_waypoints[position1],
+                graph_waypoints[next_position1],
+                graph_waypoints[position2],
+                graph_waypoints[next_position2],
+            )
+            and len(set([position1, next_position1, position2, next_position2])) == 4
+        ):
+            return (
+                [position1, next_position1, position2, next_position2],
+                timestep + 1,
+                "intersection",
+            )
 
     return None
 
@@ -88,20 +120,39 @@ def radius_collision(
         return [path1[timestep]], timestep, "vertex"
 
     if timestep < len(path1) - 1:
+        position1 = graph_waypoints[path1[timestep]]
+        position2 = graph_waypoints[path2[timestep]]
+        next_position1 = graph_waypoints[path1[timestep + 1]]
+        next_position2 = graph_waypoints[path2[timestep + 1]]
         if (
-            np.linalg.norm(
-                graph_waypoints[path1[timestep]] - graph_waypoints[path2[timestep + 1]]
+            np.linalg.norm(position1 - next_position2) <= radius
+            and np.linalg.norm(next_position1 - position2) <= radius
+        ):
+            return [path1[timestep], path1[timestep + 1]], timestep + 1, "edge"
+
+        if (
+            segments_radius_intersect(position1, next_position1, position2, next_position2, radius)
+            and len(
+                set(
+                    [
+                        path1[timestep],
+                        path1[timestep + 1],
+                        path2[timestep],
+                        path2[timestep + 1],
+                    ]
+                )
             )
-            <= radius
-            and np.linalg.norm(
-                graph_waypoints[path1[timestep + 1]] - graph_waypoints[path2[timestep]]
-            )
-            <= radius
+            == 4
         ):
             return (
-                [path1[timestep], path1[timestep + 1]],
+                [
+                    path1[timestep],
+                    path1[timestep + 1],
+                    path2[timestep],
+                    path2[timestep + 1],
+                ],
                 timestep + 1,
-                "edge",
+                "intersection",
             )
 
     return None
@@ -202,20 +253,24 @@ def standard_split(collision: Dict) -> List[Dict]:
             }
         )
     elif collision["type"] == "intersection":
-        constraints.append({
-            "agent_id": collision["agent_A"],
-            "location": collision["location"][:2],  # [from, to]
-            "timestep": collision["timestep"],
-            "positive": False,
-            "final": False,
-        })
-        constraints.append({
-            "agent_id": collision["agent_B"],
-            "location": collision["location"][2:],  # [from, to]
-            "timestep": collision["timestep"],
-            "positive": False,
-            "final": False,
-        })
+        constraints.append(
+            {
+                "agent_id": collision["agent_A"],
+                "location": collision["location"][:2],  # [from, to]
+                "timestep": collision["timestep"],
+                "positive": False,
+                "final": False,
+            }
+        )
+        constraints.append(
+            {
+                "agent_id": collision["agent_B"],
+                "location": collision["location"][2:],  # [from, to]
+                "timestep": collision["timestep"],
+                "positive": False,
+                "final": False,
+            }
+        )
 
     return constraints
 
@@ -230,7 +285,8 @@ def disjoint_split(collision: Dict) -> List[Dict]:
 
     elif collision["type"] == "edge":
         location = (
-            collision["location"] if agent == collision["agent_A"]
+            collision["location"]
+            if agent == collision["agent_A"]
             else list(reversed(collision["location"]))
         )
 

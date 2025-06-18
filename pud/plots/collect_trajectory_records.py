@@ -951,7 +951,7 @@ def multi_constrained_search_policy(
 
 
 def main():
-    save=False
+    save = False
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
