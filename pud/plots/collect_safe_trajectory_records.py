@@ -34,9 +34,15 @@ from pud.envs.safe_pointenv.safe_wrappers import (
 from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 
 TIMELIMIT = 60
-MAX_TIMELIMIT = 60
+MAX_TIMELIMIT = 600
 COST_LIMIT_FACTOR = 0.5
 COLLISION_THRESHOLD = 1e-3
+
+PCOST_INDEX = 3
+PROBLEM_INDEX = 4
+REPLAY_BUFFER_INDEX = 0
+CONSTRAINED_PDIST_INDEX = 2
+UNCONSTRAINED_PDIST_INDEX = 1
 
 
 def pointenv_setup(args):
@@ -304,7 +310,7 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
         )
 
 
-def load_problem_set(file_path, env, agent, habitat=False):
+def load_problem_set(file_path, habitat=False):
     load = np.load(file_path, allow_pickle=True)
     if habitat:
         rb_vec_grid = load["rb_vec_grid"]
@@ -317,8 +323,7 @@ def load_problem_set(file_path, env, agent, habitat=False):
         return rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems.tolist()
     else:
         return (
-            rb_vec_grid,
-            rb_vec,
+            (rb_vec_grid, rb_vec),
             unconstrained_pdist,
             constrained_pdist,
             pcost,
@@ -394,7 +399,7 @@ def unconstrained_policy(
     start_idx = len(unconstrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -469,7 +474,7 @@ def constrained_policy(
     start_idx = len(constrained_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -551,13 +556,13 @@ def unconstrained_search_policy(
     logging.info(f"Starting from index: {start_idx}")
 
     if not habitat:
-        rb_vec, pdist = problem_setup[0].copy(), problem_setup[1].copy()
-    else:
-        rb_vec_grid, rb_vec, pdist = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-            problem_setup[2].copy(),
+        rb_vec, pdist = (
+            problem_setup[REPLAY_BUFFER_INDEX].copy(),
+            problem_setup[UNCONSTRAINED_PDIST_INDEX].copy(),
         )
+    else:
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -598,7 +603,7 @@ def unconstrained_search_policy(
             no_waypoint_hopping=True,
         )
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -696,16 +701,13 @@ def constrained_search_policy(
     logging.info(f"Starting from index: {start_idx}")
 
     if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
     else:
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -762,7 +764,7 @@ def constrained_search_policy(
             },
         )
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -851,16 +853,13 @@ def lagrangian_search_policy(
     )
 
     if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
     else:
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
 
     lagrangian_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -925,7 +924,7 @@ def lagrangian_search_policy(
             },
         )
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -989,13 +988,13 @@ def biobjective_search_policy(
     )
 
     if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
     else:
-        rb_vec_grid, rb_vec = (problem_setup[0].copy(), problem_setup[1].copy())
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
 
     biobjective_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -1060,7 +1059,7 @@ def biobjective_search_policy(
             },
         )
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -1152,16 +1151,13 @@ def risk_budgeted_search_policy(
                 risk_budgeted_search_records[idx] = data[str(idx)].tolist()
 
     if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
     else:
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -1222,7 +1218,7 @@ def risk_budgeted_search_policy(
         start_idx = len(risk_budgeted_search_records[idx])
         logging.info(f"Starting from index: {start_idx}")
 
-        problems = problem_setup[-1].copy()
+        problems = problem_setup[PROBLEM_INDEX].copy()
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
         for pb_idx in tqdm(range(start_idx, config.num_samples)):
@@ -1342,16 +1338,13 @@ def risk_bounded_search_policy(
                 risk_bounded_search_records[idx] = data[str(idx)].tolist()
 
     if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
+        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
     else:
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+        pcost = problem_setup[PCOST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -1413,7 +1406,7 @@ def risk_bounded_search_policy(
         start_idx = len(risk_bounded_search_records[idx])
         logging.info(f"Starting from index: {start_idx}")
 
-        problems = problem_setup[-1].copy()
+        problems = problem_setup[PROBLEM_INDEX].copy()
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
         for pb_idx in tqdm(range(start_idx, config.num_samples)):
@@ -1518,17 +1511,9 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         ub_bounds_data = np.load(ub_bounds_data_path, allow_pickle=True)
         ub_bounds_data = ub_bounds_data.tolist()
 
-    if not habitat:
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
-    else:
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
+    pcost = problem_setup[PCOST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -1549,39 +1534,27 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         cbs_config["max_time"] = 600
 
     if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            cbs_config=cbs_config,
-            max_cost_limit=np.inf,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+        search_policy_cls = ConstrainedMultiAgentSearchPolicy
+        max_search_steps = 7
     else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            n_agents=args.num_agents,
-            rb_vec=(rb_vec_grid, rb_vec),
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            max_cost_limit=np.inf,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+        search_policy_cls = VisualConstrainedMultiAgentSearchPolicy
+        max_search_steps = 4
 
+    search_policy = search_policy_cls(
+        agent=agent,
+        n_agents=args.num_agents,
+        rb_vec=rb_vec,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        max_search_steps=max_search_steps,
+        cbs_config=cbs_config,
+        no_waypoint_hopping=True,
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
     edge_attributes = [["step"], ["cost"]]
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
@@ -1597,7 +1570,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
         cbs_config["edge_attributes"] = edge_attrib
 
-        problems = problem_setup[-1].copy()
+        problems = problem_setup[PROBLEM_INDEX].copy()
         eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
         for pb_idx in tqdm(range(start_idx, config.num_samples)):
@@ -1653,7 +1626,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
 
 def main():
-    save=False
+    save = True
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
@@ -1676,9 +1649,7 @@ def main():
     else:
         assert args.load_problem_set
         assert len(args.problem_set_file) > 0
-        problem_setup = load_problem_set(
-            args.problem_set_file, eval_env, agent, args.visual
-        )
+        problem_setup = load_problem_set(args.problem_set_file, args.visual)
 
         if args.method_type == "unconstrained":
             unconstrained_policy(
