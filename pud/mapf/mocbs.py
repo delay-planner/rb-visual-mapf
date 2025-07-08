@@ -1,15 +1,15 @@
 # Code adapted from https://github.com/wonderren/public_pymomapf/blob/master/libmomapf/mocbs.py
 # Choosing to perform the tree-by-tree expansion strategy
 from __future__ import annotations
-import copy
-import itertools
-import logging
 import os
-from pathlib import Path
 import time
+import copy
 import random
+import logging
+import itertools
 import numpy as np
 import networkx as nx
+from pathlib import Path
 from networkx import Graph
 from numpy.typing import NDArray
 from typing import List, Dict, Tuple
@@ -17,12 +17,12 @@ from typing import List, Dict, Tuple
 from pud.mapf.cbs import CBSNode
 from pud.mapf.utils import (
     PrioritySet,
-    detect_collisions,
-    disjoint_split,
-    dominate_or_equal,
     get_location,
     less_dominant,
     standard_split,
+    disjoint_split,
+    detect_collisions,
+    dominate_or_equal,
 )
 from pud.mapf.single_agent_planner import MultiObjectiveAStar
 
@@ -69,7 +69,7 @@ class MultiObjectiveCBSSolver(object):
         graph: Graph,
         starts: List[int],
         goals: List[int],
-        graph_waypoints: NDArray,
+        pdist: NDArray,
         config: Dict,
     ):
         if config["seed"] is not None:
@@ -106,7 +106,7 @@ class MultiObjectiveCBSSolver(object):
         self.num_generated = 0
         self.roots_generated = 0
 
-        self.graph_waypoints = graph_waypoints
+        self.pdist = pdist
 
         self.max_time = config["max_time"]
         self.splitter = config["split_strategy"]
@@ -216,7 +216,7 @@ class MultiObjectiveCBSSolver(object):
         root_node.cost = np.sum(root_node.cost_vector)
 
         root_node.collisions = detect_collisions(
-            root_node.paths, self.graph_waypoints, self.collision_radius
+            root_node.paths, self.pdist, self.collision_radius
         )
 
         self.open_by_tree[root_node.id] = PrioritySet()
@@ -551,7 +551,7 @@ class MultiObjectiveCBSSolver(object):
 
                                 updated_successor.collisions = detect_collisions(
                                     updated_successor.paths,
-                                    self.graph_waypoints,
+                                    self.pdist,
                                     self.collision_radius,
                                 )
 
@@ -617,7 +617,7 @@ class MultiObjectiveCBSSolver(object):
 
                             new_successor.collisions = detect_collisions(
                                 new_successor.paths,
-                                self.graph_waypoints,
+                                self.pdist,
                                 self.collision_radius,
                             )
 

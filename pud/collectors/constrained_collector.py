@@ -703,7 +703,7 @@ class ConstrainedCollector(Collector):
 
         for agent_id in range(num_agents):
             if collided[agent_id]:
-                logging.info(f"Agent {agent_id} was within threhsold of another agent")
+                logging.info(f"Agent {agent_id} was within threshold of another agent")
                 augmented_ep_record_list[agent_id]["success"] = False
                 break
 
@@ -946,7 +946,7 @@ class ConstrainedCollector(Collector):
 
         for agent_id in range(num_agents):
             if collided[agent_id]:
-                logging.info(f"Agent {agent_id} was within threhsold of another agent")
+                logging.info(f"Agent {agent_id} was within threshold of another agent")
                 augmented_ep_record_list[agent_id]["success"] = False
                 break
 

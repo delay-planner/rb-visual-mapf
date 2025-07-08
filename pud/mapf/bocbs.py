@@ -15,10 +15,10 @@ class BiObjectiveCBSSolver(MultiObjectiveCBSSolver):
         graph: Graph,
         starts: List[int],
         goals: List[int],
-        graph_waypoints: NDArray,
+        pdist: NDArray,
         config: Dict,
     ):
-        super().__init__(graph, starts, goals, graph_waypoints, config)
+        super().__init__(graph, starts, goals, pdist, config)
 
     def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}

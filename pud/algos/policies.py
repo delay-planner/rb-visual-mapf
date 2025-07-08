@@ -96,6 +96,7 @@ class SearchPolicy(BasePolicy):
             no_waypoint_hopping: if True, will not try to proceed to goal until all waypoints have been reached
         """
         super().__init__(agent=agent, **kwargs)
+        self.ckpts = None
         self.rb_vec = rb_vec
         self.pdist = pdist
 
@@ -189,6 +190,12 @@ class SearchPolicy(BasePolicy):
         self.g = g
 
     def get_pairwise_dist_to_rb(self, state, masked=True):
+        if self.ckpts is not None:
+            self.agent.load_state_dict(
+                torch.load(
+                    self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True
+                )
+            )
         start_to_rb_dist = self.agent.get_pairwise_dist(
             [state["observation"]],
             self.rb_vec,
@@ -203,6 +210,12 @@ class SearchPolicy(BasePolicy):
             max_search_steps=self.max_search_steps,
             masked=masked,
         )
+        if self.ckpts is not None:
+            self.agent.load_state_dict(
+                torch.load(
+                    self.ckpts["constrained"], map_location="cuda:0", weights_only=True
+                )
+            )
         return start_to_rb_dist, rb_to_goal_dist
 
     def get_closest_waypoint(self, state):
@@ -326,9 +339,24 @@ class SearchPolicy(BasePolicy):
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
+        if "ckpts" in self.cbs_config.keys():
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["unconstrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["constrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+        else:
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+
         cbs_solver = cbs_class(
             graph=graph,
-            graph_waypoints=augmented_wps,
+            pdist=extended_pdist,
             starts=start_ids,
             goals=goal_ids,
             config=self.cbs_config,
@@ -554,11 +582,6 @@ class ConstrainedSearchPolicy(SearchPolicy):
         self.g = g
 
     def get_pairwise_cost_to_rb(self, state):
-        self.agent.load_state_dict(
-            torch.load(
-                self.ckpts["unconstrained"], map_location="cuda:0", weights_only=True
-            )
-        )
         start_to_rb_cost = self.agent.get_pairwise_cost(
             [state["observation"]],
             self.rb_vec,
@@ -568,11 +591,6 @@ class ConstrainedSearchPolicy(SearchPolicy):
             self.rb_vec,
             [state["goal"]],
             aggregate=self.cost_aggregate,
-        )
-        self.agent.load_state_dict(
-            torch.load(
-                self.ckpts["constrained"], map_location="cuda:0", weights_only=True
-            )
         )
         return start_to_rb_cost, rb_to_goal_cost
 
@@ -742,9 +760,24 @@ class VisualSearchPolicy(SearchPolicy):
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
+        if "ckpts" in self.cbs_config.keys():
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["unconstrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["constrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+        else:
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+
         cbs_solver = cbs_class(
             graph=graph,
-            graph_waypoints=augmented_wps,
+            pdist=extended_pdist,
             starts=start_ids,
             goals=goal_ids,
             config=self.cbs_config,
@@ -1077,9 +1110,24 @@ class MultiAgentSearchPolicy(SearchPolicy):
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
+        if "ckpts" in self.cbs_config.keys():
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["unconstrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["constrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+        else:
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+
         cbs_solver = cbs_class(
             graph=graph,
-            graph_waypoints=augmented_wps,
+            pdist=extended_pdist,
             starts=start_ids,
             goals=goal_ids,
             config=self.cbs_config,
@@ -1123,10 +1171,6 @@ class MultiAgentSearchPolicy(SearchPolicy):
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
-            print("starts: ", starts)
-            print("goals: ", goals)
-            print(error_message)
-            exit(0)
             raise RuntimeError("CBS failed to find a solution. " + error_message)
 
         if "use_multi_objective" in self.cbs_config.keys():
@@ -1546,9 +1590,24 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
         elif "use_multi_objective" in self.cbs_config.keys():
             cbs_class = BiObjectiveCBSSolver
 
+        if "ckpts" in self.cbs_config.keys():
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["unconstrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+            self.agent.load_state_dict(
+                torch.load(
+                    self.cbs_config["ckpts"]["constrained"], map_location="cuda:0", weights_only=True
+                )
+            )
+        else:
+            extended_pdist = self.agent.get_pairwise_dist(augmented_wps, aggregate=None)
+
         cbs_solver = cbs_class(
             graph=graph,
-            graph_waypoints=augmented_wps,
+            pdist=extended_pdist,
             starts=start_ids,
             goals=goal_ids,
             config=self.cbs_config,

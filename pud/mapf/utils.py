@@ -5,75 +5,40 @@ from typing import List, Dict
 from numpy.typing import NDArray
 
 
-def orientation(p, q, r):
+def intersection_check(p0, p1, q0, q1, pdist, agent_radius=0.1):
     """
-    Return:
-      0 if p, q, r are collinear,
-      1 if they make a clockwise turn,
-     -1 if they make a counter-clockwise turn.
+    Check if the segments p0p1 and q0q1 intersect, considering a radius around each point.
+    p0, p1, q0, q1 are coming from the graph_waypoints.
     """
-    # Compute the 2D “cross-product” of (q–p) × (r–q)
-    val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
-    if abs(val) < 1e-9:
-        return 0
-    return 1 if val > 0 else -1
+    pdist_combined = np.max(pdist, axis=0)
+    d_p0_p1 = pdist_combined[p0, p1]
+    d_q0_q1 = pdist_combined[q0, q1]
+    d_p0_q0 = pdist_combined[p0, q0]
+    d_p1_q1 = pdist_combined[p1, q1]
+    d_p1_q0 = pdist_combined[p1, q0]
+    d_p0_q1 = pdist_combined[p0, q1]
 
+    c = d_p0_q0**2
 
-def on_segment(p, q, r):
-    """
-    Given collinear p, q, r, return True if q lies on segment pr.
-    """
-    return min(p[0], r[0]) <= q[0] <= max(p[0], r[0]) and min(p[1], r[1]) <= q[
-        1
-    ] <= max(p[1], r[1])
+    dot_p1p0_q1q0 = 0.5 * (d_p1_q0**2 + d_p0_q1**2 - d_p0_q0**2 - d_p1_q1**2)
+    a = d_p0_p1**2 + d_q0_q1**2 - 2 * dot_p1p0_q1q0
 
+    if abs(a) < 1e-12:
+        return c <= (2 * agent_radius) ** 2
 
-def segments_intersect(A, B, C, D):
-    """
-    Return True if segment AB intersects segment CD.
-    A, B, C, D are (x,y) pairs (tuples, lists, or numpy arrays)
-    """
-
-    o1 = orientation(A, B, C)
-    o2 = orientation(A, B, D)
-    o3 = orientation(C, D, A)
-    o4 = orientation(C, D, B)
-
-    # General case
-    if o1 != o2 and o3 != o4:
-        return True
-
-    # Special Cases (collinear & overlapping)
-    if o1 == 0 and on_segment(A, C, B):
-        return True
-    if o2 == 0 and on_segment(A, D, B):
-        return True
-    if o3 == 0 and on_segment(C, A, D):
-        return True
-    if o4 == 0 and on_segment(C, B, D):
-        return True
-
-    return False
-
-
-def segments_radius_intersect(A, B, C, D, radius):
-    D = A - C
-    V = (B - A) - (D - C)
-    a = V.dot(V)
-    b = 2 * D.dot(V)
-    c = D.dot(D)
-
-    if a == 0:
-        return c <= (2 * radius) ** 2
+    dot_p0q0_p1p0 = 0.5 * (d_p1_q0**2 - d_p0_p1**2 - d_p0_q0**2)
+    dot_p0q0_q1q0 = 0.5 * (d_p0_q0**2 + d_q0_q1**2 - d_p0_q1**2)
+    b = 2 * (dot_p0q0_p1p0 - dot_p0q0_q1q0)
 
     tau_star = -b / (2 * a)
-    tau = max(0, min(1, tau_star))
+    tau = max(0.0, min(1.0, tau_star))
+
     d2 = a * tau**2 + b * tau + c
-    return d2 <= (2 * radius) ** 2
+    return d2 <= (2 * agent_radius) ** 2
 
 
 def location_collision(
-    path1: List[int], path2: List[int], timestep: int, graph_waypoints: NDArray
+    path1: List[int], path2: List[int], timestep: int, pdist: NDArray, agent_radius: float = 0.0
 ):
 
     position1 = get_location(path1, timestep)
@@ -87,11 +52,10 @@ def location_collision(
         if position1 == next_position2 and position2 == next_position1:
             return [position1, next_position1], timestep + 1, "edge"
         if (
-            segments_intersect(
-                graph_waypoints[position1],
-                graph_waypoints[next_position1],
-                graph_waypoints[position2],
-                graph_waypoints[next_position2],
+            intersection_check(
+                position1, next_position1,
+                position2, next_position2,
+                pdist, agent_radius=0.0,
             )
             and len(set([position1, next_position1, position2, next_position2])) == 4
         ):
@@ -109,6 +73,7 @@ def radius_collision(
     path2: List[int],
     timestep: int,
     graph_waypoints: NDArray,
+    pdist: NDArray,
     radius: float = 0.1,
 ):
     if (
@@ -131,7 +96,11 @@ def radius_collision(
             return [path1[timestep], path1[timestep + 1]], timestep + 1, "edge"
 
         if (
-            segments_radius_intersect(position1, next_position1, position2, next_position2, radius)
+            intersection_check(
+                position1, next_position1,
+                position2, next_position2,
+                pdist, agent_radius=radius,
+            )
             and len(
                 set(
                     [
@@ -159,7 +128,7 @@ def radius_collision(
 
 
 def detect_collision(
-    pathA: List[int], pathB: List[int], graph_waypoints: NDArray, collision_radius=0.1
+    pathA: List[int], pathB: List[int], pdist: NDArray, collision_radius=0.1
 ):
 
     path1 = pathA.copy()
@@ -176,12 +145,12 @@ def detect_collision(
 
     for timestep in range(len(path1)):
         collided = None
-        if collision_radius > 0:
-            collided = radius_collision(
-                path1, path2, timestep, graph_waypoints, collision_radius
-            )
-        else:
-            collided = location_collision(path1, path2, timestep, graph_waypoints)
+        # if collision_radius > 0:
+        #     collided = radius_collision(
+        #         path1, path2, timestep, graph_waypoints, pdist, collision_radius
+        #     )
+        # else:
+        collided = location_collision(path1, path2, timestep, pdist, agent_radius=collision_radius)
 
         if collided is not None:
             return collided
@@ -190,13 +159,13 @@ def detect_collision(
 
 
 def detect_collisions(
-    paths: List[List[int]], graph_waypoints: NDArray, collision_radius=0.1
+    paths: List[List[int]], pdist: NDArray, collision_radius=0.1
 ) -> List[Dict]:
     agg_collisions = []
     for i in range(len(paths)):
         for j in range(i + 1, len(paths)):
             collisions = detect_collision(
-                paths[i], paths[j], graph_waypoints, collision_radius
+                paths[i], paths[j], pdist, collision_radius
             )
             if collisions is not None:
                 agg_collisions.append(

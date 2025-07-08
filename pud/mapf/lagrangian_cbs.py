@@ -13,12 +13,12 @@ class LagrangianCBSSolver(CBSSolver):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        graph_waypoints: NDArray,
+        pdist: NDArray,
         config: Dict,
     ):
 
         self.lagrangian = config["lagrangian"]
-        super().__init__(graph, goals, starts, graph_waypoints, config)
+        super().__init__(graph, goals, starts, pdist, config)
 
     def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}

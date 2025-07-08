@@ -3,15 +3,16 @@ import time
 import heapq
 import random
 import logging
+import numpy as np
 import networkx as nx
 from pathlib import Path
 from networkx import Graph
-from typing import List, Dict, Tuple
-import numpy as np
 from numpy.typing import NDArray
+from typing import List, Dict, Tuple
+
 from pud.mapf.single_agent_planner import AStar
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
-from pud.mapf.utils import detect_collisions, get_location, segments_intersect, standard_split, disjoint_split
+from pud.mapf.utils import detect_collisions, get_location, intersection_check, standard_split, disjoint_split
 
 
 class CBSNode(object):
@@ -53,7 +54,7 @@ class CBSSolver(object):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        graph_waypoints: NDArray,
+        pdist: NDArray,
         config: Dict,
     ):
 
@@ -64,8 +65,8 @@ class CBSSolver(object):
         else:
             random.seed(0)
 
+        self.pdist = pdist
         self.graph = graph
-        self.graph_waypoints = graph_waypoints
 
         self.goals = goals
         self.starts = starts
@@ -174,7 +175,7 @@ class CBSSolver(object):
                 constraint["timestep"] - 1,
             )
 
-            if len(constraint["location"]) == 1:
+            if len(constraint["location"]) == 1:  # Vertex constraint
                 if constraint["location"][0] == current_location:
                     violating_agents.add((agent, "vertex"))
             else:
@@ -187,11 +188,9 @@ class CBSSolver(object):
                 elif (constraint["location"][0] == successor_path_location[0]
                       or constraint["location"][1] == successor_path_location[1]):
                     violating_agents.add((agent, "vertex"))
-                elif segments_intersect(self.graph_waypoints[constraint["location"][0]],
-                                        self.graph_waypoints[constraint["location"][1]],
-                                        self.graph_waypoints[previous_location],
-                                        self.graph_waypoints[current_location]):
-                    # Add another check for the intersection case
+                elif intersection_check(constraint["location"][0], constraint["location"][1],
+                                        previous_location, current_location,
+                                        self.pdist, agent_radius=self.collision_radius):
                     violating_agents.add((agent, "intersection"))
 
         logging.debug("Violating agents are {}".format(violating_agents))
@@ -290,7 +289,7 @@ class CBSSolver(object):
 
         root.cost = self.compute_sum_of_costs(root.paths)
         root.collisions = detect_collisions(
-            root.paths, self.graph_waypoints, self.collision_radius
+            root.paths, self.pdist, self.collision_radius
         )
         self.push_node(root)
 
@@ -457,7 +456,7 @@ class CBSSolver(object):
 
                     if not skip:
                         successor.collisions = detect_collisions(
-                            successor.paths, self.graph_waypoints, self.collision_radius
+                            successor.paths, self.pdist, self.collision_radius
                         )
                         if len(successor.collisions) > len(current_node.collisions):
                             continue

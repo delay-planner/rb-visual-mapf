@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from pud.mapf.cbs import CBSNode, CBSSolver
 from pud.mapf.mapf_exceptions import MAPFError, MAPFErrorCodes
 from pud.mapf.single_agent_planner import RiskBudgetedAStar
-from pud.mapf.utils import detect_collisions
+from pud.mapf.utils import detect_collisions, get_location
 
 
 class PathConstrainedCBSSolver(CBSSolver):
@@ -18,12 +18,12 @@ class PathConstrainedCBSSolver(CBSSolver):
         graph: Graph,
         goals: List[int],
         starts: List[int],
-        graph_waypoints: NDArray,
+        pdist: NDArray,
         config: Dict,
     ):
 
         self.risk_budget = config["risk_budget"]
-        super().__init__(graph, goals, starts, graph_waypoints, config)
+        super().__init__(graph, goals, starts, pdist, config)
 
     def make_planners(self, config: Dict) -> None:
         self.single_agent_planners = {}
@@ -64,7 +64,7 @@ class PathConstrainedCBSSolver(CBSSolver):
 
         root.cost = self.compute_sum_of_costs(root.paths)
         root.collisions = detect_collisions(
-            root.paths, self.graph_waypoints, self.collision_radius
+            root.paths, self.pdist, self.collision_radius
         )
         self.push_node(root)
 
@@ -145,12 +145,47 @@ class PathConstrainedCBSSolver(CBSSolver):
                             successor, constraint
                         )
 
-                        for agent in violating_agents:
+                        for agent, conflict_type in violating_agents:
                             if agent == constraint_agent:
                                 continue
 
+                            violating_constraints = successor.constraints.copy()
+                            if conflict_type == "vertex":
+                                ind = 0 if len(constraint["location"]) == 1 else 1
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": [constraint["location"][ind]],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+                            elif conflict_type == "edge":
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": constraint["location"][::-1],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+                            else:
+                                current_location = get_location(
+                                    successor.paths[agent], constraint["timestep"]
+                                )
+                                previous_location = get_location(
+                                    successor.paths[agent],
+                                    constraint["timestep"] - 1,
+                                )
+                                violating_constraints.append({
+                                    "agent_id": agent,
+                                    "location": [previous_location, current_location],
+                                    "timestep": constraint["timestep"],
+                                    "positive": False,
+                                    "final": False
+                                })
+
                             agent_path = self.single_agent_planners[agent].find_constrained_path(
-                                constraints=successor.constraints,
+                                # constraints=successor.constraints,
+                                constraints=violating_constraints,
                                 experience=current_node.paths[agent] if self.use_experience else None,
                                 risk_budget=self.risk_budget / self.num_agents,
                                 max_time=self.max_time // self.num_agents
@@ -180,10 +215,11 @@ class PathConstrainedCBSSolver(CBSSolver):
                                 break
                             else:
                                 successor.paths[agent] = agent_path
+                                successor.constraints = violating_constraints
 
                     if not skip:
                         successor.collisions = detect_collisions(
-                            successor.paths, self.graph_waypoints, self.collision_radius
+                            successor.paths, self.pdist, self.collision_radius
                         )
                         successor.cost = self.compute_sum_of_costs(successor.paths)
                         self.push_node(successor)

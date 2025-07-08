@@ -224,11 +224,11 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
 
     agent.load_state_dict(
         torch.load(
-            args.unconstrained_ckpt_file, map_location=torch.device(config.device)
+            args.unconstrained_ckpt_file, map_location=torch.device(config.device), weights_only=True
         )
     )
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
-    unconstrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
+    with torch.no_grad():
+        unconstrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
 
     if len(args.illustration_pb_file) > 0:
         problems = load_pb_set(file_path=args.illustration_pb_file, env=eval_env, agent=agent)  # type: ignore
@@ -259,16 +259,13 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
         print(len(problems))
 
     agent.load_state_dict(
-        torch.load(args.constrained_ckpt_file, map_location=torch.device(config.device))
-    )
-    constrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
-
-    if "unconstrained" in args.method_type:
-        agent.load_state_dict(
-            torch.load(
-                args.unconstrained_ckpt_file, map_location=torch.device(config.device)
-            )
+        torch.load(
+            args.constrained_ckpt_file, map_location=torch.device(config.device), weights_only=True
         )
+    )
+    with torch.no_grad():
+        pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+        constrained_pdist = agent.get_pairwise_dist(rb_vec, aggregate=None)  # type: ignore
 
     if save:
         if args.traj_difficulty == "easy":
@@ -296,18 +293,6 @@ def setup_problems(eval_env, agent, args, config, basedir, save=False):
                 pcost=pcost,
                 problems=problems,  # type: ignore
             )
-
-    if not habitat:
-        return rb_vec, unconstrained_pdist, constrained_pdist, pcost, problems
-    else:
-        return (
-            rb_vec_grid,
-            rb_vec,
-            unconstrained_pdist,
-            constrained_pdist,
-            pcost,
-            problems,
-        )
 
 
 def load_problem_set(file_path, habitat=False):
@@ -555,14 +540,10 @@ def unconstrained_search_policy(
     start_idx = len(unconstrained_search_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    if not habitat:
-        rb_vec, pdist = (
-            problem_setup[REPLAY_BUFFER_INDEX].copy(),
-            problem_setup[UNCONSTRAINED_PDIST_INDEX].copy(),
-        )
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    rb_vec, pdist = (
+        problem_setup[REPLAY_BUFFER_INDEX].copy(),
+        problem_setup[UNCONSTRAINED_PDIST_INDEX].copy(),
+    )
 
     cbs_config = {
         "seed": None,
@@ -581,27 +562,19 @@ def unconstrained_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = MultiAgentSearchPolicy(
-            agent=agent,
-            pdist=pdist,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            open_loop=True,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-        )
-    else:
-        search_policy = VisualMultiAgentSearchPolicy(
-            agent=agent,
-            pdist=pdist,
-            n_agents=args.num_agents,
-            rb_vec=(rb_vec_grid, rb_vec),
-            open_loop=True,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-        )
+    search_policy_cls = (
+        MultiAgentSearchPolicy if not habitat else VisualMultiAgentSearchPolicy
+    )
+    search_policy = search_policy_cls(
+        agent=agent,
+        pdist=pdist,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        open_loop=True,
+        cbs_config=cbs_config,
+        no_waypoint_hopping=True,
+        max_search_steps=7 if not habitat else 4,
+    )
 
     problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -700,14 +673,9 @@ def constrained_search_policy(
     start_idx = len(constrained_search_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    if not habitat:
-        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -726,43 +694,27 @@ def constrained_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            max_cost_limit=(
-                COST_LIMIT_FACTOR * trained_cost_limit if not full_risk else np.inf
-            ),
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
-    else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            n_agents=args.num_agents,
-            rb_vec=(rb_vec_grid, rb_vec),
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            max_cost_limit=(
-                COST_LIMIT_FACTOR * trained_cost_limit if not full_risk else np.inf
-            ),
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+    search_policy_cls = (
+        ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    )
+    search_policy = search_policy_cls(
+        agent=agent,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        cbs_config=cbs_config,
+        no_waypoint_hopping=True,
+        max_search_steps=7 if not habitat else 4,
+        max_cost_limit=(
+            COST_LIMIT_FACTOR * trained_cost_limit if not full_risk else np.inf
+        ),
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
 
     problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -852,14 +804,9 @@ def lagrangian_search_policy(
         agent, eval_env, args, config, constrained=True
     )
 
-    if not habitat:
-        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     lagrangian_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -892,37 +839,22 @@ def lagrangian_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            open_loop=True,
-            pdist=pdist,
-            pcost=pcost,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
-    else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=(rb_vec_grid, rb_vec),
-            n_agents=args.num_agents,
-            open_loop=True,
-            pdist=pdist,
-            pcost=pcost,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+    search_policy_cls = ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    search_policy = search_policy_cls(
+        agent=agent,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        open_loop=True,
+        pdist=pdist,
+        pcost=pcost,
+        cbs_config=cbs_config,
+        no_waypoint_hopping=True,
+        max_search_steps=7 if not habitat else 4,
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
 
     problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -987,14 +919,9 @@ def biobjective_search_policy(
         agent, eval_env, args, config, constrained=True
     )
 
-    if not habitat:
-        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     biobjective_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -1027,37 +954,24 @@ def biobjective_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            open_loop=True,
-            pdist=pdist,
-            pcost=pcost,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
-    else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=(rb_vec_grid, rb_vec),
-            n_agents=args.num_agents,
-            open_loop=True,
-            pdist=pdist,
-            pcost=pcost,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+    search_policy_cls = (
+        ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    )
+    search_policy = search_policy_cls(
+        agent=agent,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        open_loop=True,
+        pdist=pdist,
+        pcost=pcost,
+        cbs_config=cbs_config,
+        no_waypoint_hopping=True,
+        max_search_steps=7 if not habitat else 4,
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
 
     problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -1150,14 +1064,9 @@ def risk_budgeted_search_policy(
             if str(idx) in data.files:
                 risk_budgeted_search_records[idx] = data[str(idx)].tolist()
 
-    if not habitat:
-        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -1176,39 +1085,25 @@ def risk_budgeted_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            cbs_config=cbs_config,
-            max_cost_limit=np.inf,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
-    else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            n_agents=args.num_agents,
-            rb_vec=(rb_vec_grid, rb_vec),
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            max_cost_limit=np.inf,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+    search_policy_cls = (
+        ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    )
+    search_policy = search_policy_cls(
+        agent=agent,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        cbs_config=cbs_config,
+        max_search_steps=7 if not habitat else 4,
+        max_cost_limit=np.inf,
+        no_waypoint_hopping=True,
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
     processed_problems = processed_problems.tolist()
@@ -1337,14 +1232,9 @@ def risk_bounded_search_policy(
             if str(idx) in data.files:
                 risk_bounded_search_records[idx] = data[str(idx)].tolist()
 
-    if not habitat:
-        rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
-    else:
-        rb_vec_grid, rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-        pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-        pcost = problem_setup[PCOST_INDEX].copy()
+    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -1364,39 +1254,25 @@ def risk_bounded_search_policy(
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy = ConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            rb_vec=rb_vec,
-            n_agents=args.num_agents,
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            cbs_config=cbs_config,
-            max_cost_limit=np.inf,
-            no_waypoint_hopping=True,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
-    else:
-        search_policy = VisualConstrainedMultiAgentSearchPolicy(
-            agent=agent,
-            n_agents=args.num_agents,
-            rb_vec=(rb_vec_grid, rb_vec),
-            pdist=pdist,
-            pcost=pcost,
-            open_loop=True,
-            max_search_steps=4,
-            cbs_config=cbs_config,
-            no_waypoint_hopping=True,
-            max_cost_limit=np.inf,
-            ckpts={
-                "unconstrained": args.unconstrained_ckpt_file,
-                "constrained": args.constrained_ckpt_file,
-            },
-        )
+    search_policy_cls = (
+        ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    )
+    search_policy = search_policy_cls(
+        agent=agent,
+        rb_vec=rb_vec,
+        n_agents=args.num_agents,
+        pdist=pdist,
+        pcost=pcost,
+        open_loop=True,
+        cbs_config=cbs_config,
+        max_search_steps=7 if not habitat else 4,
+        max_cost_limit=np.inf,
+        no_waypoint_hopping=True,
+        ckpts={
+            "unconstrained": args.unconstrained_ckpt_file,
+            "constrained": args.constrained_ckpt_file,
+        },
+    )
 
     processed_problems = np.load(processed_problems_path, allow_pickle=True)
     processed_problems = processed_problems.tolist()
@@ -1512,8 +1388,8 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         ub_bounds_data = ub_bounds_data.tolist()
 
     rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
-    pdist = problem_setup[CONSTRAINED_PDIST_INDEX].copy()
-    pcost = problem_setup[PCOST_INDEX].copy()
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -1533,13 +1409,9 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
 
-    if not habitat:
-        search_policy_cls = ConstrainedMultiAgentSearchPolicy
-        max_search_steps = 7
-    else:
-        search_policy_cls = VisualConstrainedMultiAgentSearchPolicy
-        max_search_steps = 4
-
+    search_policy_cls = (
+        ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
+    )
     search_policy = search_policy_cls(
         agent=agent,
         n_agents=args.num_agents,
@@ -1547,7 +1419,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         pdist=pdist,
         pcost=pcost,
         open_loop=True,
-        max_search_steps=max_search_steps,
+        max_search_steps=7 if not habitat else 4,
         cbs_config=cbs_config,
         no_waypoint_hopping=True,
         ckpts={
@@ -1643,9 +1515,7 @@ def main():
         basedir.mkdir(parents=True)
 
     if args.collect_trajs:
-        problem_setup = setup_problems(
-            eval_env, agent, args, config, basedir, save=save
-        )
+        setup_problems(eval_env, agent, args, config, basedir, save=save)
     else:
         assert args.load_problem_set
         assert len(args.problem_set_file) > 0

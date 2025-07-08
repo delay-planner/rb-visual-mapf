@@ -5,17 +5,22 @@ import numpy as np
 import networkx as nx
 from tqdm import tqdm
 from pathlib import Path
+from copy import deepcopy
 
 
 from pud.mapf.cbs import CBSSolver
 from collect_safe_trajectory_records import (
-    MAX_TIMELIMIT,
-    TIMELIMIT,
+    habitat_setup,
+    pointenv_setup,
     load_problem_set,
     load_agent_and_env,
-    pointenv_setup,
-    habitat_setup,
+    TIMELIMIT,
+    PROBLEM_INDEX,
+    REPLAY_BUFFER_INDEX,
+    UNCONSTRAINED_PDIST_INDEX,
 )
+
+MAX_TIMELIMIT = 120
 
 
 def argument_parser():
@@ -45,6 +50,13 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
         agent, eval_env, args, config, constrained=True
     )
 
+    unconstrained_agent = deepcopy(agent)
+    unconstrained_agent.load_state_dict(
+        torch.load(
+            args.unconstrained_ckpt_file, map_location="cuda:0", weights_only=True
+        )
+    )
+
     save_path = basedir / args.traj_difficulty / "problems"
     if not save_path.exists():
         save_path.mkdir(parents=True)
@@ -52,24 +64,11 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
     valid_pbs = []
     save_path = save_path / f"pbs_{args.num_agents}.npy"
 
-    if not habitat:
-        max_search_steps = 7
-        rb_vec = problem_setup[0].copy()
-        pdist = problem_setup[2].copy()
-        pcost = problem_setup[3].copy()
-    else:
-        max_search_steps = 4
-        rb_vec_grid, rb_vec = (
-            problem_setup[0].copy(),
-            problem_setup[1].copy(),
-        )
-        pdist = problem_setup[3].copy()
-        pcost = problem_setup[4].copy()
-
-    ckpts = {
-        "unconstrained": args.unconstrained_ckpt_file,
-        "constrained": args.constrained_ckpt_file,
-    }
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    if habitat:
+        _, rb_vec = rb_vec
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
+    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -85,12 +84,14 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
 
-    problems = problem_setup[-1].copy()
+    problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
 
     rb_graph = nx.Graph()
     pdist_combined = np.max(pdist, axis=0)
     pcost_combined = np.max(pcost, axis=0)
+
+    max_search_steps = 7 if not habitat else 4
 
     for i, _ in enumerate(rb_vec):
         for j, _ in enumerate(rb_vec):
@@ -140,24 +141,19 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
                     "observation": normalized_starts[agent_id],
                 }
 
-                start_to_rb_dist = agent.get_pairwise_dist(
+                start_to_rb_dist = unconstrained_agent.get_pairwise_dist(
                     [state["observation"]],
                     rb_vec,
                     aggregate="min",
                     max_search_steps=max_search_steps,
                     masked=True,
                 )
-                rb_to_goal_dist = agent.get_pairwise_dist(
+                rb_to_goal_dist = unconstrained_agent.get_pairwise_dist(
                     rb_vec,
                     [state["goal"]],
                     aggregate="min",
                     max_search_steps=max_search_steps,
                     masked=True,
-                )
-                agent.load_state_dict(
-                    torch.load(
-                        ckpts["unconstrained"], map_location="cuda:0", weights_only=True
-                    )
                 )
                 start_to_rb_cost = agent.get_pairwise_cost(
                     [state["observation"]],
@@ -169,36 +165,35 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
                     [state["goal"]],
                     aggregate="max",
                 )
-                agent.load_state_dict(
-                    torch.load(
-                        ckpts["constrained"], map_location="cuda:0", weights_only=True
-                    )
-                )
 
-                for i, (from_start, to_goal) in enumerate(
-                    zip(
-                        zip(start_to_rb_dist.flatten(), start_to_rb_cost.flatten()),
-                        zip(rb_to_goal_dist.flatten(), rb_to_goal_cost.flatten()),
+                # Vectorized edge addition for speed
+                start_to_rb_dist_flat = start_to_rb_dist.flatten()
+                start_to_rb_cost_flat = start_to_rb_cost.flatten()
+                rb_to_goal_dist_flat = rb_to_goal_dist.flatten()
+                rb_to_goal_cost_flat = rb_to_goal_cost.flatten()
+                rb_indices = np.arange(rb_vec.shape[0])
+
+                # Edges from start to replay buffer nodes
+                valid_start_mask = start_to_rb_dist_flat < max_search_steps
+                for i in rb_indices[valid_start_mask]:
+                    pb_graph.add_edge(
+                        start_ids[agent_id],
+                        i,
+                        weight=float(start_to_rb_dist_flat[i]),
+                        step=1.0,
+                        cost=float(start_to_rb_cost_flat[i]),
                     )
-                ):
-                    dist_from_start, cost_from_start = from_start
-                    dist_to_goal, cost_to_goal = to_goal
-                    if dist_from_start < max_search_steps:
-                        pb_graph.add_edge(
-                            start_ids[agent_id],
-                            i,
-                            weight=float(dist_from_start),
-                            step=1.0,
-                            cost=float(cost_from_start),
-                        )
-                    if dist_to_goal < max_search_steps:
-                        pb_graph.add_edge(
-                            i,
-                            goal_ids[agent_id],
-                            weight=float(dist_to_goal),
-                            step=1.0,
-                            cost=float(cost_to_goal),
-                        )
+
+                # Edges from replay buffer nodes to goal
+                valid_goal_mask = rb_to_goal_dist_flat < max_search_steps
+                for i in rb_indices[valid_goal_mask]:
+                    pb_graph.add_edge(
+                        i,
+                        goal_ids[agent_id],
+                        weight=float(rb_to_goal_dist_flat[i]),
+                        step=1.0,
+                        cost=float(rb_to_goal_cost_flat[i]),
+                    )
 
                 if not np.any(start_to_rb_dist < max_search_steps) or not np.any(
                     rb_to_goal_dist < max_search_steps
@@ -216,20 +211,19 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
 
             # Ensure that vanilla CBS can find a solution for the problem
 
-            if not habitat:
-                augmented_wps = np.concatenate([rb_vec, normalized_starts, normalized_goals], axis=0)
-            else:
-                augmented_wps = np.concatenate([rb_vec_grid, starts, goals], axis=0)
+            augmented_wps = np.concatenate([rb_vec, normalized_starts, normalized_goals], axis=0)
+            extended_pdist = unconstrained_agent.get_pairwise_dist(augmented_wps, aggregate=None)
 
             cbs_solver = CBSSolver(
                 graph=pb_graph,
-                graph_waypoints=augmented_wps,
+                pdist=extended_pdist,
                 starts=start_ids,
                 goals=goal_ids,
                 config=cbs_config,
             )
 
             try:
+                logging.debug(f"Finding path for problem {idx}")
                 cbs_solver.find_paths()
             except Exception as e:
                 logging.debug(f"Failed to find path for problem {idx} because {e}")
@@ -262,6 +256,6 @@ if __name__ == "__main__":
         basedir = basedir / config.env.simulator_settings.scene.lower()
 
     problem_setup = load_problem_set(
-        args.problem_set_file, eval_env, agent, args.visual
+        args.problem_set_file, args.visual
     )
     try_problems(agent, eval_env, problem_setup, args, config, basedir)
