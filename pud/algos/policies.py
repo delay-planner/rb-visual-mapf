@@ -1070,12 +1070,12 @@ class MultiAgentSearchPolicy(SearchPolicy):
         logging.debug("Final graph size = {}".format(planning_graph.number_of_nodes()))
         return planning_graph, nodes_to_agent_maps
 
-    def initialize_paths(self, rb_vec, starts, goals):
+    def initialize_paths(self, starts, goals):
         if self.planning_graph is not None:
             graph = self.planning_graph
             goal_ids = []
             start_ids = []
-            num_nodes = rb_vec.shape[0] - 1
+            num_nodes = self.rb_vec.shape[0] - 1
             for agent_id in range(self.n_agents):
                 goal_ids.append(num_nodes + 2)
                 start_ids.append(num_nodes + 1)
@@ -1093,9 +1093,9 @@ class MultiAgentSearchPolicy(SearchPolicy):
                 for agent_id in range(self.n_agents)
             ]
 
-        augmented_wps = rb_vec.copy()
+        augmented_wps = self.rb_vec.copy()
         for _, (start, goal) in enumerate(zip(starts, goals)):
-            augmented_wps = np.vstack([augmented_wps, start, goal])
+            augmented_wps = np.vstack([augmented_wps, np.expand_dims(start, 0), np.expand_dims(goal, 0)])
 
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
@@ -1210,7 +1210,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                             else print("Goal: ", goals[agent_id])
                         )
                     else:
-                        print("Vertex: ", rb_vec[vertex])
+                        print("Vertex: ", self.rb_vec[vertex])
 
         self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = (
             [],
@@ -1289,7 +1289,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
             if state.get("first_step", False):
 
                 self.initialize_paths(
-                    self.rb_vec, state["composite_starts"], state["composite_goals"]
+                    state["composite_starts"], state["composite_goals"]
                 )
 
             if self.cleanup:
@@ -1321,7 +1321,7 @@ class MultiAgentSearchPolicy(SearchPolicy):
                             self.g.remove_edge(src_node, dest_node)
 
                 self.initialize_paths(
-                    self.rb_vec, state["composite_starts"], state["composite_goals"]
+                    state["composite_starts"], state["composite_goals"]
                 )
 
             waypoints, _ = self.get_current_waypoints()
@@ -1547,7 +1547,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             augmented_min_search_dists,
         )
 
-    def initialize_paths(self, rb_vec, starts, goals):
+    def initialize_paths(self, starts, goals):
 
         goals_grid = [goal[0] for goal in goals]
         goals = [goal[1] for goal in goals]
@@ -1558,7 +1558,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             graph = self.planning_graph
             goal_ids = []
             start_ids = []
-            num_nodes = rb_vec.shape[0] - 1
+            num_nodes = self.rb_vec.shape[0] - 1
             for agent_id in range(self.n_agents):
                 goal_ids.append(num_nodes + 2)
                 start_ids.append(num_nodes + 1)
@@ -1576,9 +1576,9 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 for agent_id in range(self.n_agents)
             ]
 
-        augmented_wps = rb_vec.copy()
-        for _, (start, goal) in enumerate(zip(starts_grid, goals_grid)):
-            augmented_wps = np.vstack([augmented_wps, start, goal])
+        augmented_wps = self.rb_vec.copy()
+        for _, (start, goal) in enumerate(zip(starts, goals)):
+            augmented_wps = np.vstack([augmented_wps, np.expand_dims(start, 0), np.expand_dims(goal, 0)])
 
         cbs_class = CBSSolver
         if "risk_bound" in self.cbs_config.keys():
@@ -1687,7 +1687,7 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                         else:
                             print("Goal: ", goals_grid[a_id])
                     else:
-                        print("Vertex: ", rb_vec[vertex])
+                        print("Vertex: ", self.rb_vec_grid[vertex])
 
         self.augmented_waypoint_indices, self.augmented_waypoint_to_goal_dist_vec = (
             [],
@@ -1787,7 +1787,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                 logging.debug(f"Composite starts: {composite_starts_grid}")
                 logging.debug(f"Composite goals: {composite_goals_grid}")
                 self.initialize_paths(
-                    self.rb_vec_grid,
                     state["composite_starts"],
                     state["composite_goals"],
                 )
@@ -1821,7 +1820,6 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
                             self.g.remove_edge(src_node, dest_node)
 
                 self.initialize_paths(
-                    self.rb_vec_grid,
                     state["composite_starts"],
                     state["composite_goals"],
                 )

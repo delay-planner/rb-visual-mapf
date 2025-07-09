@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
+from copy import deepcopy
 from dotmap import DotMap
 
 from pud.algos.ddpg import GoalConditionedCritic
@@ -540,10 +541,8 @@ def unconstrained_search_policy(
     start_idx = len(unconstrained_search_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    rb_vec, pdist = (
-        problem_setup[REPLAY_BUFFER_INDEX].copy(),
-        problem_setup[UNCONSTRAINED_PDIST_INDEX].copy(),
-    )
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
 
     cbs_config = {
         "seed": None,
@@ -673,9 +672,10 @@ def constrained_search_policy(
     start_idx = len(constrained_search_records)
     logging.info(f"Starting from index: {start_idx}")
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -804,9 +804,10 @@ def lagrangian_search_policy(
         agent, eval_env, args, config, constrained=True
     )
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     lagrangian_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -919,9 +920,10 @@ def biobjective_search_policy(
         agent, eval_env, args, config, constrained=True
     )
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     biobjective_search_records = []
     save_path = basedir / args.traj_difficulty
@@ -1064,9 +1066,10 @@ def risk_budgeted_search_policy(
             if str(idx) in data.files:
                 risk_budgeted_search_records[idx] = data[str(idx)].tolist()
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -1232,9 +1235,10 @@ def risk_bounded_search_policy(
             if str(idx) in data.files:
                 risk_bounded_search_records[idx] = data[str(idx)].tolist()
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,
@@ -1387,9 +1391,10 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
         ub_bounds_data = np.load(ub_bounds_data_path, allow_pickle=True)
         ub_bounds_data = ub_bounds_data.tolist()
 
-    rb_vec = problem_setup[REPLAY_BUFFER_INDEX].copy()
+    rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
+    rb = rb_vec if not habitat else rb_vec[1]
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
-    pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
+    pcost = agent.get_pairwise_cost(rb, aggregate=None)  # type: ignore
 
     cbs_config = {
         "seed": None,

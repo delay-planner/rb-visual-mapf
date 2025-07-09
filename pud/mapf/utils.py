@@ -55,7 +55,7 @@ def location_collision(
             intersection_check(
                 position1, next_position1,
                 position2, next_position2,
-                pdist, agent_radius=0.0,
+                pdist, agent_radius=agent_radius,
             )
             and len(set([position1, next_position1, position2, next_position2])) == 4
         ):
