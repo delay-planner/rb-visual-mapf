@@ -64,6 +64,14 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
     valid_pbs = []
     save_path = save_path / f"pbs_{args.num_agents}.npy"
 
+    if save_path.exists():
+        logging.info(f"Loading existing problems from {save_path}")
+        valid_pbs = np.load(save_path, allow_pickle=True).tolist()
+        logging.info(f"Loaded {len(valid_pbs)} problems")
+        if len(valid_pbs) >= args.num_samples:
+            logging.info("Already have enough problems, skipping generation.")
+            return
+
     rb_vec = deepcopy(problem_setup[REPLAY_BUFFER_INDEX])
     if habitat:
         _, rb_vec = rb_vec
@@ -103,7 +111,10 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
                 )
 
     idx = -1
-    with tqdm(total=args.num_samples) as pbar:
+    if len(valid_pbs) > 0:
+        idx = len(valid_pbs) - 1
+        logging.info(f"Starting from problem index {idx + 1}")
+    with tqdm(total=args.num_samples - len(valid_pbs)) as pbar:
         while len(valid_pbs) < args.num_samples:
             idx += 1
             skip_idx = False
@@ -236,6 +247,7 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
                 "pbs": pbs,
             }
             valid_pbs.append(valid_pb)
+            np.save(save_path, valid_pbs)
             pbar.update(1)
 
     np.save(save_path, valid_pbs)

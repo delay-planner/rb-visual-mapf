@@ -6,6 +6,8 @@ VISUAL_FLAG="--visual"
 
 # List of environments to process (skip staging_08)
 envs=(
+    "centerdot"
+    "sc2_staging_08"
     "sc0_staging_20"
     "sc3_staging_05"
     "sc3_staging_11"
@@ -19,6 +21,8 @@ agent_counts=(1 5 10)
 difficulties=("easy" "medium" "hard")
 
 for env in "${envs[@]}"; do
+# for (( idx=${#envs[@]}-1; idx>=0; idx-- )); do
+#     env=${envs[$idx]}
     echo "Processing environment: $env"
     
     # Set paths based on env
@@ -42,6 +46,18 @@ for env in "${envs[@]}"; do
             unconstrained_ckpt=models/SC3_Staging_15/ckpt/ckpt_0565000
             config=models/SC3_Staging_15/lag/2024-09-11-19-44-43/bk/config.yaml
             constrained_ckpt=models/SC3_Staging_15/lag/2024-09-11-19-44-43/ckpt/ckpt_0247500
+            ;;
+        "sc2_staging_08")
+            unconstrained_ckpt=models/SC2_Staging_08/ckpt/ckpt_0325000
+            config=models/SC2_Staging_08/lag/2024-09-11-19-42-08/bk/config.yaml
+            constrained_ckpt=models/SC2_Staging_08/lag/2024-09-11-19-42-08/ckpt/ckpt_0255000
+            ;;
+        "centerdot")
+            unconstrained_ckpt=models/CenterDot/ckpt/ckpt_0300000
+            config=models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml
+            constrained_ckpt=models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000
+            VISUAL_FLAG=""
+            # agent_counts=(1 5 10 20)
             ;;
         *)
             echo "Error: Unknown environment $env"
