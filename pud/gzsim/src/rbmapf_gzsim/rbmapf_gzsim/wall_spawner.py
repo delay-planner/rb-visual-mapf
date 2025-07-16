@@ -2,8 +2,9 @@ import uuid
 import rclpy
 import numpy as np
 from pathlib import Path
-from rclpy.node import Node
 import xml.etree.ElementTree as ET
+
+from rclpy.node import Node
 
 from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, extract_walls
 
@@ -11,6 +12,7 @@ from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, ext
 class WallSpawnerNode(Node):
     def __init__(self, height=5.0, resolution=1.0):
         super().__init__('wall_spawner_node')
+
         args = argument_parser()
         walls, starts = extract_walls(args)
 
@@ -73,14 +75,10 @@ class WallSpawnerNode(Node):
         world.set('name', current_name + '_walls')
         tree.write(output_sdf_path)
 
-
         adjusted_starts = np.array(starts) + np.array([x0, y0, 0.0])
-        print("Before adjusting: ", starts)
-        print("After adjusting: ", adjusted_starts)
         starts_file_path = args.sdf_path.replace(suffix, '_starts.txt')
         np.savetxt(starts_file_path, adjusted_starts, fmt='%.5f', delimiter=',')
         np.save(args.sdf_path.replace(suffix, '_walls_matrix.npy'), walls)
-            
 
 
 def main():

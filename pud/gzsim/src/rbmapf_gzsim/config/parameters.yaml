@@ -1,0 +1,43 @@
+gz_version:
+  default: "harmonic"
+  description: "Gazebo version to run. Options: classic or harmonic."
+
+num_drones:
+  default: "3"
+  description: "Number of x500 drones to spawn."
+
+use_crazyswarm:
+  default: "True"
+  description: "Use Crazyswarm for drone control."
+
+model_jinja:
+  default: "/home/mers/crazyflie_simulation_ws/crazyflie-simulation/simulator_files/gazebo/crazyflie/model.sdf.jinja"
+  description: "Path to the Jinja template for Crazyflie SDF model."
+
+px4_target:
+  default: "px4_sitl_default"
+  description: "PX4 build target (no default)."
+
+px4_src_path:
+  default: "/home/mers/Drone_Simulator/PX4-Autopilot"
+  description: "Path to the PX4 source (no default)."
+
+config_file:
+  default: "../../models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml"
+  description: "Path to control config YAML (no default)."
+
+illustration_pb_file:
+  default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
+  description: "Path to illustration protobuf file (no default)."
+
+constrained_ckpt_file:
+  default: "../../models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000"
+  description: "Path to constrained policy checkpoint (no default)."
+
+unconstrained_ckpt_file:
+  default: "../../models/CenterDot/ckpt/ckpt_0300000"
+  description: "Path to unconstrained policy checkpoint (no default)."
+
+world_file:
+  default: "/home/mers/crazyswarm_ws/src/ros_gz_crazyflie/ros_gz_crazyflie_gazebo/worlds/crazyflie_world_empty.sdf"
+  description: "Path to the Gazebo world file (no default)."

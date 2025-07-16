@@ -13,6 +13,7 @@ from rclpy.qos import (
 class WaypointGeneratorNode(Node):
     def __init__(self):
         super().__init__('waypoint_generator_node')
+        self.declare_parameter('interface', 'px4')
         args = argument_parser()
         agents_waypoints = generate_wps(args, debug=True)
 
@@ -22,9 +23,14 @@ class WaypointGeneratorNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
         )
+        interface = self.get_parameter('interface').get_parameter_value().string_value
         for agent_idx in range(args.num_agents):
             instance_idx = agent_idx + 1
-            waypoint_publisher = self.create_publisher(Float32MultiArray, f'/px4_{instance_idx}/waypoints', qos_profile)
+            waypoint_publisher = self.create_publisher(
+                Float32MultiArray,
+                f'/{interface}_{instance_idx}/waypoints',
+                qos_profile
+            )
             agent_wps = np.array(agents_waypoints[agent_idx])
             message = Float32MultiArray(data=agent_wps.flatten().tolist())
             waypoint_publisher.publish(message)

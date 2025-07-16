@@ -17,7 +17,7 @@ from pud.algos.policies import ConstrainedMultiAgentSearchPolicy
 from pud.buffers.constrained_buffer import ConstrainedReplayBuffer
 from pud.collectors.constrained_collector import ConstrainedCollector as Collector
 from pud.visualizers.visualize import visualize_compare_search, visualize_search_path
-from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.multi_drone_control import DroneController
+from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.px4_drone_control import DroneController
 from pud.envs.safe_pointenv.safe_wrappers import (
     safe_env_load_fn,
     set_safe_env_difficulty,

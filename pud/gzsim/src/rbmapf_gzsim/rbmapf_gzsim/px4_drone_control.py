@@ -125,10 +125,8 @@ class DroneController(Node):
             self.start_callback,
             QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
         )
-        # odom_topic = f'/mersdrone_{self.drone_ns}/world' if self.gz_version == 'classic' else f"{self.drone_ns}/fmu/out/vehicle_odometry"
         self.odom_subscriber = self.create_subscription(
             VehicleOdometry,
-            # odom_topic,
             f"{self.drone_ns}/fmu/out/vehicle_odometry",
             self.local_position_callback,
             self.qos_profile,
@@ -275,7 +273,8 @@ class DroneController(Node):
         self.publish_markers()
 
         self.home = self.waypoints[0][:2].copy()
-        # State needs to be in the coordinate frame that the GCRL policy was trained with i.e origin is bottom left corner of the walls matrix not the origin of simulator!
+        # State needs to be in the coordinate frame that the GCRL policy was trained with
+        # i.e origin is bottom left corner of the walls matrix not the origin of simulator!
         self.state = self.home.copy() - self.origin_offset
         self.next_location = np.zeros(2)
         self.get_logger().info(f"Received {len(self.waypoints)} waypoints")
@@ -323,7 +322,7 @@ class DroneController(Node):
 
         #     # Convert to NED
         #     self.local_position = enu_to_ned(self.local_position)
-        
+
         # TODO: Replace this with the correct version above after debugging
         # Local position is in NED frame
         self.local_position[0] = msg.position[0]
@@ -472,12 +471,13 @@ class DroneController(Node):
                             self.get_logger().info(f"Mission completed for {self.drone_ns}")
                             return
 
-
                     # Updates the low-level waypoints towards the next location
                     if np.linalg.norm(local_enu_position - self.next_location) < self.distance_threshold:
                         # Input to the agent is normalized global ENU positions
                         observation = self.state / self.normalize_factor
-                        goal = (self.waypoints[self.current_wp_index][:2].copy() - self.origin_offset) / self.normalize_factor 
+                        goal = (
+                            self.waypoints[self.current_wp_index][:2].copy() - self.origin_offset
+                        ) / self.normalize_factor
                         state = {
                             "observation": observation,
                             "goal": goal,
@@ -486,7 +486,7 @@ class DroneController(Node):
                         # Output of applying the action is in global ENU frame
                         observation = self.step(action)
                         observation += self.origin_offset
-                        
+
                         self.next_location = observation - self.home
 
                     for drone_ns, other_position in self.other_agent_positions.items():
@@ -577,7 +577,8 @@ def main(args=None):
     drone_ids = [int(x) for x in args.drone_ids.split(',')]
     drone_namespaces = args.drone_namespaces.split(',')
     drone_nodes = [
-        DroneController(ns, nid, len(drone_ids), (args.config_file, args.ckpt_file, args.walls_file), gz_version=args.gz_version)
+        DroneController(ns, nid, len(drone_ids), (args.config_file, args.ckpt_file, args.walls_file),
+                        gz_version=args.gz_version)
         for _, (ns, nid) in enumerate(zip(drone_namespaces, drone_ids))
     ]
 

@@ -1,35 +1,34 @@
 import os
-from pathlib import Path
-
+import yaml
 import numpy as np
-from ament_index_python import get_package_share_directory
+from pathlib import Path
+from jinja2 import Environment, FileSystemLoader
+
 from launch_ros.actions import Node
 from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
+from ament_index_python import get_package_share_directory
 from launch.event_handlers import OnProcessStart, OnProcessExit
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, ExecuteProcess, RegisterEventHandler, TimerAction
 
 # Source the ros opt
-# Source the px4_msgs/ ros2_ws
+# Source the px4_msgs/ ros2_ws / crazyswarm_ws
 # Colcon build this code
 # Source this code
-# Source the gazebo-classic inside PX4 --> source ~/Developer/PX4-Autopilot/Tools/simulation/gazebo-classic/setup_gazebo.bash ~/Developer/PX4-Autopilot/ ~/Developer/PX4-Autopilot/build/px4_sitl_default/
+# Source the gazebo-classic inside PX4 -->
+#   source ~/Developer/PX4-Autopilot/Tools/simulation/gazebo-classic/setup_gazebo.bash
+#   ~/Developer/PX4-Autopilot/ ~/Developer/PX4-Autopilot/build/px4_sitl_default/
 # Run the ros2 launch script
-
-# Denormalizing: [0.50259066 0.26878574]
-# [wall_spawner-1] Denormalized: [7.53886  4.031786]
-# [wall_spawner-1] Before adjusting:  [array([7.53886 , 4.031786, 2.      ], dtype=float32)]
-# [wall_spawner-1] After adjusting:  [[ 0.03885984 -3.46821404  2.        ]]
 
 
 def spawn_drones(context, agent_idx, agent_x, agent_y, agent_z=1.0):
     actions = []
-    
+
     px4_src = LaunchConfiguration('px4_src_path').perform(context)
     px4_target = LaunchConfiguration('px4_target').perform(context)
-    
+
     px4_build_path = f"{px4_src}/build/{px4_target}"
-    
+
     px4_bin = f"{px4_build_path}/bin/px4"
     px4_work_dir = f"{px4_build_path}/rootfs/{agent_idx}"
 
@@ -43,7 +42,7 @@ def spawn_drones(context, agent_idx, agent_x, agent_y, agent_z=1.0):
 
     jinja_cmd = ExecuteProcess(
         cmd=[
-            'python3', 
+            'python3',
             px4_src + '/Tools/simulation/gazebo-classic/sitl_gazebo-classic/scripts/jinja_gen.py',
             px4_src + '/Tools/simulation/gazebo-classic/sitl_gazebo-classic/models/iris/iris.sdf.jinja',
             px4_src + '/Tools/simulation/gazebo-classic/sitl_gazebo-classic',
@@ -61,18 +60,74 @@ def spawn_drones(context, agent_idx, agent_x, agent_y, agent_z=1.0):
     actions.append(jinja_cmd)
 
     gz_cmd = ExecuteProcess(
-        cmd=['gz', 'model', '--spawn-file', f'/tmp/iris_{agent_idx}.sdf', '--model-name', f'iris_{agent_idx}', '-x', str(agent_x), '-y', str(agent_y), '-z', str(agent_z)],
+        cmd=['gz', 'model',
+             '--spawn-file', f'/tmp/iris_{agent_idx}.sdf',
+             '--model-name', f'iris_{agent_idx}',
+             '-x', str(agent_x),
+             '-y', str(agent_y),
+             '-z', str(agent_z)
+             ],
         name='gz_spawn',
         output='screen',
     )
     actions.append(gz_cmd)
     return actions
 
+
+def render_crazyflie_models(context, *args, **kwargs):
+    num_drones = int(LaunchConfiguration('num_drones').perform(context))
+    template_path = Path(LaunchConfiguration('model_jinja').perform(context))
+
+    env = Environment(
+        loader=FileSystemLoader(str(template_path.parent)),
+        keep_trailing_newline=True,
+        autoescape=False,
+    )
+    template = env.get_template(template_path.name)
+
+    out_paths = []
+    for drone_id in range(1, num_drones + 1):
+        ns = f'crazyflie_{drone_id}'
+        rendered = template.render(namespace=ns)
+        out_file = Path(template_path.parent) / f'{ns}.sdf'
+        out_file.write_text(rendered)
+        out_paths.append(str(out_file))
+
+    context.launch_configurations['rendered_sdfs'] = ';'.join(out_paths)
+    return []
+
+
+def spawn_crazyflies(context, starts):
+    num_drones = int(LaunchConfiguration('num_drones').perform(context))
+    sdfs = context.launch_configurations['rendered_sdfs'].split(';')
+    z_start = 1.0
+    actions = []
+    for idx in range(1, num_drones + 1):
+        x, y = float(starts[idx - 1, 0]), float(starts[idx - 1, 1])
+        ns = Path(sdfs[idx - 1]).stem
+        spawn = Node(
+            package='ros_gz_sim',
+            executable='create',
+            name=f'spawn_{ns}',
+            arguments=[
+                '--world', 'demo_walls',
+                '--file',   f'file://{sdfs[idx - 1]}',
+                '--name',   ns,
+                '--allow-renaming', 'true',
+                '--x', str(x), '--y', str(y), '--z', str(z_start),
+            ],
+            output='screen'
+        )
+        actions.append(spawn)
+    return actions
+
+
 def spawn_processes(context, *args, **kwargs):
     gz_version = LaunchConfiguration('gz_version').perform(context)
     world_file = LaunchConfiguration('world_file').perform(context)
-    config_file = LaunchConfiguration('config_file').perform(context)
     num_drones = int(LaunchConfiguration('num_drones').perform(context))
+    use_crazyswarm = LaunchConfiguration('use_crazyswarm').perform(context)
+    config_file = LaunchConfiguration('config_file').perform(context)
     illustration_pb_file = LaunchConfiguration('illustration_pb_file').perform(context)
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
@@ -86,79 +141,159 @@ def spawn_processes(context, *args, **kwargs):
         raise RuntimeError("Mismatch in start count")
     walls_file = world_file.replace(suffix, '_walls_matrix.npy')
 
-    actions = []
     z_start = 1.0
     prev_action = None
+    actions = []
 
-    if gz_version == 'classic':
-        updated_world_file = world_file.replace(suffix, '_walls' + suffix)
-        gzserver_cmd = ExecuteProcess(
-            cmd=[
-                'gzserver', f'{updated_world_file}', '--verbose', '-s', 'libgazebo_ros_init.so', '-s', 'libgazebo_ros_factory.so' 
-            ],
-            name='gzserver_launch',
-            output='screen'
-        )
-        actions.append(gzserver_cmd)
-
-        for idx in range(1, num_drones + 1):
-            x, y = float(starts[idx-1, 0]), float(starts[idx-1, 1])
-            spawn_drone_cmd = OpaqueFunction(function=spawn_drones, args=[idx, x, y, z_start])
-            timed_action = TimerAction(period=5.0, actions=[spawn_drone_cmd])
-            actions.append(timed_action)
-
-        gzclient_cmd = ExecuteProcess(
-            cmd=['gzclient'],
-            name='gzclient_cmd',
-            output='screen',
-        )
-        actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=gzserver_cmd, on_start=[gzclient_cmd]),
-        ))
-        prev_action = gzclient_cmd
-           
-    elif gz_version == 'harmonic':
-        env = os.environ.copy()
-        env['PX4_SIM_MODEL'] = 'gz_x500'
-        env['PX4_GZ_WORLD'] = Path(world_file).stem + '_walls'
-        px4_bin = LaunchConfiguration('px4_bin_path').perform(context)
-
-        for idx in range(num_drones):
-            x, y = float(starts[idx, 0]), float(starts[idx, 1])
-            env['PX4_GZ_MODEL_POSE'] = f"{x},{y},{z_start}"
-
-            px4 = ExecuteProcess(
-                cmd=[px4_bin, '-i', str(idx+1)],
-                env=env,  # type: ignore
-                name=f'px4_{idx+1}_sitl',
+    if use_crazyswarm == 'False':
+        if gz_version == 'classic':
+            updated_world_file = world_file.replace(suffix, '_walls' + suffix)
+            gzserver_cmd = ExecuteProcess(
+                cmd=[
+                    'gzserver',
+                    f'{updated_world_file}',
+                    '--verbose',
+                    '-s',
+                    'libgazebo_ros_init.so',
+                    '-s',
+                    'libgazebo_ros_factory.so'
+                ],
+                name='gzserver_launch',
                 output='screen'
             )
+            actions.append(gzserver_cmd)
 
-            if idx == 0:
-                actions.append(px4)
-                prev_action = px4
-            else:
-                timed_action = TimerAction(
-                    period=3.0,
-                    actions=[px4],
+            for idx in range(1, num_drones + 1):
+                x, y = float(starts[idx-1, 0]), float(starts[idx-1, 1])
+                spawn_drone_cmd = OpaqueFunction(function=spawn_drones, args=[idx, x, y, z_start])
+                timed_action = TimerAction(period=5.0, actions=[spawn_drone_cmd])
+                actions.append(timed_action)
+
+            gzclient_cmd = ExecuteProcess(
+                cmd=['gzclient'],
+                name='gzclient_cmd',
+                output='screen',
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=gzserver_cmd, on_start=[gzclient_cmd]),
+            ))
+            prev_action = gzclient_cmd
+
+        elif gz_version == 'harmonic' and use_crazyswarm == 'False':
+            env = os.environ.copy()
+            env['PX4_SIM_MODEL'] = 'gz_x500'
+            env['PX4_GZ_WORLD'] = Path(world_file).stem + '_walls'
+            px4_bin = LaunchConfiguration('px4_bin_path').perform(context)
+
+            for idx in range(num_drones):
+                x, y = float(starts[idx, 0]), float(starts[idx, 1])
+                env['PX4_GZ_MODEL_POSE'] = f"{x},{y},{z_start}"
+
+                px4 = ExecuteProcess(
+                    cmd=[px4_bin, '-i', str(idx+1)],
+                    env=env,  # type: ignore
+                    name=f'px4_{idx+1}_sitl',
+                    output='screen'
                 )
-                actions.append(
-                    timed_action
-                )
-                prev_action = px4
+
+                if idx == 0:
+                    actions.append(px4)
+                    prev_action = px4
+                else:
+                    timed_action = TimerAction(
+                        period=3.0,
+                        actions=[px4],
+                    )
+                    actions.append(
+                        timed_action
+                    )
+                    prev_action = px4
+
+        if num_drones > 0:
+            microxrce_agent_cmd = ExecuteProcess(
+                cmd=[
+                    'MicroXRCEAgent', 'udp4', '--port', '8888'
+                ],
+                name='microxrce_agent',
+                output='screen'
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=prev_action, on_start=[microxrce_agent_cmd]),
+            ))
+
+            waypoint_generator = Node(
+                package="rbmapf_gzsim",
+                executable="waypoint_generator",
+                name="waypoint_generator",
+                output="screen",
+                arguments=[
+                    '--num_agents', str(num_drones),
+                    '--config_file', config_file,
+                    '--illustration_pb_file', illustration_pb_file,
+                    '--constrained_ckpt_file', constrained_ckpt_file,
+                    '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+                ],
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=microxrce_agent_cmd, on_start=[waypoint_generator]),
+            ))
+
+            drone_ids = ','.join(str(i + 2) for i in range(num_drones))
+            drone_namespaces = ','.join(f'/px4_{i + 1}' for i in range(num_drones))
+            px4_drone_control = Node(
+                package="rbmapf_gzsim",
+                executable="px4_drone_control",
+                name="px4_drone_control",
+                output="screen",
+                arguments=[
+                    '--drone_ids', drone_ids,
+                    '--drone_namespaces', drone_namespaces,
+                    '--config_file', config_file,
+                    '--ckpt_file', constrained_ckpt_file,
+                    '--walls_file', walls_file,
+                    '--gz_version', gz_version,
+                ]
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=microxrce_agent_cmd, on_start=[px4_drone_control]),
+            ))
+
+            rviz_config = os.path.join(
+                get_package_share_directory('rbmapf_gzsim'),
+                'launch',
+                'multi_drone.rviz'
+            )
+            print(f"RViz config file: {rviz_config}")
+            rviz = Node(
+                package='rviz2',
+                executable='rviz2',
+                name='rviz2',
+                output='screen',
+                arguments=['-d', rviz_config]
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=px4_drone_control, on_start=[rviz]),
+            ))
     else:
-        raise RuntimeError('Incorrect gz_version provided. Options include classic or harmonic')
+        actions.append(
+            OpaqueFunction(function=render_crazyflie_models)
+        )
+        updated_world_file = world_file.replace(suffix, '_walls' + suffix)
 
-    if num_drones > 0:
-        microxrce_agent_cmd = ExecuteProcess(
+        gz_sim = ExecuteProcess(
             cmd=[
-                'MicroXRCEAgent', 'udp4', '--port', '8888'
+                'ros2', 'launch',
+                'ros_gz_sim',
+                'gz_sim.launch.py',
+                'gz_args:=' + updated_world_file + ' -r',
             ],
-            name='microxrce_agent',
             output='screen'
         )
+        actions.append(gz_sim)
+
+        spawn_d = TimerAction(period=2.0, actions=[OpaqueFunction(function=spawn_crazyflies, args=[starts])])
         actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=prev_action, on_start=[microxrce_agent_cmd]),
+            OnProcessStart(target_action=gz_sim, on_start=[spawn_d]),
         ))
 
         waypoint_generator = Node(
@@ -173,47 +308,122 @@ def spawn_processes(context, *args, **kwargs):
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
+            parameters=[{'interface': 'crazyflie', 'use_sim_time': True}],
         )
         actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=microxrce_agent_cmd, on_start=[waypoint_generator]),
+            OnProcessStart(target_action=gz_sim, on_start=[waypoint_generator]),
         ))
 
-        drone_ids = ','.join(str(i + 2) for i in range(num_drones))
-        drone_namespaces = ','.join(f'/px4_{i + 1}' for i in range(num_drones))
-        multi_drone_control = Node(
+        pkg_project_bringup = get_package_share_directory('rbmapf_gzsim')
+        test_bridge_yaml = os.path.join(pkg_project_bringup, 'config', 'gzsim_bridge.yaml')
+        with open(test_bridge_yaml, 'r') as f:
+            bridge_config_template_str = f.read()
+
+        bridge = None
+        for idx in range(1, num_drones + 1):
+            bridge_config_str = bridge_config_template_str.replace('{model_name}', f'crazyflie_{idx}')
+            with open(os.path.join(pkg_project_bringup, 'config', f'bridge_config_crazyflie_{idx}.yaml'), 'w') as f:
+                f.write(bridge_config_str)
+            bridge = Node(
+                package='ros_gz_bridge',
+                executable='parameter_bridge',
+                name=f'ros_gz_bridge_crazyflie_{idx}',
+                parameters=[{
+                    'config_file': os.path.join(pkg_project_bringup, 'config', f'bridge_config_crazyflie_{idx}.yaml'),
+                    'use_sim_time': True,
+                }],
+                output='screen'
+            )
+            cf_drone_control = Node(
+                package="rbmapf_gzsim",
+                executable="crazyflie_drone_control",
+                name=f"crazyflie_drone_control_{idx}",
+                output="screen",
+                parameters=[{
+                    'drone_id': idx,
+                    'drone_ns': f'/crazyflie_{idx}',
+                    'files': [config_file, constrained_ckpt_file, walls_file],
+                    'use_sim_time': True
+                }],
+            )
+
+            timed_actions = TimerAction(period=2.0, actions=[cf_drone_control, bridge])
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=waypoint_generator, on_start=[timed_actions]),
+            ))
+
+        drone_ids = ','.join(str(i + 1) for i in range(num_drones))
+        drone_namespaces = ','.join(f'/crazyflie_{i + 1}' for i in range(num_drones))
+
+        multi_tf = Node(
             package="rbmapf_gzsim",
-            executable="multi_drone_control",
-            name="multi_drone_control",
+            executable="multi_tf_broadcaster",
+            name="multi_tf_broadcaster",
             output="screen",
-            arguments=[
-                '--drone_ids', drone_ids,
-                '--drone_namespaces', drone_namespaces,
-                '--config_file', config_file,
-                '--ckpt_file', constrained_ckpt_file,
-                '--walls_file', walls_file,
-                '--gz_version', gz_version,
-            ]
+            parameters=[{'namespaces': drone_namespaces, 'use_sim_time': True}],
         )
         actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=microxrce_agent_cmd, on_start=[multi_drone_control]),
+            OnProcessStart(target_action=gz_sim, on_start=[multi_tf]),
         ))
+
+        # cf_drone_control = Node(
+        #     package="rbmapf_gzsim",
+        #     executable="crazyflie_drone_control",
+        #     name="crazyflie_drone_control",
+        #     output="screen",
+        #     arguments=[
+        #         '--drone_ids', drone_ids,
+        #         '--drone_namespaces', drone_namespaces,
+        #         '--config_file', config_file,
+        #         '--ckpt_file', constrained_ckpt_file,
+        #         '--walls_file', walls_file,
+        #     ],
+        #     parameters=[{'use_sim_time': True}],
+        # )
+        # assert bridge is not None, "Bridge node should be created before cf_drone_control"
+        # actions.append(RegisterEventHandler(
+        #     OnProcessStart(target_action=multi_tf, on_start=[cf_drone_control]),
+        # ))
 
         rviz_config = os.path.join(
             get_package_share_directory('rbmapf_gzsim'),
             'launch',
             'multi_drone.rviz'
         )
-        print(f"RViz config file: {rviz_config}")
         rviz = Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',
             output='screen',
-            arguments=['-d', rviz_config]
+            arguments=['-d', rviz_config],
+            parameters=[{
+                'use_sim_time': True,
+            }],
         )
         actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=multi_drone_control, on_start=[rviz]),
+            OnProcessStart(target_action=gz_sim, on_start=[rviz]),
         ))
+        wall_rviz_node = Node(
+                package="rbmapf_gzsim",
+                executable="wall_rviz_viz",
+                name="wall_rviz_viz",
+                output="screen",
+                arguments=[
+                    '--num_agents', str(LaunchConfiguration('num_drones').perform(context)),
+                    '--sdf_path', world_file,
+                    '--config_file', config_file,
+                    '--illustration_pb_file', illustration_pb_file,
+                    '--constrained_ckpt_file', constrained_ckpt_file,
+                    '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+                ],
+                parameters=[{'use_sim_time': True}],
+            )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=rviz, on_start=[wall_rviz_node]),
+        ))
+
+    if gz_version not in ['classic', 'harmonic']:
+        raise RuntimeError('Incorrect gz_version provided. Options include classic or harmonic')
 
     return actions
 
@@ -240,6 +450,7 @@ def launch_setup(context, *args, **kwargs):
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
+            parameters=[{'use_sim_time': True}],
         )
     actions.append(wall_spawner_node)
 
@@ -256,51 +467,22 @@ def launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    declare_gz = DeclareLaunchArgument(
-        'gz_version', default_value='harmonic', description='Gazebo version to run. Options include classic or harmonic'
-    )
-    declare_num_drones = DeclareLaunchArgument(
-        'num_drones', default_value='3', description='Number of x500 drones to spawn'
-    )
-    declare_px4_target = DeclareLaunchArgument(
-        'px4_target',
-        description='Path target'
-    )
-    declare_px4_src_path = DeclareLaunchArgument(
-        'px4_src_path',
-        description='Path to the PX4 source'
-    )
-    declare_config_file = DeclareLaunchArgument(
-        'config_file',
-        description='Path to control config YAML'
-    )
-    declare_illustration_pb_file = DeclareLaunchArgument(
-        'illustration_pb_file',
-        description='Path to illustration PB file'
-    )
-    declare_constrained_ckpt_file = DeclareLaunchArgument(
-        'constrained_ckpt_file',
-        description='Path to constrained checkpoint file'
-    )
-    declare_unconstrained_ckpt_file = DeclareLaunchArgument(
-        'unconstrained_ckpt_file',
-        description='Path to unconstrained checkpoint file'
-    )
-    declare_world_file = DeclareLaunchArgument(
-        'world_file',
-        description='Path to the world file'
-    )
+    ld = LaunchDescription()
 
-    return LaunchDescription([
-        declare_gz,
-        declare_num_drones,
-        declare_world_file,
-        declare_config_file,
-        declare_px4_target,
-        declare_px4_src_path,
-        declare_illustration_pb_file,
-        declare_constrained_ckpt_file,
-        declare_unconstrained_ckpt_file,
-        OpaqueFunction(function=launch_setup)
-    ])
+    params_file = get_package_share_directory('rbmapf_gzsim') + '/config/parameters.yaml'
+    specs = yaml.safe_load(Path(params_file).read_text())
 
+    for name, meta in specs.items():
+        default = meta.get("default")
+        description = meta.get("description", "")
+        if default is None:
+            ld.add_action(DeclareLaunchArgument(name, description=description))
+        else:
+            ld.add_action(DeclareLaunchArgument(
+                name,
+                default_value=str(default),
+                description=description
+            ))
+
+    ld.add_action(OpaqueFunction(function=launch_setup))
+    return ld
