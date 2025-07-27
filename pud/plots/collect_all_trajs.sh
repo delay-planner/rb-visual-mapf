@@ -1,11 +1,8 @@
 #!/bin/bash
 
-env=$1
+DO_SAMPLE=$1
 num_samples=50
-config_file=$2
-agents=(1 5 10 20)
-constrained_ckpt_file=$4
-unconstrained_ckpt_file=$3
+agents=(1 5 10)
 problem_types=("hard" "medium" "easy")
 method_types=(
     "collect_bounds_data"
@@ -17,64 +14,120 @@ method_types=(
     "full_constrained_reward_search" 
     "full_constrained_risk_search" 
     "lagrangian_search" 
-    "biobjective_search"
+    # "biobjective_search"
     "risk_budgeted_search"
     "risk_bounded_uniform_search"
     "risk_bounded_utility_search"
-    "risk_bounded_inverse_utility_search"
+    # "risk_bounded_inverse_utility_search"
 )
-
-env_options=("centerdot" "sc0_staging_20" "sc2_staging_08" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15") 
-if [[ ! " ${env_options[@]} " =~ " ${env} " ]]; then
-    echo $baseline
-    echo "Error: Invalid env provided. Please choose from: ${env_options[*]}"
-    exit 1
-fi
-
-if [[ $env == *"staging"* ]]; then
-    visual="--visual"
-    agents=(1 5 10)
-else
-    visual=""
-fi
 
 collect_trajectories() {
     while true; do
-        python -u pud/plots/collect_safe_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --load_problem_set --problem_set_file ${problem_set_file} --num_samples ${num_samples} --method_type ${method_type} --num_agents ${num_agent} ${visual} --traj_difficulty ${problem_type}
+        python -u pud/plots/collect_safe_trajectory_records.py              \
+            --config_file "$config_file"                                    \
+            --unconstrained_ckpt_file "$unconstrained_ckpt_file"            \
+            --constrained_ckpt_file "$constrained_ckpt_file"                \
+            --load_problem_set --problem_set_file "$problem_set_file"       \
+            --num_samples "$num_samples"                                    \
+            --method_type "$method_type"                                    \
+            --num_agents "$num_agent"                                      \
+            --traj_difficulty "$problem_type"                               \
+            "$visual"
         EXIT_CODE=$?
         if [ $EXIT_CODE -eq 0 ]; then
-            echo "Script completed successfully."
+            echo " OK: ${method_type} (${num_agent} agents, ${problem_type}) completed successfully."
             break
         fi
-        echo "Script crashed with exit code $EXIT_CODE. Restarting..." >&2
+        echo "Script crashed with exit code $EXIT_CODE. Restarting ${method_type} (${num_agent} agents, ${problem_type})..." >&2
     sleep 1
     done
 }
 
-# Sample problems
-if [[ $5 = true ]]; then
-    for problem_type in "${problem_types[@]}"; do
-        printf "%*s\n" 100 | tr ' ' '*'
-        echo "Sampling problems for ${env} on ${problem_type} problems"
-        python -u pud/plots/collect_safe_trajectory_records.py --config_file ${config_file} --unconstrained_ckpt_file ${unconstrained_ckpt_file} --constrained_ckpt_file ${constrained_ckpt_file} --collect_trajs --traj_difficulty ${problem_type} --num_samples ${num_samples} --num_agents 25 ${visual}
-    done
-fi
+envs=("sc0_staging_20" "sc2_staging_08" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15" "centerdot") 
 
-# Collect the trajectories
-for problem_type in "${problem_types[@]}"; do
-    problem_set_file=pud/plots/data/${env}/${problem_type}.npz
-    for num_agent in "${agents[@]}"; do
-        printf "%*s\n" 100 | tr ' ' '-'
-        echo "Collecting trajectories for ${env} with ${num_agent} agents on ${problem_type} problems"
-        printf "%*s\n" 100 | tr ' ' '-'
-        for method_type in "${method_types[@]}"; do
-            printf "%*s\n" 50 | tr ' ' '*'
-            echo "Method type: ${method_type}"
-            printf "%*s\n" 50 | tr ' ' '*'
-            if [[ $method_type == *"ds" ]] && [ $num_agent -eq 1 ]; then
-                continue
-            fi
-            collect_trajectories
+for env in "${envs[@]}"; do
+    echo
+    echo "=============================================="
+    echo "  👉  Processing environment: $env"
+    echo "=============================================="
+
+    case "$env" in
+        "sc0_staging_20")
+            config_file=models/SC0_Staging_20/lag/2024-09-11-19-43-42/bk/config.yaml
+            unconstrained_ckpt_file=models/SC0_Staging_20/ckpt/ckpt_0482500
+            constrained_ckpt_file=models/SC0_Staging_20/lag/2024-09-11-19-43-42/ckpt/ckpt_0250000
+            ;;
+        "sc3_staging_05")
+            config_file=models/SC3_Staging_05/lag/2024-09-11-19-44-18/bk/config.yaml
+            unconstrained_ckpt_file=models/SC3_Staging_05/ckpt/ckpt_0490000
+            constrained_ckpt_file=models/SC3_Staging_05/lag/2024-09-11-19-44-18/ckpt/ckpt_0207500
+            ;;
+        "sc3_staging_11")
+            config_file=models/SC3_Staging_11/lag/2024-09-11-15-53-23/bk/config.yaml
+            unconstrained_ckpt_file=models/SC3_Staging_11/ckpt/ckpt_0722500
+            constrained_ckpt_file=models/SC3_Staging_11/lag/2024-09-11-15-53-23/ckpt/ckpt_0460000
+            ;;
+        "sc3_staging_15")
+            config_file=models/SC3_Staging_15/lag/2024-09-11-19-44-43/bk/config.yaml
+            unconstrained_ckpt_file=models/SC3_Staging_15/ckpt/ckpt_0565000
+            constrained_ckpt_file=models/SC3_Staging_15/lag/2024-09-11-19-44-43/ckpt/ckpt_0247500
+            ;;
+        "sc2_staging_08")
+            config_file=models/SC2_Staging_08/lag/2024-09-11-19-42-08/bk/config.yaml
+            unconstrained_ckpt_file=models/SC2_Staging_08/ckpt/ckpt_0325000
+            constrained_ckpt_file=models/SC2_Staging_08/lag/2024-09-11-19-42-08/ckpt/ckpt_0255000
+            ;;
+        "centerdot")
+            config_file=models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml
+            unconstrained_ckpt_file=models/CenterDot/ckpt/ckpt_0300000
+            constrained_ckpt_file=models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000
+            ;;
+        *)
+            echo "❌  Unknown environment '$env' – skipping."
+            continue
+            ;;
+    esac
+
+
+    if [[ $env == *"staging"* ]]; then
+        visual="--visual"
+    else
+        visual=""
+    fi
+
+
+    if [[ $DO_SAMPLE = true ]]; then
+        for problem_type in "${problem_types[@]}"; do
+            printf "%*s\n" 100 | tr ' ' '*'
+            echo "Sampling problems for ${env} on ${problem_type} problems"
+            python -u pud/plots/collect_safe_trajectory_records.py              \
+            --config_file "$config_file"                                        \
+            --unconstrained_ckpt_file "$unconstrained_ckpt_file"                \
+            --constrained_ckpt_file "$constrained_ckpt_file"                    \
+            --collect_trajs --traj_difficulty "$problem_type"                   \
+            --num_samples "$num_samples" --num_agents 25 "$visual"
+        done
+    fi
+
+    # Collect the trajectories
+    for problem_type in "${problem_types[@]}"; do
+        problem_set_file=pud/plots/data/${env}/${problem_type}.npz
+        for num_agent in "${agents[@]}"; do
+            printf "%*s\n" 100 | tr ' ' '-'
+            echo "Collecting trajectories for ${env} with ${num_agent} agents on ${problem_type} problems"
+            printf "%*s\n" 100 | tr ' ' '-'
+            for method_type in "${method_types[@]}"; do
+                printf "%*s\n" 50 | tr ' ' '*'
+                echo "Method type: ${method_type}"
+                printf "%*s\n" 50 | tr ' ' '*'
+                collect_trajectories
+            done
         done
     done
+
+    echo "Finished processing environment: $env"
+    echo "=============================================="
 done
+
+echo "All environments processed."
+
