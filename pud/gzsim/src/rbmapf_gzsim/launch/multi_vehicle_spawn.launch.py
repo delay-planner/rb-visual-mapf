@@ -100,7 +100,7 @@ def render_crazyflie_models(context, *args, **kwargs):
 def spawn_crazyflies(context, starts):
     num_drones = int(LaunchConfiguration('num_drones').perform(context))
     sdfs = context.launch_configurations['rendered_sdfs'].split(';')
-    z_start = 1.0
+    z_start = 0.1
     actions = []
     for idx in range(1, num_drones + 1):
         x, y = float(starts[idx - 1, 0]), float(starts[idx - 1, 1])
@@ -110,7 +110,7 @@ def spawn_crazyflies(context, starts):
             executable='create',
             name=f'spawn_{ns}',
             arguments=[
-                '--world', 'demo_walls',
+                '--world', 'default_walls',
                 '--file',   f'file://{sdfs[idx - 1]}',
                 '--name',   ns,
                 '--allow-renaming', 'true',
@@ -126,9 +126,10 @@ def spawn_processes(context, *args, **kwargs):
     gz_version = LaunchConfiguration('gz_version').perform(context)
     world_file = LaunchConfiguration('world_file').perform(context)
     num_drones = int(LaunchConfiguration('num_drones').perform(context))
-    use_crazyswarm = LaunchConfiguration('use_crazyswarm').perform(context)
     config_file = LaunchConfiguration('config_file').perform(context)
-    illustration_pb_file = LaunchConfiguration('illustration_pb_file').perform(context)
+    habitat = LaunchConfiguration('habitat').perform(context) == 'True'
+    use_crazyflies = LaunchConfiguration('use_crazyflies').perform(context)
+    problem_set_file = LaunchConfiguration('problem_set_file').perform(context)
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
 
@@ -145,7 +146,7 @@ def spawn_processes(context, *args, **kwargs):
     prev_action = None
     actions = []
 
-    if use_crazyswarm == 'False':
+    if use_crazyflies == 'False':
         if gz_version == 'classic':
             updated_world_file = world_file.replace(suffix, '_walls' + suffix)
             gzserver_cmd = ExecuteProcess(
@@ -179,7 +180,7 @@ def spawn_processes(context, *args, **kwargs):
             ))
             prev_action = gzclient_cmd
 
-        elif gz_version == 'harmonic' and use_crazyswarm == 'False':
+        elif gz_version == 'harmonic' and use_crazyflies == 'False':
             env = os.environ.copy()
             env['PX4_SIM_MODEL'] = 'gz_x500'
             env['PX4_GZ_WORLD'] = Path(world_file).stem + '_walls'
@@ -227,9 +228,10 @@ def spawn_processes(context, *args, **kwargs):
                 name="waypoint_generator",
                 output="screen",
                 arguments=[
-                    '--num_agents', str(num_drones),
+                    '--visual', str(habitat),
                     '--config_file', config_file,
-                    '--illustration_pb_file', illustration_pb_file,
+                    '--num_agents', str(num_drones),
+                    '--problem_set_file', problem_set_file,
                     '--constrained_ckpt_file', constrained_ckpt_file,
                     '--unconstrained_ckpt_file', unconstrained_ckpt_file,
                 ],
@@ -302,9 +304,10 @@ def spawn_processes(context, *args, **kwargs):
             name="waypoint_generator",
             output="screen",
             arguments=[
-                '--num_agents', str(num_drones),
+                '--visual', str(habitat),
                 '--config_file', config_file,
-                '--illustration_pb_file', illustration_pb_file,
+                '--num_agents', str(num_drones),
+                '--problem_set_file', problem_set_file,
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
@@ -313,6 +316,25 @@ def spawn_processes(context, *args, **kwargs):
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=gz_sim, on_start=[waypoint_generator]),
         ))
+
+        drone_ids = ','.join(str(i + 1) for i in range(num_drones))
+        drone_namespaces = ','.join(f'/crazyflie_{i + 1}' for i in range(num_drones))
+
+        if habitat:
+            habitat_sensor_node = Node(
+                package="rbmapf_gzsim",
+                executable="habitat_sensor_node",
+                name="habitat_sensor_node",
+                output="screen",
+                parameters=[{
+                    'use_sim_time': True,
+                    'config_file': config_file,
+                    'drone_namespaces': drone_namespaces,
+                }],
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=waypoint_generator, on_start=[habitat_sensor_node]),
+            ))
 
         pkg_project_bringup = get_package_share_directory('rbmapf_gzsim')
         test_bridge_yaml = os.path.join(pkg_project_bringup, 'config', 'gzsim_bridge.yaml')
@@ -341,6 +363,7 @@ def spawn_processes(context, *args, **kwargs):
                 output="screen",
                 parameters=[{
                     'drone_id': idx,
+                    'visual': str(habitat),
                     'drone_ns': f'/crazyflie_{idx}',
                     'files': [config_file, constrained_ckpt_file, walls_file],
                     'use_sim_time': True
@@ -352,9 +375,6 @@ def spawn_processes(context, *args, **kwargs):
                 OnProcessStart(target_action=waypoint_generator, on_start=[timed_actions]),
             ))
 
-        drone_ids = ','.join(str(i + 1) for i in range(num_drones))
-        drone_namespaces = ','.join(f'/crazyflie_{i + 1}' for i in range(num_drones))
-
         multi_tf = Node(
             package="rbmapf_gzsim",
             executable="multi_tf_broadcaster",
@@ -365,25 +385,6 @@ def spawn_processes(context, *args, **kwargs):
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=gz_sim, on_start=[multi_tf]),
         ))
-
-        # cf_drone_control = Node(
-        #     package="rbmapf_gzsim",
-        #     executable="crazyflie_drone_control",
-        #     name="crazyflie_drone_control",
-        #     output="screen",
-        #     arguments=[
-        #         '--drone_ids', drone_ids,
-        #         '--drone_namespaces', drone_namespaces,
-        #         '--config_file', config_file,
-        #         '--ckpt_file', constrained_ckpt_file,
-        #         '--walls_file', walls_file,
-        #     ],
-        #     parameters=[{'use_sim_time': True}],
-        # )
-        # assert bridge is not None, "Bridge node should be created before cf_drone_control"
-        # actions.append(RegisterEventHandler(
-        #     OnProcessStart(target_action=multi_tf, on_start=[cf_drone_control]),
-        # ))
 
         rviz_config = os.path.join(
             get_package_share_directory('rbmapf_gzsim'),
@@ -397,7 +398,7 @@ def spawn_processes(context, *args, **kwargs):
             output='screen',
             arguments=['-d', rviz_config],
             parameters=[{
-                'use_sim_time': True,
+                'use_sim_time': False,
             }],
         )
         actions.append(RegisterEventHandler(
@@ -410,9 +411,10 @@ def spawn_processes(context, *args, **kwargs):
                 output="screen",
                 arguments=[
                     '--num_agents', str(LaunchConfiguration('num_drones').perform(context)),
+                    '--visual', str(habitat),
                     '--sdf_path', world_file,
                     '--config_file', config_file,
-                    '--illustration_pb_file', illustration_pb_file,
+                    '--problem_set_file', problem_set_file,
                     '--constrained_ckpt_file', constrained_ckpt_file,
                     '--unconstrained_ckpt_file', unconstrained_ckpt_file,
                 ],
@@ -431,7 +433,8 @@ def spawn_processes(context, *args, **kwargs):
 def launch_setup(context, *args, **kwargs):
     world_file = LaunchConfiguration('world_file').perform(context)
     config_file = LaunchConfiguration('config_file').perform(context)
-    illustration_pb_file = LaunchConfiguration('illustration_pb_file').perform(context)
+    habitat = LaunchConfiguration('habitat').perform(context) == 'True'
+    problem_set_file = LaunchConfiguration('problem_set_file').perform(context)
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
 
@@ -444,9 +447,10 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             arguments=[
                 '--num_agents', str(LaunchConfiguration('num_drones').perform(context)),
+                '--visual', str(habitat),
                 '--sdf_path', world_file,
                 '--config_file', config_file,
-                '--illustration_pb_file', illustration_pb_file,
+                '--problem_set_file', problem_set_file,
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],

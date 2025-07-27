@@ -1,24 +1,24 @@
+import json
 import yaml
 import torch
-# import argparse
 import numpy as np
 from dotmap import DotMap
 
 import rclpy
 from rclpy.node import Node
-# from rclpy.executors import MultiThreadedExecutor
-
-from std_msgs.msg import ColorRGBA
+from cv_bridge import CvBridge
 from nav_msgs.msg import Path, Odometry
 from tf2_ros import TransformBroadcaster
 from builtin_interfaces.msg import Duration
-from std_msgs.msg import Empty, Float32MultiArray
+from rbmapf_interfaces.msg import HabitatObservations  # type: ignore
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA, String, Empty, Float32MultiArray
 from geometry_msgs.msg import PoseStamped, Twist, TransformStamped
 
 from pud.algos.ddpg import GoalConditionedCritic
 from pud.algos.lagrange.drl_ddpg_lag import DRLDDPGLag
+from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 
 
 class DroneController(Node):
@@ -28,16 +28,19 @@ class DroneController(Node):
         self.declare_parameter('files', ['config.yaml', 'ckpt.pth', 'walls.npy'])
         self.declare_parameter('drone_id', 1)
         self.declare_parameter('num_drones', 1)
+        self.declare_parameter('visual', 'False')
         self.declare_parameter('drone_ns', "/crazyflie_1")
 
         drone_ns = self.get_parameter('drone_ns').get_parameter_value().string_value
         drone_id = self.get_parameter('drone_id').get_parameter_value().integer_value
         num_drones = self.get_parameter('num_drones').get_parameter_value().integer_value
         files = self.get_parameter('files').get_parameter_value().string_array_value
+        self.habitat = self.get_parameter('visual').get_parameter_value().string_value.lower() == 'true'
 
         self.node_name = f"drone_controller_{drone_id}"
 
         self.start_flag = False
+        self.habitat_state = None
         self.drone_ns = drone_ns
         self.drone_id = drone_id
         self.num_drones = num_drones
@@ -45,8 +48,9 @@ class DroneController(Node):
         config_file, ckpt_file, walls_file = files
 
         self.walls = np.load(walls_file)
-        self.normalize_factor = np.array([self.walls.shape[0], self.walls.shape[1]])
-        self.origin_offset = -self.normalize_factor / 2.0
+        rows, cols = self.walls.shape
+        self.normalize_factor = np.array([rows, cols]) if not self.habitat else np.ones(2)
+        self.origin_offset = np.array([-cols / 2.0, -rows / 2.0])
 
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
@@ -63,6 +67,8 @@ class DroneController(Node):
         callback_fn = self.waypoint_follower_callback if self.waypoint_follow else self.command_callback
         self.cmd_timer = self.create_timer(0.02, callback_fn)
 
+        self.bridge = CvBridge()
+
         self.kp = 0.5
         self.altitude = 2.0
         self.max_speed = 1.0
@@ -77,12 +83,26 @@ class DroneController(Node):
         self.other_agent_positions = {}
 
     def _init_agent(self, config, ckpt_file):
-        self.agent = DRLDDPGLag(
-            4, 2, 1,
-            CriticCls=GoalConditionedCritic,
-            device=torch.device(config.device),
-            **config.agent,
-        )
+        if not self.habitat:
+            self.agent = DRLDDPGLag(
+                4, 2, 1,
+                CriticCls=GoalConditionedCritic,
+                device=torch.device(config.device),
+                **config.agent,
+            )
+        else:
+            config.agent["action_dim"] = 2  # type: ignore
+            config.agent["max_action"] = float(1.0)  # type: ignore
+            self.agent = LagVisionUVFDDPG(
+                width=config.env.simulator_settings.width,
+                height=config.env.simulator_settings.height,
+                in_channels=4,
+                act_fn=torch.nn.SELU,
+                encoder="VisualEncoder",
+                device=torch.device(config.device),
+                **config.agent.toDict(),
+                cost_kwargs=config.agent_cost_kwargs.toDict(),
+            )
         self.agent.load_state_dict(
             torch.load(ckpt_file, map_location=torch.device(config.device))
         )
@@ -90,6 +110,14 @@ class DroneController(Node):
         self.agent.eval()
 
     def _init_subscribers(self):
+        if self.habitat:
+            # Subscribe to habitat bounds before the waypoints to ensure the bounds are set
+            self.create_subscription(
+                Float32MultiArray,
+                "/habitat/bounds",
+                self.bounds_callback,
+                10
+            )
         self.waypoint_subscriber = self.create_subscription(
             Float32MultiArray,
             f"{self.drone_ns}/waypoints",
@@ -106,6 +134,12 @@ class DroneController(Node):
             Odometry,
             f"{self.drone_ns}/odom",
             self.position_callback,
+            10,
+        )
+        self.create_subscription(
+            HabitatObservations,
+            f"{self.drone_ns}/camera/habitat_observations",
+            lambda msg: self.habitat_observations_callback(msg),
             10,
         )
         for i in range(1, self.num_drones + 1):
@@ -128,6 +162,11 @@ class DroneController(Node):
         self.twist_publisher = self.create_publisher(
             Twist,
             f"{self.drone_ns}/cmd_vel",
+            10
+        )
+        self.state_publisher = self.create_publisher(
+            String,
+            f"{self.drone_ns}/state",
             10
         )
         self.tfbr = TransformBroadcaster(self)
@@ -234,6 +273,31 @@ class DroneController(Node):
 
         self.wall_publisher.publish(marker_array)
 
+    def adjust_position(self, position, to_env_frame=False):
+        # If local is false then the position is the grid position in the global frame
+        # If local is true then the position of the drone in the local frame
+        if not self.habitat:
+            return position + self.origin_offset if to_env_frame else position - self.origin_offset
+        else:
+            if not to_env_frame:
+                habitat_x, habitat_y = -position[1], position[0]
+                grid_x = (
+                    ((habitat_x - self.lower_bounds[2]) / 0.4)
+                    .round()
+                    .astype(int)
+                )
+                grid_y = (
+                    ((habitat_y - self.lower_bounds[0]) / 0.4)
+                    .round()
+                    .astype(int)
+                )
+                position = np.array([grid_x, grid_y, position[2]], dtype=np.float32)
+            else:
+                habitat_x = position[0] * 0.4 + self.lower_bounds[2]
+                habitat_y = position[1] * 0.4 + self.lower_bounds[0]
+                position = np.array([-habitat_y, habitat_x, position[2]], dtype=np.float32)
+            return position
+
     def waypoints_callback(self, msg: Float32MultiArray):
         # Waypoints are in global ENU frame with first entry as home, last entry as goal
         self.current_wp_index = 1
@@ -243,7 +307,8 @@ class DroneController(Node):
         self.home = self.waypoints[0][:2].copy()
         # State needs to be in the coordinate frame that the GCRL policy was trained with
         # i.e origin is bottom left corner of the walls matrix not the origin of simulator!
-        self.state = self.home.copy() - self.origin_offset
+        # self.state = self.home.copy() - self.origin_offset
+        self.state = self.adjust_position(self.home, to_env_frame=False)
         self.next_location = self.home.copy()  # Cannot be zeros as its in global ENU frame
         self.get_logger().info(f"Received {len(self.waypoints)} waypoints")
 
@@ -251,6 +316,23 @@ class DroneController(Node):
         other_waypoints = np.array(msg.data, dtype=np.float32).reshape(-1, 3)
         other_home = other_waypoints[0][:2].copy()
         self.other_agent_homes[drone_ns] = other_home
+
+    def habitat_observations_callback(self, msg: HabitatObservations):
+        goal = self.bridge.imgmsg_to_cv2(msg.goal, desired_encoding='rgba8')
+        observation = self.bridge.imgmsg_to_cv2(msg.observation, desired_encoding='rgba8')
+        self.habitat_state = {
+            "goal": goal,
+            "observation": observation
+        }
+
+    def bounds_callback(self, msg: Float32MultiArray):
+        self.get_logger().info(f"Received bounds: {msg.data}")
+        if len(msg.data) == 6:
+            self.lower_bounds = np.array(msg.data[:3], dtype=np.float32)
+            self.upper_bounds = np.array(msg.data[3:], dtype=np.float32)
+            self.get_logger().info(f"Bounds updated: {self.lower_bounds}, {self.upper_bounds}")
+        else:
+            self.get_logger().error("Received invalid bounds data.")
 
     def start_callback(self, msg):
         self.start_flag = True
@@ -421,17 +503,30 @@ class DroneController(Node):
                     if np.linalg.norm(self.current_position[:2] - self.next_location) < self.distance_threshold:
                         # Input to the agent is normalized global ENU positions
                         observation = self.state / self.normalize_factor
-                        goal = ((target.copy() - self.origin_offset) / self.normalize_factor)
+                        # goal = ((target.copy() - self.origin_offset) / self.normalize_factor)
+                        goal = self.adjust_position(target, to_env_frame=False) / self.normalize_factor
                         state = {
                             "observation": observation,
                             "goal": goal,
                         }
-                        self.get_logger().info(f"State: {state}")
-                        action = self.agent.select_action(state)
-                        self.get_logger().info(f"Action: {action}")
+                        if self.habitat:
+                            state_msg = String()
+                            state_msg.data = json.dumps(state)
+                            self.state_publisher.publish(state_msg)
+                            if self.habitat_state is not None:
+                                action = self.agent.select_action(self.habitat_state)
+                                self.habitat_state = None
+                                self.get_logger().info(f"Habitat Action: {action}")
+                            else:
+                                return
+                        else:
+                            self.get_logger().info(f"State: {state}")
+                            action = self.agent.select_action(state)
+                            self.get_logger().info(f"Action: {action}")
                         # Output of applying the action is in global ENU frame
                         observation = self.step(action)
-                        observation += self.origin_offset
+                        # observation += self.origin_offset
+                        observation = self.adjust_position(observation, to_env_frame=True)
                         self.next_location = observation
 
                         self.get_logger().info(
@@ -496,59 +591,9 @@ class DroneController(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-
-    # parser = argparse.ArgumentParser(description='Multi-drone controller launch')
-    # parser.add_argument(
-    #     '--drone_ids',
-    #     type=str,
-    #     default='1,2',
-    #     help='Comma-separated list of drone system IDs'
-    # )
-    # parser.add_argument(
-    #     '--drone_namespaces',
-    #     type=str,
-    #     default='/crazyflie_1,/crazyflie_2',
-    #     help='Comma-separated list of drone ROS namespaces'
-    # )
-    # parser.add_argument(
-    #     '--config_file',
-    #     type=str,
-    #     help='Path to the configuration file'
-    # )
-    # parser.add_argument(
-    #     '--ckpt_file',
-    #     type=str,
-    #     help='Path to the checkpoint file'
-    # )
-    # parser.add_argument(
-    #     '--walls_file',
-    #     type=str,
-    #     help='Path to the walls file'
-    # )
-    # args, _ = parser.parse_known_args()
-
-    # drone_ids = [int(x) for x in args.drone_ids.split(',')]
-    # drone_namespaces = args.drone_namespaces.split(',')
-    # drone_nodes = [
-    #     DroneController(ns, nid, len(drone_ids), (args.config_file, args.ckpt_file, args.walls_file))
-    #     for _, (ns, nid) in enumerate(zip(drone_namespaces, drone_ids))
-    # ]
-
     drone_controller = DroneController()
     rclpy.spin(drone_controller)
     rclpy.shutdown()
-
-    # try:
-    #     executor = MultiThreadedExecutor()
-    #     for node in drone_nodes:
-    #         executor.add_node(node)
-    #     executor.spin()
-    # except KeyboardInterrupt:
-    #     pass
-    # finally:
-    #     for node in drone_nodes:
-    #         node.destroy_node()
-    #     rclpy.shutdown()
 
 
 if __name__ == "__main__":

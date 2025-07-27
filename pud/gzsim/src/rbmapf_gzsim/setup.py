@@ -24,11 +24,12 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'multi_tf_broadcaster = rbmapf_gzsim.multi_tf_broadcaster:main',
             'wall_spawner = rbmapf_gzsim.wall_spawner:main',
             'wall_rviz_viz = rbmapf_gzsim.wall_rviz_viz:main',
             'px4_drone_control = rbmapf_gzsim.px4_drone_control:main',
             'waypoint_generator = rbmapf_gzsim.waypoint_generator:main',
+            'habitat_sensor_node = rbmapf_gzsim.habitat_sensor_node:main',
+            'multi_tf_broadcaster = rbmapf_gzsim.multi_tf_broadcaster:main',
             'crazyflie_drone_control = rbmapf_gzsim.crazyflie_drone_control:main',
         ],
     },

@@ -1,10 +1,19 @@
+import os
+from pathlib import Path
+from dotmap import DotMap
 import numpy as np
-import rclpy
+import yaml
 
+import rclpy
 from rclpy.node import Node
 from std_msgs.msg import ColorRGBA
 from builtin_interfaces.msg import Duration
 from visualization_msgs.msg import Marker, MarkerArray
+from rclpy.qos import (
+    QoSProfile,
+    QoSHistoryPolicy,
+    QoSDurabilityPolicy,
+)
 
 from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, extract_walls
 
@@ -15,16 +24,26 @@ class WallRVizNode(Node):
         self.declare_parameter('map_topic', 'wall_markers_3d/walls_3d')
 
         args = argument_parser()
-        self.walls, _ = extract_walls(args)
+        result = extract_walls(args)
+        self.walls, _ = result[0], result[1]
+        self.qos_profile = QoSProfile(
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
 
-        self.publish_markers(height, resolution)
+        habitat = args.visual == 'True'
+        marker_array = self.publish_markers(height, resolution) if not habitat else self.publish_mesh_markers(args)
+
+        map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
+        self.get_logger().info(f"Map topic: {map_topic}")
+        self.create_publisher(MarkerArray, map_topic, self.qos_profile).publish(marker_array)
 
     def publish_markers(self, height=5.0, resolution=1.0):
         marker_array = MarkerArray()
         marker_array.markers = []
 
-        # now = self.get_clock().now().to_msg()
-        cols, rows = self.walls.shape
+        rows, cols = self.walls.shape
         x0, y0 = -(cols * resolution) / 2.0, -(rows * resolution) / 2.0
 
         idx = 0
@@ -56,9 +75,39 @@ class WallRVizNode(Node):
             marker_array.markers.append(marker)
             idx += 1
 
-        map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
-        self.get_logger().info(f"Map topic: {map_topic}")
-        self.create_publisher(MarkerArray, map_topic, 10).publish(marker_array)
+        return marker_array
+
+    def publish_mesh_markers(self, args):
+
+        marker = Marker()
+        marker.header.frame_id = "world"
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "stage"
+        marker.id = 0
+        marker.type = Marker.MESH_RESOURCE
+
+        with open(args.config_file, "r") as f:
+            config = yaml.safe_load(f)
+        config = DotMap(config)
+        scene_name = config.env.simulator_settings.scene
+        scene_path = Path(args.sdf_path).parent / f"{scene_name}/meshes/{scene_name}.dae"
+        scene_path = os.path.abspath(scene_path)
+        marker.mesh_resource = f"file://{scene_path}"
+
+        marker.mesh_use_embedded_materials = True
+
+        marker.pose.position.x = 0.0
+        marker.pose.position.y = 0.0
+        marker.pose.position.z = 0.0
+        marker.pose.orientation.w = 1.0
+
+        marker.scale.x = marker.scale.y = marker.scale.z = 2.0
+
+        marker_array = MarkerArray()
+        marker_array.markers = []
+        marker_array.markers.append(marker)
+
+        return marker_array
 
 
 def main():

@@ -481,6 +481,22 @@ class HabitatNavigationEnv(gym.Env):
             cat_obs[idx] = value
         return cat_obs
 
+    def get_bounds(self) -> Tuple[NDArray, NDArray]:
+        """
+        Returns the bounds of the environment.
+        """
+        bounds = self._simulator.pathfinder.get_bounds()
+        return bounds
+
+    def get_agent_position(self) -> TypeHabitatXYZ:
+        """
+        Returns the position of the agent in the environment.
+        """
+        agent_state = self._simulator.get_agent(
+            self._simulator_settings["default_agent"]
+        ).get_state()
+        return np.array(agent_state.position, dtype=np.float32)
+
 
 class GoalConditionedHabitatPointWrapper(gym.Wrapper):
     """Wrapper that appends goal to observation produced by habitat environment."""

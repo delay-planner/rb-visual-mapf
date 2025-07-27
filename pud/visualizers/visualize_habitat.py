@@ -11,6 +11,7 @@ from pud.visualizers.visualize import plot_agent_paths, visualize_path
 from pud.envs.habitat_navigation_env import plot_wall, set_habitat_env_difficulty
 
 USE_GIFS = True
+COLLISION_THRESHOLD = 1e-3
 extension = ".gif" if USE_GIFS else ".mp4"
 
 
@@ -308,7 +309,6 @@ def visualize_search_path_multi_agent(
         waypoints = search_policy.get_augmented_waypoints()
 
     else:
-        threshold = search_policy.radius
         collector_cls = ConstrainedCollector if constrained else Collector
         (
             starts,
@@ -318,7 +318,7 @@ def visualize_search_path_multi_agent(
             _,
             _,
         ) = collector_cls.get_trajectories(
-            search_policy, eval_env, num_agents, habitat=True, threshold=threshold
+            search_policy, eval_env, num_agents, habitat=True, threshold=COLLISION_THRESHOLD
         )
 
     _, ax = plt.subplots(figsize=(8, 9))
@@ -507,14 +507,13 @@ def visualize_compare_search_multi_agent(
         set_global_seed(seed)
         set_env_seed(eval_env, seed + 1)
 
-        threshold = search_policy.radius
         policy = search_policy if use_search else agent
         collector_cls = ConstrainedCollector if constrained else Collector
 
         if col_index == 0:
             starts, goals, observations, waypoints, _, records = (
                 collector_cls.get_trajectories(
-                    policy, eval_env, n_agents, habitat=True, threshold=threshold
+                    policy, eval_env, n_agents, habitat=True, threshold=COLLISION_THRESHOLD
                 )
             )
         else:
@@ -533,7 +532,7 @@ def visualize_compare_search_multi_agent(
                 goals,
                 habitat=True,
                 start_costs=start_costs,
-                threshold=threshold,
+                threshold=COLLISION_THRESHOLD,
             )
 
         print(f"Policy: {title}")
