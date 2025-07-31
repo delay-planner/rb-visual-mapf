@@ -369,6 +369,9 @@ def spawn_processes(context, *args, **kwargs):
                 }],
                 output='screen'
             )
+            files = [config_file, constrained_ckpt_file, walls_file]
+            if habitat:
+                files.append(bounds_file)
             cf_drone_control = Node(
                 package="rbmapf_gzsim",
                 executable="crazyflie_drone_control",
@@ -378,7 +381,7 @@ def spawn_processes(context, *args, **kwargs):
                     'drone_id': idx,
                     'visual': str(habitat),
                     'drone_ns': f'/crazyflie_{idx}',
-                    'files': [config_file, constrained_ckpt_file, walls_file, bounds_file],
+                    'files': files,
                     'use_sim_time': True
                 }],
             )
