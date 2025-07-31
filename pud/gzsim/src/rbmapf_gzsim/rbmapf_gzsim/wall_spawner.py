@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import rclpy
 from rclpy.node import Node
 
-from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, extract_walls
+from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import argument_parser
 
 
 class WallSpawnerNode(Node):
@@ -18,9 +18,15 @@ class WallSpawnerNode(Node):
 
         args = argument_parser()
         habitat = args.visual == 'True'
+        if habitat:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_habitatenv import extract_walls
+        else:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import extract_walls
 
         result = extract_walls(args)
         walls, starts = result[0], result[1]
+        if habitat:
+            lower_bounds, _ = result[2]
 
         suffix = Path(args.sdf_path).suffix.lower()
         with open(args.sdf_path, 'r') as f:
@@ -110,6 +116,11 @@ class WallSpawnerNode(Node):
         starts_file_path = args.sdf_path.replace(suffix, '_starts.txt')
         np.savetxt(starts_file_path, adjusted_starts, fmt='%.5f', delimiter=',')
         np.save(args.sdf_path.replace(suffix, '_walls_matrix.npy'), walls)
+
+        if habitat:
+            bounds_file_path = args.sdf_path.replace(suffix, '_bounds.txt')
+            np.savetxt(bounds_file_path, lower_bounds, fmt='%.5f', delimiter=',')
+            self.get_logger().info(f"Bounds saved to {bounds_file_path}")
 
 
 def main():

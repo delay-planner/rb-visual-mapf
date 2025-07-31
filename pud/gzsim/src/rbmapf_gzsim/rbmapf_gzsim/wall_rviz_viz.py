@@ -15,7 +15,7 @@ from rclpy.qos import (
     QoSDurabilityPolicy,
 )
 
-from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, extract_walls
+from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import argument_parser
 
 
 class WallRVizNode(Node):
@@ -24,6 +24,13 @@ class WallRVizNode(Node):
         self.declare_parameter('map_topic', 'wall_markers_3d/walls_3d')
 
         args = argument_parser()
+        habitat = args.visual == 'True'
+
+        if habitat:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_habitatenv import extract_walls
+        else:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import extract_walls
+
         result = extract_walls(args)
         self.walls, _ = result[0], result[1]
         self.qos_profile = QoSProfile(
@@ -32,7 +39,6 @@ class WallRVizNode(Node):
             depth=1,
         )
 
-        habitat = args.visual == 'True'
         marker_array = self.publish_markers(height, resolution) if not habitat else self.publish_mesh_markers(args)
 
         map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
@@ -101,7 +107,7 @@ class WallRVizNode(Node):
         marker.pose.position.z = 0.0
         marker.pose.orientation.w = 1.0
 
-        marker.scale.x = marker.scale.y = marker.scale.z = 2.0
+        marker.scale.x = marker.scale.y = marker.scale.z = 1.0
 
         marker_array = MarkerArray()
         marker_array.markers = []

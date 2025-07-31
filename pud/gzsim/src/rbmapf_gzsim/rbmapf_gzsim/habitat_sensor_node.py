@@ -6,8 +6,7 @@ from dotmap import DotMap
 import rclpy
 from rclpy.node import Node
 from cv_bridge import CvBridge
-from std_msgs.msg import String, Float32MultiArray
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy
+from std_msgs.msg import String
 from rbmapf_interfaces.msg import HabitatObservations  # type: ignore
 
 from pud.utils import set_env_seed, set_global_seed
@@ -60,7 +59,6 @@ class HabitatSensorNode(Node):
             wrapper_kwargs=gym_env_wrapper_kwargs,
             terminate_on_timeout=True,
         )
-
         set_env_seed(self.eval_env, config.seed + 1)
 
         self.bridge = CvBridge()
@@ -73,21 +71,6 @@ class HabitatSensorNode(Node):
             self.image_publishers[drone_ns] = self.create_publisher(HabitatObservations, image_topic, 10)
             self.create_subscription(String, state_topic, lambda msg, ns=drone_ns: self.state_callback(ns, msg), 10)
 
-        qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
-        self.bounds_publisher = self.create_publisher(Float32MultiArray, '/habitat/bounds', qos)
-
-        lower_bounds, upper_bounds = self.eval_env.unwrapped.get_bounds()  # type: ignore
-        bounds_data = Float32MultiArray()
-        bounds_data.data = [
-            float(lower_bounds[0]),
-            float(lower_bounds[1]),
-            float(lower_bounds[2]),
-            float(upper_bounds[0]),
-            float(upper_bounds[1]),
-            float(upper_bounds[2]),
-        ]
-        self.bounds_publisher.publish(bounds_data)
-
         self.get_logger().info("Habitat Sensor Node has been started.")
 
     def state_callback(self, drone_ns, msg):
@@ -98,7 +81,7 @@ class HabitatSensorNode(Node):
             return
 
         self.latest_state = state
-        goal_grid = state.get('goal_grid', None)
+        goal_grid = self.latest_state.get('goal_grid', None)
         observation_grid = self.latest_state.get('observation_grid', None)
 
         if goal_grid is not None and observation_grid is not None:
@@ -110,10 +93,14 @@ class HabitatSensorNode(Node):
             observation_grid = np.array(observation_grid, dtype=np.float32)
             observation_visual = self.eval_env.get_sensor_obs_at_grid_xy(observation_grid)
 
-            image_msg.observation = self.bridge.cv2_to_imgmsg(observation_visual, encoding='rgba8')
-            image_msg.goal = self.bridge.cv2_to_imgmsg(goal_visual, encoding='rgba8')
-            image_msg.observation.header.stamp = self.get_clock().now().to_msg()
-            image_msg.goal.header.stamp = image_msg.observation.header.stamp
+            stamp = self.get_clock().now().to_msg()
+            for idx, direction in enumerate(['forward', 'right', 'backward', 'left']):
+                goal_img = self.bridge.cv2_to_imgmsg(goal_visual[idx].astype(np.uint8))
+                goal_img.header.stamp = stamp
+                setattr(image_msg, f'goal_{direction}', goal_img)
+                observation_img = self.bridge.cv2_to_imgmsg(observation_visual[idx].astype(np.uint8))
+                observation_img.header.stamp = stamp
+                setattr(image_msg, f'observation_{direction}', observation_img)
 
             self.image_publishers[drone_ns].publish(image_msg)
 

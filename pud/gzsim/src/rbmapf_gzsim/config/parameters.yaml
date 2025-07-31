@@ -3,12 +3,16 @@ gz_version:
   description: "Gazebo version to run. Options: classic or harmonic."
 
 num_drones:
-  default: "3"
-  description: "Number of x500 drones to spawn."
+  default: "2"
+  description: "Number of drones to spawn."
 
 use_crazyflies:
   default: "True"
   description: "Use Crazyflies."
+
+use_hardware:
+  default: "False"
+  description: "Are we using real hardware drones"
 
 model_jinja:
   default: "./src/rbmapf_gzsim/models/crazyflie/model.sdf.jinja"
@@ -24,22 +28,24 @@ px4_src_path:
 
 config_file:
   # default: "../../models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml"
-  default: "../../models/SC0_Staging_20/lag/2024-09-11-19-43-42/bk/config.yaml"
+  default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/bk/config.yaml"
   description: "Path to control config YAML (no default)."
 
 problem_set_file:
   # default: "../plots/data/centerdot/easy.npz"
-  default: "../plots/data/sc0_staging_20/easy.npz"
+  # default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
+  default: "../plots/data/illustration_pbs.pkl"
+  # default: "../plots/data/sc0_staging_20/easy.npz"
   description: "Path to problem set file (no default)."
 
 constrained_ckpt_file:
   # default: "../../models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000"
-  default: "../../models/SC0_Staging_20/lag/2024-09-11-19-43-42/ckpt/ckpt_0250000"
+  default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/ckpt/ckpt_0460000"
   description: "Path to constrained policy checkpoint (no default)."
 
 unconstrained_ckpt_file:
   # default: "../../models/CenterDot/ckpt/ckpt_0300000"
-  default: "../../models/SC0_Staging_20/ckpt/ckpt_0482500"
+  default: "../../models/SC3_Staging_11/ckpt/ckpt_0722500"
   description: "Path to unconstrained policy checkpoint (no default)."
 
 habitat:

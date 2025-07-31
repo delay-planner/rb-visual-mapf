@@ -2,7 +2,7 @@ import rclpy
 import numpy as np
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Empty
-from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control import argument_parser, generate_wps
+from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import argument_parser
 from rclpy.qos import (
     QoSProfile,
     QoSHistoryPolicy,
@@ -15,7 +15,14 @@ class WaypointGeneratorNode(Node):
         super().__init__('waypoint_generator_node')
         self.declare_parameter('interface', 'px4')
         args = argument_parser()
-        agents_waypoints = generate_wps(args, debug=True)
+        habitat = args.visual == 'True'
+
+        if habitat:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_habitatenv import generate_wps
+        else:
+            from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import generate_wps
+
+        agents_waypoints = generate_wps(args, debug=False)
 
         self.waypoint_publishers = []
         qos_profile = QoSProfile(
@@ -26,9 +33,13 @@ class WaypointGeneratorNode(Node):
         interface = self.get_parameter('interface').get_parameter_value().string_value
         for agent_idx in range(args.num_agents):
             instance_idx = agent_idx + 1
+            if interface != "cf":
+                wp_topic = f"/{interface}_{instance_idx}/waypoints"
+            else:
+                wp_topic = f"/{interface}{instance_idx}/waypoints"
             waypoint_publisher = self.create_publisher(
                 Float32MultiArray,
-                f'/{interface}_{instance_idx}/waypoints',
+                wp_topic,
                 qos_profile
             )
             agent_wps = np.array(agents_waypoints[agent_idx])

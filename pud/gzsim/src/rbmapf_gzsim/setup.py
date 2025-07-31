@@ -31,6 +31,8 @@ setup(
             'habitat_sensor_node = rbmapf_gzsim.habitat_sensor_node:main',
             'multi_tf_broadcaster = rbmapf_gzsim.multi_tf_broadcaster:main',
             'crazyflie_drone_control = rbmapf_gzsim.crazyflie_drone_control:main',
+            'generate_crazyflie_yaml = rbmapf_gzsim.generate_crazyflie_yaml:main',
+            'crazyswarm_drone_control = rbmapf_gzsim.crazyswarm_drone_control:main',
         ],
     },
 )

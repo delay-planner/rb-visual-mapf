@@ -9,7 +9,15 @@ from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
 from ament_index_python import get_package_share_directory
 from launch.event_handlers import OnProcessStart, OnProcessExit
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, ExecuteProcess, RegisterEventHandler, TimerAction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import (
+    TimerAction,
+    OpaqueFunction,
+    ExecuteProcess,
+    RegisterEventHandler,
+    DeclareLaunchArgument,
+    IncludeLaunchDescription
+)
 
 # Source the ros opt
 # Source the px4_msgs/ ros2_ws / crazyswarm_ws
@@ -130,6 +138,7 @@ def spawn_processes(context, *args, **kwargs):
     habitat = LaunchConfiguration('habitat').perform(context) == 'True'
     use_crazyflies = LaunchConfiguration('use_crazyflies').perform(context)
     problem_set_file = LaunchConfiguration('problem_set_file').perform(context)
+    hardware_demo = LaunchConfiguration('use_hardware').perform(context) == 'True'
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
 
@@ -142,8 +151,12 @@ def spawn_processes(context, *args, **kwargs):
         raise RuntimeError("Mismatch in start count")
     walls_file = world_file.replace(suffix, '_walls_matrix.npy')
 
+    if habitat:
+        bounds_file = world_file.replace(suffix, '_bounds.txt')
+
     z_start = 1.0
     prev_action = None
+    use_sim_time = not hardware_demo
     actions = []
 
     if use_crazyflies == 'False':
@@ -276,7 +289,7 @@ def spawn_processes(context, *args, **kwargs):
             actions.append(RegisterEventHandler(
                 OnProcessStart(target_action=px4_drone_control, on_start=[rviz]),
             ))
-    else:
+    elif use_crazyflies == 'True' and use_sim_time:
         actions.append(
             OpaqueFunction(function=render_crazyflie_models)
         )
@@ -365,7 +378,7 @@ def spawn_processes(context, *args, **kwargs):
                     'drone_id': idx,
                     'visual': str(habitat),
                     'drone_ns': f'/crazyflie_{idx}',
-                    'files': [config_file, constrained_ckpt_file, walls_file],
+                    'files': [config_file, constrained_ckpt_file, walls_file, bounds_file],
                     'use_sim_time': True
                 }],
             )
@@ -423,8 +436,129 @@ def spawn_processes(context, *args, **kwargs):
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=rviz, on_start=[wall_rviz_node]),
         ))
+    else:
+        # Using crazyflie hardware
 
-    if gz_version not in ['classic', 'harmonic']:
+        crazyflie_yaml_path = os.path.join(
+            get_package_share_directory('rbmapf_gzsim'),
+            'config',
+            'crazyflie_mapf.yaml'
+        )
+        generate_yaml = ExecuteProcess(
+            cmd=[
+                'ros2', 'run', 'rbmapf_gzsim', 'generate_crazyflie_yaml',
+                '--output_path', crazyflie_yaml_path,
+                '--num_drones', str(num_drones),
+                '--starts_file', starts_file,
+            ],
+            output='screen'
+        )
+        actions.append(generate_yaml)
+
+        rviz_config = os.path.join(
+            get_package_share_directory('rbmapf_gzsim'),
+            'launch',
+            'multi_drone.rviz'
+        )
+
+        crazyflie_server = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [os.path.join(
+                    get_package_share_directory('crazyflie'),
+                    'launch',
+                    'launch.py'
+                )]
+            ),
+            launch_arguments={
+                'crazyflies_yaml_file': crazyflie_yaml_path,
+                'rviz_config_file': rviz_config,
+                'debug': 'True',
+                'rviz': 'False',
+                'gui': 'False',
+                'teleop': 'False',
+                }.items()
+        )
+        delayed_spawn = TimerAction(period=5.0, actions=[crazyflie_server])
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=generate_yaml, on_start=[delayed_spawn]),
+        ))
+
+        rviz = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', rviz_config],
+            parameters=[{
+                'use_sim_time': False,
+            }],
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=generate_yaml, on_start=[rviz]),
+        ))
+
+        wall_rviz_node = Node(
+            package="rbmapf_gzsim",
+            executable="wall_rviz_viz",
+            name="wall_rviz_viz",
+            output="screen",
+            arguments=[
+                '--num_agents', str(LaunchConfiguration('num_drones').perform(context)),
+                '--visual', str(habitat),
+                '--sdf_path', world_file,
+                '--config_file', config_file,
+                '--problem_set_file', problem_set_file,
+                '--constrained_ckpt_file', constrained_ckpt_file,
+                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+            ],
+            # parameters=[{'use_sim_time': False}],
+        )
+        delayed_rviz = TimerAction(period=2.0, actions=[wall_rviz_node])
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=rviz, on_start=[delayed_rviz]),
+        ))
+
+        waypoint_generator = Node(
+            package="rbmapf_gzsim",
+            executable="waypoint_generator",
+            name="waypoint_generator",
+            output="screen",
+            arguments=[
+                '--visual', str(habitat),
+                '--config_file', config_file,
+                '--num_agents', str(num_drones),
+                '--use_hardware', str(hardware_demo),
+                '--problem_set_file', problem_set_file,
+                '--constrained_ckpt_file', constrained_ckpt_file,
+                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+            ],
+            parameters=[{'interface': 'cf'}],
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=rviz, on_start=[waypoint_generator]),
+        ))
+
+        # swarm = Crazyswarm()
+        for idx in range(1, num_drones + 1):
+            cf_drone_control = Node(
+                package="rbmapf_gzsim",
+                executable="crazyswarm_drone_control",
+                name=f"crazyswarm_drone_control_{idx}",
+                output="screen",
+                parameters=[{
+                    'drone_id': idx,
+                    'drone_ns': f'/cf{idx}',
+                    'files': [config_file, constrained_ckpt_file, walls_file],
+                }],
+                # arguments=[swarm],
+            )
+
+            timed_actions = TimerAction(period=2.0, actions=[cf_drone_control])
+            actions.append(RegisterEventHandler(
+                OnProcessStart(target_action=waypoint_generator, on_start=[timed_actions]),
+            ))
+
+    if use_sim_time and gz_version not in ['classic', 'harmonic']:
         raise RuntimeError('Incorrect gz_version provided. Options include classic or harmonic')
 
     return actions
@@ -435,10 +569,13 @@ def launch_setup(context, *args, **kwargs):
     config_file = LaunchConfiguration('config_file').perform(context)
     habitat = LaunchConfiguration('habitat').perform(context) == 'True'
     problem_set_file = LaunchConfiguration('problem_set_file').perform(context)
+    hardware_demo = LaunchConfiguration('use_hardware').perform(context) == 'True'
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
 
     actions = []
+
+    use_sim_time = not hardware_demo
 
     wall_spawner_node = Node(
             package="rbmapf_gzsim",
@@ -450,11 +587,12 @@ def launch_setup(context, *args, **kwargs):
                 '--visual', str(habitat),
                 '--sdf_path', world_file,
                 '--config_file', config_file,
+                '--use_hardware', str(hardware_demo),
                 '--problem_set_file', problem_set_file,
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
-            parameters=[{'use_sim_time': True}],
+            parameters=[{'use_sim_time': use_sim_time}],
         )
     actions.append(wall_spawner_node)
 
