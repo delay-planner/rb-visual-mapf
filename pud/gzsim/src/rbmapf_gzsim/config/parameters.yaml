@@ -55,3 +55,11 @@ habitat:
 world_file:
   default: "./src/rbmapf_gzsim/models/default.sdf"
   description: "Path to the Gazebo world file (no default)."
+
+podman_image:
+  default: "3d2642905d0e"
+  description: "Podman image to use for the simulation (no default)."
+
+kirk_server_path:
+  default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
+  description: "Path to the Kirk server script"

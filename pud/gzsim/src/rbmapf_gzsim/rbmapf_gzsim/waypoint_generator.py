@@ -47,13 +47,13 @@ class WaypointGeneratorNode(Node):
             waypoint_publisher.publish(message)
             self.waypoint_publishers.append(waypoint_publisher)
 
-        self.start_pub = self.create_publisher(Empty, '/start_mission', qos_profile)
-        self.start_timer = self.create_timer(1.0, self.publish_start)
+        self.waypoint_gen_finished = self.create_publisher(Empty, '/waypoints_generated', qos_profile)
+        self.waypoints_gen_finished_timer = self.create_timer(1.0, self.publish_waypoints_gen_finished)
 
-    def publish_start(self):
-        self.start_pub.publish(Empty())
-        self.get_logger().info('Mission start published')
-        self.start_timer.cancel()
+    def publish_waypoints_gen_finished(self):
+        self.waypoint_gen_finished.publish(Empty())
+        self.get_logger().info('Waypoints generation finished published')
+        self.waypoints_gen_finished_timer.cancel()
 
 
 def main():

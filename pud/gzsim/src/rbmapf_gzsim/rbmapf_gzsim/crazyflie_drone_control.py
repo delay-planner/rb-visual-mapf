@@ -1,6 +1,7 @@
 import json
 import yaml
 import torch
+import requests
 import numpy as np
 # from PIL import Image
 from dotmap import DotMap
@@ -46,6 +47,8 @@ class DroneController(Node):
         self.drone_id = drone_id
         self.num_drones = num_drones
         self.waypoint_follow = waypoint_follow
+        self.mission_url = f"http://127.0.0.1:5000/?key={self.drone_id}"
+
         if self.habitat:
             config_file, ckpt_file, walls_file, bounds_file = files
         else:
@@ -117,6 +120,16 @@ class DroneController(Node):
         self.agent.to(torch.device(config.device))
         self.agent.eval()
 
+    def _ready_to_start(self):
+        try:
+            resp = requests.get(self.mission_url, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("result", False) is True
+        except (requests.RequestException, ValueError) as e:
+            print(f"Request failed or invalid JSON: {e}")
+            return False
+
     def _init_subscribers(self):
         if self.habitat:
             self.create_subscription(
@@ -131,12 +144,12 @@ class DroneController(Node):
             self.waypoints_callback,
             10,
         )
-        self.create_subscription(
-            Empty,
-            "/start_mission",
-            self.start_callback,
-            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
-        )
+        # self.create_subscription(
+        #     Empty,
+        #     "/start_mission",
+        #     self.start_callback,
+        #     QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
+        # )
         self.odom_subscriber = self.create_subscription(
             Odometry,
             f"{self.drone_ns}/odom",
@@ -366,9 +379,9 @@ class DroneController(Node):
         #     goal_image = Image.fromarray(goal_frame)
         #     goal_image.save("goal_image.png")
 
-    def start_callback(self, msg):
-        self.start_flag = True
-        self.get_logger().info(f"Drone {self.drone_id} received start signal.")
+    # def start_callback(self, msg):
+    #     self.start_flag = True
+    #     self.get_logger().info(f"Drone {self.drone_id} received start signal.")
 
     def position_callback(self, msg):
         # if self.gz_version == 'harmonic':
@@ -405,6 +418,10 @@ class DroneController(Node):
 
     def timer_callback(self):
         # self.get_logger().info(f"Current state: {self.current_state} for {self.drone_ns}")
+        if self.current_state != "LAND":
+            self.start_flag = self._ready_to_start()
+        # self.get_logger().info(f"Start flag for {self.drone_ns}: {self.start_flag}")
+
         if self.current_state == "IDLE" and self.start_flag:
             self.current_state = "TAKEOFF"
             self.get_logger().info(f"Running the drone {self.drone_ns}")

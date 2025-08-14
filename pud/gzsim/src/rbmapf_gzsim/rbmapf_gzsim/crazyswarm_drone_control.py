@@ -335,7 +335,7 @@ class DroneController(Node):
             takeoff_request.height = self.altitude
             takeoff_request.duration = rclpy.duration.Duration(seconds=3.0).to_msg()
             self.takeoff_client.call_async(takeoff_request)
-            time.sleep(3)
+            time.sleep(3.0)
             self.current_state = "OFFBOARD"
         self.get_logger().info(f"Takeoff command sent to {self.drone_ns}")
 
@@ -379,7 +379,7 @@ class DroneController(Node):
         goto_request.yaw = 0.0
         goto_request.duration = rclpy.duration.Duration(seconds=5.0).to_msg()
         self.goto_client.call_async(goto_request)
-        # time.sleep(1.0)
+        time.sleep(5.0)
 
     def waypoint_follower_callback(self):
         if self.offboard_mode and self.start_flag:
