@@ -454,27 +454,20 @@ def spawn_processes(context, *args, **kwargs):
         )
         actions.append(waypoint_gen_checker)
 
-        # podman_start = ExecuteProcess(
-        #     cmd=['podman', 'start', podman_image],
-        #     name='podman_start',
-        #     output='screen'
-        # )
-        # actions.append(RegisterEventHandler(
-        #     OnProcessStart(target_action=rviz, on_start=[podman_start]),
-        # ))
-        podman_exec = ExecuteProcess(
-            cmd=['podman', 'exec', '-it', podman_image, '/bin/bash', 'execute_kirk.sh'],
-            name='podman_exec',
-            output='screen'
-        )
-        actions.append(RegisterEventHandler(
-            OnProcessExit(target_action=waypoint_gen_checker, on_exit=[podman_exec]),
-        ))
+        for idx in range(1, num_drones + 1):
+            podman_exec = ExecuteProcess(
+                cmd=['podman', 'exec', '-it', podman_image, '/bin/bash', f'execute_kirk_{idx}.sh'],
+                name=f'podman_exec_{idx}',
+                output='screen',
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessExit(target_action=waypoint_gen_checker, on_exit=[podman_exec]),
+            ))
 
         kirk_server = ExecuteProcess(
-            cmd=['python', kirk_server_path.as_posix()],
+            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'DEBUG'],
             name='kirk_server',
-            output='screen'
+            output='screen',
         )
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=gz_sim, on_start=[kirk_server]),

@@ -646,6 +646,8 @@ class DroneController(Node):
                         self.start_flag = False
                         # self.current_state = "LAND"
                         self.mission_name = ""
+                        # Ensures that the drone does not drift after mission completion
+                        # self.send_trajectory(self.current_position[:2])
 
     def discretize_state(self, state, resolution=1.0):
         (i, j) = np.floor(resolution * state).astype(np.int64)
