@@ -47,7 +47,9 @@ class DroneController(Node):
         self.drone_id = drone_id
         self.num_drones = num_drones
         self.waypoint_follow = waypoint_follow
-        self.mission_url = f"http://127.0.0.1:5000/?key={self.drone_id}"
+
+        self.ack_endpoint = "http://127.0.0.1:5000/done"
+        self.mission_url = f"http://127.0.0.1:5000/?drone_id={self.drone_id}"
 
         if self.habitat:
             config_file, ckpt_file, walls_file, bounds_file = files
@@ -125,10 +127,30 @@ class DroneController(Node):
             resp = requests.get(self.mission_url, timeout=5)
             resp.raise_for_status()
             data = resp.json()
-            return data.get("result", False) is True
+            # self.get_logger().info(f"Response from server: {data}")
+            mission_ready = data.get("mission_ready", False) is True
+            mission_name = data.get("mission_name", "")
+            land_ack = data.get("land", False) is True
+            return mission_ready, mission_name, land_ack
         except (requests.RequestException, ValueError) as e:
-            print(f"Request failed or invalid JSON: {e}")
-            return False
+            self.get_logger().error(f"Request failed or invalid JSON: {e}")
+            return False, "", False
+
+    def _send_ack(self, mission_name):
+        try:
+            data = {
+                "drone_id": self.drone_id,
+                "mission_name": self.mission_name
+            }
+            response = requests.post(self.ack_endpoint, json=data)
+
+            if response.status_code != 200:
+                self.get_logger().error(f"Request failed with status code: {response.status_code}")
+                self.get_logger().error(f"Response: {response.text}")
+            # else:
+            #     self.get_logger().info(f"Response: {response.json()}")
+        except (requests.RequestException, ValueError) as e:
+            self.get_logger().error(f"Failed to send ack for mission {mission_name}: {e}")
 
     def _init_subscribers(self):
         if self.habitat:
@@ -418,9 +440,11 @@ class DroneController(Node):
 
     def timer_callback(self):
         # self.get_logger().info(f"Current state: {self.current_state} for {self.drone_ns}")
-        if self.current_state != "LAND":
-            self.start_flag = self._ready_to_start()
-        # self.get_logger().info(f"Start flag for {self.drone_ns}: {self.start_flag}")
+        self.start_flag, self.mission_name, self.land_ack = self._ready_to_start()
+        # self.get_logger().info(f"Start flag for {self.drone_ns}: {self.start_flag} with mission {self.mission_name}")
+
+        if self.land_ack:
+            self.current_state = "LAND"
 
         if self.current_state == "IDLE" and self.start_flag:
             self.current_state = "TAKEOFF"
@@ -615,8 +639,13 @@ class DroneController(Node):
                     self.send_trajectory(self.next_location)
 
                 else:
-                    self.start_flag = False
-                    self.current_state = "LAND"
+                    # Send the ack back to the middleware server about mission completion
+                    if self.mission_name:
+                        self.get_logger().info(f"Mission {self.mission_name} completed for {self.drone_ns}")
+                        self._send_ack(self.mission_name)
+                        self.start_flag = False
+                        # self.current_state = "LAND"
+                        self.mission_name = ""
 
     def discretize_state(self, state, resolution=1.0):
         (i, j) = np.floor(resolution * state).astype(np.int64)

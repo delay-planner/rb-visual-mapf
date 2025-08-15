@@ -1,0 +1,1 @@
+kirk run kirk-v2/examples/test/drone-rmpl.rmpl -P scenario1 --driver-command 'curl -X POST -H "Content-Type: application/json" -d "{\"start_cmd\":\"~A\", \"end_cmd\":\"~A\", \"kirk_id\": \"0\"}" http://localhost:5000/submit' --tolerance 1.0 -p 8000 --verbose

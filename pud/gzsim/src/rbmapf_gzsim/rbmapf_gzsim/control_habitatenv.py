@@ -215,7 +215,7 @@ def adjust_positions(position, env):
     return position
 
 
-def generate_wps(args, debug=False):
+def generate_wps(args, problem_start=0, debug=False):
 
     config, eval_env, agent = habitat_setup(args)
 
