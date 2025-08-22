@@ -33,7 +33,8 @@ app = FastAPI()
 
 parser = ArgumentParser(description="Kirk Server for handling events from Kirk")
 parser.add_argument("--num-drones", type=str, default=1, help="Number of drones")
-parser.add_argument("--logging-level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+parser.add_argument("--logging-level", type=str, default="INFO",
+                    help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 args, _ = parser.parse_known_args()
 
 logging.basicConfig(level=args.logging_level.upper())
@@ -84,7 +85,7 @@ def send_kirk_ack(event_id):
         try:
             _ = requests.post(url, headers=headers, data=json.dumps(data))
         except Exception as e:
-            logging.error("Error with kirk ack", e)
+            logging.error("Error with sending an ack to kirk", e)
 
 
 @app.post("/done")
@@ -158,7 +159,8 @@ async def most_recent_mission(drone_id: int):
         logging.debug("Return mission")
         logging.debug(f"Mission name is {values[drone_id][0]}")
         # There exists a mission to be returned, return the first
-        return JSONResponse(content={"mission_ready": True, "mission_name": values[drone_id][0], "land": land_list[drone_id]})
+        return JSONResponse(content={"mission_ready": True, "mission_name": values[drone_id][0],
+                                     "land": land_list[drone_id]})
     else:
         logging.debug("No mission")
         # There are no missions at the moment
@@ -194,7 +196,8 @@ async def receive_kirk_event(data: RequestData):
     id_to_name = {i: f"DRONE-{num_to_names[i + 1]}" for i in range(len(values))}
 
     if "SYNC" in data.start_cmd:
-        # It's a sync command! we'll want to update the global sync structures if it's actually a new command (not a duplicate from multiple drones)
+        # It's a sync command! we'll want to update the global sync structures
+        # if it's actually a new command (not a duplicate from multiple drones)
 
         if data.end_cmd in sync_seen:
             return JSONResponse(content=response_data)

@@ -134,12 +134,16 @@ def spawn_processes(context, *args, **kwargs):
     gz_version = LaunchConfiguration('gz_version').perform(context)
     world_file = LaunchConfiguration('world_file').perform(context)
     num_drones = int(LaunchConfiguration('num_drones').perform(context))
+    num_missions = int(LaunchConfiguration('num_missions').perform(context))
     config_file = LaunchConfiguration('config_file').perform(context)
     habitat = LaunchConfiguration('habitat').perform(context) == 'True'
     podman_image = LaunchConfiguration('podman_image').perform(context)
     use_crazyflies = LaunchConfiguration('use_crazyflies').perform(context)
     problem_set_file = LaunchConfiguration('problem_set_file').perform(context)
     kirk_server_path = Path(LaunchConfiguration('kirk_server_path').perform(context))
+    execute_kirk_file_path = Path(LaunchConfiguration('execute_kirk_file_path').perform(context))
+    rmpl_file_path = Path(LaunchConfiguration('rmpl_file_path').perform(context))
+    generate_rmpl_file_path = Path(LaunchConfiguration('generate_rmpl_file_path').perform(context))
     hardware_demo = LaunchConfiguration('use_hardware').perform(context) == 'True'
     constrained_ckpt_file = LaunchConfiguration('constrained_ckpt_file').perform(context)
     unconstrained_ckpt_file = LaunchConfiguration('unconstrained_ckpt_file').perform(context)
@@ -454,9 +458,42 @@ def spawn_processes(context, *args, **kwargs):
         )
         actions.append(waypoint_gen_checker)
 
+        create_rmpl = ExecuteProcess(
+            cmd=['python', generate_rmpl_file_path.as_posix(),
+                 '--output-rmpl-path', rmpl_file_path.as_posix(),
+                 '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
+            name='create_rmpl',
+            output='screen',
+        )
+
+        upload_rmpl = ExecuteProcess(
+            cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
+            name='upload_rmpl',
+            output='screen',
+        )
+
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=gz_sim, on_start=[create_rmpl]),
+        ))
+
+        actions.append(RegisterEventHandler(
+            OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
+        ))
+
+        # Copy the execute.sh script to podman
+        copy_exec_script = ExecuteProcess(
+            cmd=['podman', 'cp', execute_kirk_file_path.as_posix(),
+                 f'{podman_image}:/common-lisp/enterprise/execute_kirk.sh'],
+            name='copy_exec_script',
+            output='screen',
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=gz_sim, on_start=[copy_exec_script]),
+        ))
+
         for idx in range(1, num_drones + 1):
             podman_exec = ExecuteProcess(
-                cmd=['podman', 'exec', '-it', podman_image, '/bin/bash', f'execute_kirk_{idx}.sh'],
+                cmd=['podman', 'exec', '-it', podman_image, '/bin/bash', 'execute_kirk.sh', str(idx)],
                 name=f'podman_exec_{idx}',
                 output='screen',
             )
@@ -472,7 +509,6 @@ def spawn_processes(context, *args, **kwargs):
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=gz_sim, on_start=[kirk_server]),
         ))
-
     else:
         # Using crazyflie hardware
 

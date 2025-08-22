@@ -27,25 +27,25 @@ px4_src_path:
   description: "Path to the PX4 source (no default)."
 
 config_file:
-  default: "../../models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml"
-  # default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/bk/config.yaml"
+  # default: "../../models/CenterDot/lag/2024-07-30-21-31-48/bk/bk_config.yaml"
+  default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/bk/config.yaml"
   description: "Path to control config YAML (no default)."
 
 problem_set_file:
-  default: "../plots/data/centerdot/easy.npz"
+  # default: "../plots/data/centerdot/easy.npz"
   # default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
-  # default: "../plots/data/illustration_pbs.pkl"
+  default: "../plots/data/illustration_pbs.pkl"
   # default: "../plots/data/sc0_staging_20/easy.npz"
   description: "Path to problem set file (no default)."
 
 constrained_ckpt_file:
-  default: "../../models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000"
-  # default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/ckpt/ckpt_0460000"
+  # default: "../../models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000"
+  default: "../../models/SC3_Staging_11/lag/2024-09-11-15-53-23/ckpt/ckpt_0460000"
   description: "Path to constrained policy checkpoint (no default)."
 
 unconstrained_ckpt_file:
-  default: "../../models/CenterDot/ckpt/ckpt_0300000"
-  # default: "../../models/SC3_Staging_11/ckpt/ckpt_0722500"
+  # default: "../../models/CenterDot/ckpt/ckpt_0300000"
+  default: "../../models/SC3_Staging_11/ckpt/ckpt_0722500"
   description: "Path to unconstrained policy checkpoint (no default)."
 
 habitat:
@@ -63,3 +63,21 @@ podman_image:
 kirk_server_path:
   default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
   description: "Path to the Kirk server script"
+
+rmpl_file_path:
+  default: "./src/rbmapf_gzsim/models/rmpls/mission.lisp"
+  description: "Path to the RMPL file defining the control program."
+
+generate_rmpl_file_path:
+  default: "./src/rbmapf_gzsim/rbmapf_gzsim/generate_rmpl.py"
+  description: "Path to the RMPL file defining the control program."
+
+num_missions:
+  default: "2"
+  description: "Number of missions to run in the RMPL scenario."
+
+execute_kirk_file_path:
+  default: "./src/rbmapf_gzsim/launch/execute_kirk.sh"
+  description: "Path to the script for executing the Kirk server."
+
+
