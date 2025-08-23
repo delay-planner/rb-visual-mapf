@@ -475,10 +475,11 @@ def spawn_processes(context, *args, **kwargs):
             launch_arguments={
                 'crazyflies_yaml_file': crazyflie_yaml_path,
                 'rviz_config_file': rviz_config,
-                'debug': 'True',
+                'debug': 'False',
                 'rviz': 'False',
                 'gui': 'False',
                 'teleop': 'False',
+                'backend': 'cflib',
                 }.items()
         )
         delayed_spawn = TimerAction(period=5.0, actions=[crazyflie_server])

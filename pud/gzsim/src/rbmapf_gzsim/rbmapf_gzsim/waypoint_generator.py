@@ -30,7 +30,7 @@ class WaypointGeneratorNode(Node):
         self.qos_profile = QoSProfile(
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
+            depth=10,
         )
 
         self.waypoint_publishers = []
@@ -50,7 +50,7 @@ class WaypointGeneratorNode(Node):
         self.problem_start = 0
         self._generate_waypoints()
         self.problem_start += 1
-        self.replan_timer = self.create_timer(0.1, self.replan_callback)
+        # self.replan_timer = self.create_timer(0.1, self.replan_callback)
         self.waypoint_gen_finished = self.create_publisher(Empty, '/waypoints_generated', self.qos_profile)
         self.waypoints_gen_finished_timer = self.create_timer(1.0, self.publish_waypoints_gen_finished)
 

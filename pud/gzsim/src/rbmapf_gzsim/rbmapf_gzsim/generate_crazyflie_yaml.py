@@ -57,7 +57,8 @@ def main():
         drone_id = f'cf{idx}'
         x, y = float(starts[idx - 1, 0]), float(starts[idx - 1, 1])
         uri_suffix = f'E7E7E7E7{str(idx).zfill(2)}'
-        initial_position = [x, y, 0.0]
+        # initial_position = [x, y, 0.0]
+        initial_position = [0.0, 0.0, 0.0]  # Need this to avoid issues with drone flipping. Not sure why. 
 
         data['robots'][drone_id] = {
             'enabled': True,

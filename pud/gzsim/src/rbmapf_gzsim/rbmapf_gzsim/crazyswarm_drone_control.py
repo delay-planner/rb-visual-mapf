@@ -25,8 +25,6 @@ from pud.algos.vision.vision_agent import LagVisionUVFDDPG
 #### x=2.25, y=-4.05
 #### x=2.83, y=-0.25
 
-
-
 ##### goalx=2.7, goaly=-2.13
 ##### startx=2.82, starty=-1.36
 ##@### startx=2.924, staarty=3.950
@@ -55,6 +53,11 @@ class DroneController(Node):
         self.waypoint_follow = waypoint_follow
         config_file, ckpt_file, walls_file = files
 
+        self.land_duration = 7.0
+        self.hover_duration = 5.0
+        self.pause_duration = 5.0
+        self.takeoff_duration = 7.0
+
         self.walls = np.load(walls_file)
         rows, cols = self.walls.shape
         self.normalize_factor = np.array([rows, cols])
@@ -76,7 +79,7 @@ class DroneController(Node):
         callback_fn = self.waypoint_follower_callback if self.waypoint_follow else self.command_callback
         self.cmd_timer = self.create_timer(0.02, callback_fn)
 
-        self.altitude = 3.0
+        self.altitude = 4.0
         # self.altitude += (self.drone_id - 1) * 0.5
         self.current_state = "IDLE"
         self.offboard_mode = False
@@ -120,9 +123,9 @@ class DroneController(Node):
         )
         self.create_subscription(
             Empty,
-            "/start_mission",
+            "/waypoints_generated",
             self.start_callback,
-            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
+            QoSProfile(depth=10, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
         )
         self.odom_subscriber = self.create_subscription(
             PoseStamped,
@@ -260,7 +263,7 @@ class DroneController(Node):
         
     def waypoints_callback(self, msg: Float32MultiArray):
         # Waypoints are in global ENU frame with first entry as home, last entry as goal
-        self.current_wp_index = 1
+        self.current_wp_index = 1  # 1 Use 1 is you want the drone to skip the start waypoint -- useful when using single drones and can start anywhere in the highbay
         self.waypoints = np.array(msg.data, dtype=np.float32).reshape(-1, 3)
         self.publish_markers()
 
@@ -326,6 +329,15 @@ class DroneController(Node):
             self.land()
         self.counter += 1
 
+    def node_time(self):
+        return self.get_clock().now().nanoseconds / 1e9
+
+    def timehelper_sleep(self, duration):
+        start = self.node_time()
+        end = start + duration
+        while self.node_time() < end:
+            rclpy.spin_once(self, timeout_sec=0)
+
     def takeoff(self):
         self.offboard_mode = False
         if self.current_state == "TAKEOFF":
@@ -333,9 +345,10 @@ class DroneController(Node):
             # self.timeHelper.sleep(7.0)
             takeoff_request = Takeoff.Request()
             takeoff_request.height = self.altitude
-            takeoff_request.duration = rclpy.duration.Duration(seconds=3.0).to_msg()
+            takeoff_request.duration = rclpy.duration.Duration(seconds=self.takeoff_duration).to_msg()
             self.takeoff_client.call_async(takeoff_request)
-            time.sleep(3.0)
+            time.sleep(self.takeoff_duration + self.hover_duration)
+            # self.timehelper_sleep(self.takeoff_duration + self.hover_duration)
             self.current_state = "OFFBOARD"
         self.get_logger().info(f"Takeoff command sent to {self.drone_ns}")
 
@@ -349,9 +362,10 @@ class DroneController(Node):
             self.notify_client.call_async(notify_request)
             land_request = Land.Request()
             land_request.height = 1.15
-            land_request.duration = rclpy.duration.Duration(seconds=3.0).to_msg()
+            land_request.duration = rclpy.duration.Duration(seconds=self.land_duration).to_msg()
             self.land_client.call_async(land_request)
-            time.sleep(3.0)
+            time.sleep(self.land_duration + self.pause_duration)
+            # self.timehelper_sleep(self.land_duration + self.pause_duration)
             self.current_state = "IDLE"
         self.get_logger().info(f"Landing the drone {self.drone_ns}")
 
@@ -376,10 +390,11 @@ class DroneController(Node):
         self.get_logger().info(f"Sending to position: {position}")
         float_position = [float(position[0]), float(position[1]), float(self.altitude)]
         goto_request.goal = arrayToGeometryPoint(float_position)
-        goto_request.yaw = 0.0
-        goto_request.duration = rclpy.duration.Duration(seconds=5.0).to_msg()
+        goto_request.yaw = float(0.0)
+        goto_request.duration = rclpy.duration.Duration(seconds=self.pause_duration).to_msg()
         self.goto_client.call_async(goto_request)
-        time.sleep(5.0)
+        time.sleep(self.pause_duration)
+        # self.timehelper_sleep(self.pause_duration)
 
     def waypoint_follower_callback(self):
         if self.offboard_mode and self.start_flag:
@@ -488,7 +503,7 @@ class DroneController(Node):
         if not (np.all(state >= np.zeros(2)) and np.all(state <= self.normalize_factor)):
             return True
         (i, j) = self.discretize_state(state)
-        return (self.walls[i, j] == 1)
+        return self.walls[i, j] == 1
 
     def step(self, action):
         action = np.clip(action, -1. * np.ones(2), np.ones(2))
