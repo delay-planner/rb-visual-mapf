@@ -522,26 +522,6 @@ def spawn_processes(context, *args, **kwargs):
             OnProcessStart(target_action=rviz, on_start=[delayed_rviz]),
         ))
 
-        waypoint_generator = Node(
-            package="rbmapf_gzsim",
-            executable="waypoint_generator",
-            name="waypoint_generator",
-            output="screen",
-            arguments=[
-                '--visual', str(habitat),
-                '--config_file', config_file,
-                '--num_agents', str(num_drones),
-                '--use_hardware', str(hardware_demo),
-                '--problem_set_file', problem_set_file,
-                '--constrained_ckpt_file', constrained_ckpt_file,
-                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
-            ],
-            parameters=[{'interface': 'cf'}],
-        )
-        actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=rviz, on_start=[waypoint_generator]),
-        ))
-
         # swarm = Crazyswarm()
         for idx in range(1, num_drones + 1):
             cf_drone_control = Node(
@@ -559,8 +539,28 @@ def spawn_processes(context, *args, **kwargs):
 
             timed_actions = TimerAction(period=2.0, actions=[cf_drone_control])
             actions.append(RegisterEventHandler(
-                OnProcessStart(target_action=waypoint_generator, on_start=[timed_actions]),
+                OnProcessStart(target_action=wall_rviz_node, on_start=[timed_actions]),
             ))
+
+        waypoint_generator = Node(
+            package="rbmapf_gzsim",
+            executable="waypoint_generator",
+            name="waypoint_generator",
+            output="screen",
+            arguments=[
+                '--visual', str(habitat),
+                '--config_file', config_file,
+                '--num_agents', str(num_drones),
+                '--use_hardware', str(hardware_demo),
+                '--problem_set_file', problem_set_file,
+                '--constrained_ckpt_file', constrained_ckpt_file,
+                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+            ],
+            parameters=[{'interface': 'cf'}],
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=wall_rviz_node, on_start=[waypoint_generator]),
+        ))
 
     if use_sim_time and gz_version not in ['classic', 'harmonic']:
         raise RuntimeError('Incorrect gz_version provided. Options include classic or harmonic')

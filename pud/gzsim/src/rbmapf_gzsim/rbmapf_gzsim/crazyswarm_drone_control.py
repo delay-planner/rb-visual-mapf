@@ -5,14 +5,13 @@ import numpy as np
 from dotmap import DotMap
 
 import rclpy
-import rclpy.duration
 from rclpy.node import Node
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped
 from builtin_interfaces.msg import Duration
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, String, Empty, Float32MultiArray
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy, qos_profile_sensor_data
 
 from crazyflie_py.crazyflie import arrayToGeometryPoint
 from crazyflie_interfaces.srv import Takeoff, Land, NotifySetpointsStop, GoTo
@@ -58,6 +57,9 @@ class DroneController(Node):
         self.pause_duration = 5.0
         self.takeoff_duration = 7.0
 
+        self.pose_timeout = 0.5
+        self.last_pose_time = None
+
         self.walls = np.load(walls_file)
         rows, cols = self.walls.shape
         self.normalize_factor = np.array([rows, cols])
@@ -83,7 +85,7 @@ class DroneController(Node):
         # self.altitude += (self.drone_id - 1) * 0.5
         self.current_state = "IDLE"
         self.offboard_mode = False
-        self.distance_threshold = 0.5
+        self.distance_threshold = 0.1
         self.current_position = np.zeros(3, dtype=float)
         self.current_orientation = np.zeros(4, dtype=float)
 
@@ -121,17 +123,29 @@ class DroneController(Node):
             self.waypoints_callback,
             10,
         )
+
+        start_qos = QoSProfile(depth=1)
+        start_qos.reliability = QoSReliabilityPolicy.RELIABLE
+        start_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
+
         self.create_subscription(
             Empty,
             "/waypoints_generated",
             self.start_callback,
-            QoSProfile(depth=10, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
+            # 10,
+            start_qos
         )
         self.odom_subscriber = self.create_subscription(
             PoseStamped,
             f"{self.drone_ns}/pose",
             self.position_callback,
-            10,
+            qos_profile=qos_profile_sensor_data
+            # QoSProfile(
+            #     depth=1,
+            #     history=QoSHistoryPolicy.KEEP_LAST,
+            #     reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            #     deadline=rclpy.duration.Duration(seconds=0, nanoseconds=1e9/100.0)
+            # ),
         )
         for i in range(1, self.num_drones + 1):
             drone_ns = f"/cf{i}"
@@ -140,7 +154,8 @@ class DroneController(Node):
                     PoseStamped,
                     f"{drone_ns}/pose",
                     lambda msg, ns=drone_ns: self.other_position_callback(ns, msg),
-                    10,
+                    # 10,
+                    qos_profile=qos_profile_sensor_data
                 )
                 self.create_subscription(
                     Float32MultiArray,
@@ -262,6 +277,7 @@ class DroneController(Node):
         return (position + self.origin_offset) / self.scale_factor if to_highbay_frame else (position * self.scale_factor) - self.origin_offset
         
     def waypoints_callback(self, msg: Float32MultiArray):
+        self.get_logger().info(f"Waypoints callback triggered for {self.drone_ns}")
         # Waypoints are in global ENU frame with first entry as home, last entry as goal
         self.current_wp_index = 1  # 1 Use 1 is you want the drone to skip the start waypoint -- useful when using single drones and can start anywhere in the highbay
         self.waypoints = np.array(msg.data, dtype=np.float32).reshape(-1, 3)
@@ -300,6 +316,7 @@ class DroneController(Node):
 
         # TODO: Replace this with the correct version above after debugging
         # Local position is in NED frame
+        self.get_logger().info(f"Position callback returned position {msg.pose.position.x}, {msg.pose.position.y}, {msg.pose.position.z} for {self.drone_ns}")
         self.current_position[0] = msg.pose.position.x
         self.current_position[1] = msg.pose.position.y
         self.current_position[2] = msg.pose.position.z
@@ -309,11 +326,12 @@ class DroneController(Node):
             msg.pose.orientation.z,
             msg.pose.orientation.w
         ]
+        self.last_pose_time = self.node_time()
         # self.publish_transform_callback()
 
     def other_position_callback(self, drone_ns, msg):
         # Other drone position is in NED frame
-        other_position = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y], dtype=float)
+        other_position = np.array([msg.pose.position.x, msg.pose.position.y], dtype=float)
         if drone_ns in self.other_agent_positions:
             self.other_agent_positions[drone_ns] = other_position
 
@@ -340,34 +358,56 @@ class DroneController(Node):
 
     def takeoff(self):
         self.offboard_mode = False
+
+        if not hasattr(self, "_takeoff_started"):
+            self._takeoff_started = False
+
         if self.current_state == "TAKEOFF":
-            # self.cf.takeoff(targetHeight=self.altitude, duration=5.0)
-            # self.timeHelper.sleep(7.0)
-            takeoff_request = Takeoff.Request()
-            takeoff_request.height = self.altitude
-            takeoff_request.duration = rclpy.duration.Duration(seconds=self.takeoff_duration).to_msg()
-            self.takeoff_client.call_async(takeoff_request)
-            time.sleep(self.takeoff_duration + self.hover_duration)
-            # self.timehelper_sleep(self.takeoff_duration + self.hover_duration)
-            self.current_state = "OFFBOARD"
-        self.get_logger().info(f"Takeoff command sent to {self.drone_ns}")
+            if not self._takeoff_started:
+                # self.cf.takeoff(targetHeight=self.altitude, duration=5.0)
+                # self.timeHelper.sleep(7.0)
+                takeoff_request = Takeoff.Request()
+                takeoff_request.height = self.altitude
+                takeoff_request.duration = rclpy.duration.Duration(seconds=self.takeoff_duration).to_msg()
+                self.takeoff_client.call_async(takeoff_request)
+                # time.sleep(self.takeoff_duration + self.hover_duration)
+                # self.timehelper_sleep(self.takeoff_duration + self.hover_duration)
+                self._takeoff_started = True
+                self._takeoff_deadline = self.node_time() + self.takeoff_duration + self.hover_duration
+                self.get_logger().info(f"Takeoff command sent to {self.drone_ns}")
+            else:
+                if self.node_time() >= self._takeoff_deadline:
+                    self._takeoff_started = False
+                    self.current_state = "OFFBOARD"
+                    self.get_logger().info(f"Takeoff completed for {self.drone_ns}")
+                # self.current_state = "OFFBOARD"
 
     def land(self):
         self.offboard_mode = False
 
+        if not hasattr(self, "_land_started"):
+            self._land_started = False
+
         if self.current_state == "LAND":
-            # self.cf.land(targetHeight=1.15, duration=5.0)
-            # self.timeHelper.sleep(5.0)
-            notify_request = NotifySetpointsStop.Request()
-            self.notify_client.call_async(notify_request)
-            land_request = Land.Request()
-            land_request.height = 1.15
-            land_request.duration = rclpy.duration.Duration(seconds=self.land_duration).to_msg()
-            self.land_client.call_async(land_request)
-            time.sleep(self.land_duration + self.pause_duration)
-            # self.timehelper_sleep(self.land_duration + self.pause_duration)
-            self.current_state = "IDLE"
-        self.get_logger().info(f"Landing the drone {self.drone_ns}")
+            if not self._land_started:
+                # self.cf.land(targetHeight=1.15, duration=5.0)
+                # self.timeHelper.sleep(5.0)
+                notify_request = NotifySetpointsStop.Request()
+                self.notify_client.call_async(notify_request)
+                land_request = Land.Request()
+                land_request.height = 1.15
+                land_request.duration = rclpy.duration.Duration(seconds=self.land_duration).to_msg()
+                self.land_client.call_async(land_request)
+                
+                self._land_started = True
+                self._land_deadline = self.node_time() + self.land_duration + self.pause_duration
+                self.get_logger().info(f"Landing the drone {self.drone_ns}")
+            else:
+                if self.node_time() >= self._land_deadline:
+                    # time.sleep(self.land_duration + self.pause_duration)
+                    # self.timehelper_sleep(self.land_duration + self.pause_duration)
+                    self._land_started = False
+                    self.current_state = "IDLE"
 
     def offboard(self):
         self.counter = 0
@@ -393,103 +433,130 @@ class DroneController(Node):
         goto_request.yaw = float(0.0)
         goto_request.duration = rclpy.duration.Duration(seconds=self.pause_duration).to_msg()
         self.goto_client.call_async(goto_request)
-        time.sleep(self.pause_duration)
+        # time.sleep(self.pause_duration)
         # self.timehelper_sleep(self.pause_duration)
+        self._goto_deadline = self.node_time() + self.pause_duration
 
     def waypoint_follower_callback(self):
-        if self.offboard_mode and self.start_flag:
-            if hasattr(self, "waypoints") and self.current_wp_index < len(self.waypoints):
+        if not (self.offboard_mode and self.start_flag):
+            return
+        
+        if self.last_pose_time is None or (self.node_time() - self.last_pose_time) > self.pose_timeout:
+            self.get_logger().warn(f"No recent position data for {self.drone_ns}, hovering at current location")
+            if np.linalg.norm(self.current_position) > 0:
+                if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
+                    return
+                self.send_trajectory(self.current_position[:2].copy())
+            return
+        
+        if hasattr(self, "waypoints") and self.current_wp_index < len(self.waypoints):
 
-                # Waypoints are in global ENU frame
+            # Waypoints are in global ENU frame
+            target = self.waypoints[self.current_wp_index][:2].copy()
+            if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
+                return
+            self.send_trajectory(target)
+
+            if np.linalg.norm(self.current_position[:2] - target) < self.distance_threshold:
+                self.get_logger().info(
+                    f"Waypoint {self.current_wp_index} reached for {self.drone_ns}"
+                )
+                self.current_wp_index += 1
+
+    def command_callback(self):
+        # Uses the low-level trained GC-RL policy
+        if not (self.offboard_mode and self.start_flag):
+            return
+        
+        if self.last_pose_time is None or (self.node_time() - self.last_pose_time) > self.pose_timeout:
+            self.get_logger().warn(f"No recent position data for {self.drone_ns}, hovering at current location")
+            if np.linalg.norm(self.current_position) > 0:
+                if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
+                    return
+                self.send_trajectory(self.current_position[:2].copy())
+            return
+        
+        if hasattr(self, "waypoints"):
+            if self.current_wp_index < len(self.waypoints):
+
                 target = self.waypoints[self.current_wp_index][:2].copy()
-                self.send_trajectory(target)
+                self.send_debug_trajectory(self.current_position[:2].copy())
 
+                # self.get_logger().info(
+                #     f"Current position: {self.current_position[:2]}, Target: {target}, "
+                #     f"Next location: {self.next_location}"
+                # )
+
+                # Updates the high-level waypoints towards the main goal
                 if np.linalg.norm(self.current_position[:2] - target) < self.distance_threshold:
                     self.get_logger().info(
                         f"Waypoint {self.current_wp_index} reached for {self.drone_ns}"
                     )
                     self.current_wp_index += 1
-
-    def command_callback(self):
-        # Uses the low-level trained GC-RL policy
-        if self.offboard_mode and self.start_flag:
-            if hasattr(self, "waypoints"):
-                if self.current_wp_index < len(self.waypoints):
-
+                    if self.current_wp_index >= len(self.waypoints):
+                        self.get_logger().info(f"Mission completed for {self.drone_ns}")
+                        return
                     target = self.waypoints[self.current_wp_index][:2].copy()
-                    self.send_debug_trajectory(self.current_position[:2])
 
-                    # self.get_logger().info(
-                    #     f"Current position: {self.current_position[:2]}, Target: {target}, "
-                    #     f"Next location: {self.next_location}"
-                    # )
+                self.get_logger().info(f"Current position: {self.current_position}")
+                self.get_logger().info(f"Target: {target}")
+                self.get_logger().info(f"Next position: {self.next_location}")
+                self.get_logger().info(f"Distance to target is {np.linalg.norm(self.current_position[:2] - target)}")
+                self.get_logger().info(f"Distance to next location is {np.linalg.norm(self.current_position[:2] - self.next_location)}")
 
-                    # Updates the high-level waypoints towards the main goal
-                    if np.linalg.norm(self.current_position[:2] - target) < self.distance_threshold:
+                # Updates the low-level waypoints towards the next location
+                if np.linalg.norm(self.current_position[:2] - self.next_location) < self.distance_threshold:
+                    # Input to the agent is normalized global ENU positions
+                    observation = self.state / self.normalize_factor
+                    # goal = ((target.copy() - self.origin_offset) / self.normalize_factor)
+                    goal = self.highbay2env(target) / self.normalize_factor
+                    state = {
+                        "observation": observation,
+                        "goal": goal,
+                    }
+                    self.get_logger().info(f"State: {state}")
+                    action = self.agent.select_action(state)
+                    self.get_logger().info(f"Action: {action}")
+                    # Output of applying the action is in global ENU frame
+                    observation = self.step(action)
+                    # observation += self.origin_offset
+                    observation = self.env2highbay(observation)
+                    self.next_location = observation
+
+                    self.get_logger().info(
+                        f"Next location updated to {self.next_location} for {self.drone_ns}"
+                    )
+
+                    if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
+                            np.linalg.norm(action) < 0.01):
                         self.get_logger().info(
-                            f"Waypoint {self.current_wp_index} reached for {self.drone_ns}"
+                            f"Next location reached for {self.drone_ns}, moving to next waypoint"
                         )
                         self.current_wp_index += 1
                         if self.current_wp_index >= len(self.waypoints):
                             self.get_logger().info(f"Mission completed for {self.drone_ns}")
                             return
-                        target = self.waypoints[self.current_wp_index][:2].copy()
 
-                    self.get_logger().info(f"Current position: {self.current_position}")
-                    self.get_logger().info(f"Target: {target}")
-                    self.get_logger().info(f"Next position: {self.next_location}")
-                    self.get_logger().info(f"Distance to target is {np.linalg.norm(self.current_position[:2] - target)}")
-                    self.get_logger().info(f"Distance to next location is {np.linalg.norm(self.current_position[:2] - self.next_location)}")
-
-                    # Updates the low-level waypoints towards the next location
-                    if np.linalg.norm(self.current_position[:2] - self.next_location) < self.distance_threshold:
-                        # Input to the agent is normalized global ENU positions
-                        observation = self.state / self.normalize_factor
-                        # goal = ((target.copy() - self.origin_offset) / self.normalize_factor)
-                        goal = self.highbay2env(target) / self.normalize_factor
-                        state = {
-                            "observation": observation,
-                            "goal": goal,
-                        }
-                        self.get_logger().info(f"State: {state}")
-                        action = self.agent.select_action(state)
-                        self.get_logger().info(f"Action: {action}")
-                        # Output of applying the action is in global ENU frame
-                        observation = self.step(action)
-                        # observation += self.origin_offset
-                        observation = self.env2highbay(observation)
-                        self.next_location = observation
-
+                for drone_ns, other_position in self.other_agent_positions.items():
+                    self_id = self.drone_id
+                    other_id = int(''.join(ch for ch in drone_ns if ch.isdigit()))
+                    distance = np.linalg.norm(self.next_location - other_position)
+                    if distance < self.distance_threshold * 2 and other_id < self_id:
                         self.get_logger().info(
-                            f"Next location updated to {self.next_location} for {self.drone_ns}"
+                            f"Drone {drone_ns} is too close to {self.drone_ns}, waiting at current location"
                         )
-
-                        if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
-                                np.linalg.norm(action) < 0.01):
-                            self.get_logger().info(
-                                f"Next location reached for {self.drone_ns}, moving to next waypoint"
-                            )
-                            self.current_wp_index += 1
-                            if self.current_wp_index >= len(self.waypoints):
-                                self.get_logger().info(f"Mission completed for {self.drone_ns}")
-                                return
-
-                    for drone_ns, other_position in self.other_agent_positions.items():
-                        self_id = int(self.drone_ns.split("_")[-1])
-                        other_id = int(drone_ns.split("_")[-1])
-                        distance = np.linalg.norm(self.next_location - other_position)
-                        if distance < self.distance_threshold * 2 and other_id < self_id:
-                            self.get_logger().info(
-                                f"Drone {drone_ns} is too close to {self.drone_ns}, waiting at current location"
-                            )
-                            self.send_trajectory(self.current_position[:2])
+                        if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
                             return
+                        self.send_trajectory(self.current_position[:2].copy())
+                        return
 
-                    self.send_trajectory(self.next_location)
+                if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
+                    return
+                self.send_trajectory(self.next_location)
 
-                else:
-                    self.start_flag = False
-                    self.current_state = "LAND"
+            else:
+                self.start_flag = False
+                self.current_state = "LAND"
 
     def discretize_state(self, state, resolution=1.0):
         (i, j) = np.floor(resolution * state).astype(np.int64)

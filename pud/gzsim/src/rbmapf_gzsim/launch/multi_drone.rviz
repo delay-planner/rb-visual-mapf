@@ -4,13 +4,19 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /MarkerArray1/Topic1
+        - /MarkerArray2/Topic1
         - /Path3/Topic1
-        - /Path6
-        - /MarkerArray6
-        - /Path7
-        - /MarkerArray7
-        - /Path8
-        - /MarkerArray8
+        - /MarkerArray3/Status1
+        - /MarkerArray3/Topic1
+        - /MarkerArray4/Topic1
+        - /MarkerArray5/Topic1
+        - /MarkerArray6/Topic1
+        - /MarkerArray7/Status1
+        - /MarkerArray7/Topic1
+        - /MarkerArray8/Topic1
+        - /MarkerArray9/Topic1
+        - /MarkerArray10/Topic1
       Splitter Ratio: 0.5
     Tree Height: 1526
   - Class: rviz_common/Selection
@@ -86,7 +92,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -126,7 +132,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -166,7 +172,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -206,7 +212,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -246,7 +252,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -286,7 +292,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -326,7 +332,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -366,7 +372,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -378,7 +384,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -390,7 +396,7 @@ Visualization Manager:
       Namespaces:
         {}
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
