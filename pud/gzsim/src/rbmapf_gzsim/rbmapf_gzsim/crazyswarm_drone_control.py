@@ -1,6 +1,8 @@
+import json
 import yaml
 import time
 import torch
+import requests
 import numpy as np
 from dotmap import DotMap
 
@@ -50,12 +52,16 @@ class DroneController(Node):
         self.drone_id = drone_id
         self.num_drones = num_drones
         self.waypoint_follow = waypoint_follow
+
+        self.ack_endpoint = "http://127.0.0.1:5000/done"
+        self.mission_url = f"http://127.0.0.1:5000/?drone_id={self.drone_id}"
+ 
         config_file, ckpt_file, walls_file = files
 
-        self.land_duration = 7.0
+        self.land_duration = 5.0
         self.hover_duration = 5.0
-        self.pause_duration = 5.0
-        self.takeoff_duration = 7.0
+        self.pause_duration = 7.0
+        self.takeoff_duration = 5.0
 
         self.pose_timeout = 0.5
         self.last_pose_time = None
@@ -63,7 +69,7 @@ class DroneController(Node):
         self.walls = np.load(walls_file)
         rows, cols = self.walls.shape
         self.normalize_factor = np.array([rows, cols])
-        self.scale_factor = np.array([15./6, 15./8]) # 15x15 is the walls shape and 6x8 is the highbay space
+        self.scale_factor = np.array([float(rows) / 6, float(cols) / 8]) # 6x8 is the highbay space
         self.origin_offset = np.array([-cols / 2.0, -rows / 2.0])
 
         with open(config_file, "r") as f:
@@ -81,11 +87,11 @@ class DroneController(Node):
         callback_fn = self.waypoint_follower_callback if self.waypoint_follow else self.command_callback
         self.cmd_timer = self.create_timer(0.02, callback_fn)
 
-        self.altitude = 4.0
+        self.altitude = 3.0
         # self.altitude += (self.drone_id - 1) * 0.5
         self.current_state = "IDLE"
         self.offboard_mode = False
-        self.distance_threshold = 0.1
+        self.distance_threshold = 0.01
         self.current_position = np.zeros(3, dtype=float)
         self.current_orientation = np.zeros(4, dtype=float)
 
@@ -104,6 +110,36 @@ class DroneController(Node):
         )
         self.agent.to(torch.device(config.device))
         self.agent.eval()
+
+    def _ready_to_start(self):
+        try:
+            resp = requests.get(self.mission_url, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            # self.get_logger().info(f"Response from server: {data}")
+            mission_ready = data.get("mission_ready", False) is True
+            mission_name = data.get("mission_name", "")
+            land_ack = data.get("land", False) is True
+            return mission_ready, mission_name, land_ack
+        except (requests.RequestException, ValueError) as e:
+            self.get_logger().error(f"Request failed or invalid JSON: {e}")
+            return False, "", False
+
+    def _send_ack(self, mission_name):
+        try:
+            data = {
+                "drone_id": self.drone_id,
+                "mission_name": self.mission_name
+            }
+            response = requests.post(self.ack_endpoint, json=data)
+
+            if response.status_code != 200:
+                self.get_logger().error(f"Request failed with status code: {response.status_code}")
+                self.get_logger().error(f"Response: {response.text}")
+            # else:
+            #     self.get_logger().info(f"Response: {response.json()}")
+        except (requests.RequestException, ValueError) as e:
+            self.get_logger().error(f"Failed to send ack for mission {mission_name}: {e}")
 
     def _init_services(self):
         self.land_client = self.create_client(Land, self.drone_ns + '/land')
@@ -128,13 +164,13 @@ class DroneController(Node):
         start_qos.reliability = QoSReliabilityPolicy.RELIABLE
         start_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
 
-        self.create_subscription(
-            Empty,
-            "/waypoints_generated",
-            self.start_callback,
-            # 10,
-            start_qos
-        )
+        # self.create_subscription(
+        #     Empty,
+        #     "/waypoints_generated",
+        #     self.start_callback,
+        #     # 10,
+        #     start_qos
+        # )
         self.odom_subscriber = self.create_subscription(
             PoseStamped,
             f"{self.drone_ns}/pose",
@@ -184,8 +220,8 @@ class DroneController(Node):
             f"{self.drone_ns}/waypoint_markers",
             10
         )
-        self.wall_publisher = self.create_publisher(MarkerArray, 'wall_markers', 10)
-        self.publish_wall_markers()
+        # self.wall_publisher = self.create_publisher(MarkerArray, 'wall_markers', 10)
+        # self.publish_wall_markers()
 
     def publish_markers(self):
         markers = MarkerArray()
@@ -239,31 +275,32 @@ class DroneController(Node):
 
         self.waypoint_marker_publisher.publish(markers)
 
-    def publish_wall_markers(self, height=5.0, resolution=1.0):
-        marker_array = MarkerArray()
+    # def publish_wall_markers(self, height=5.0, resolution=1.0):
+    #     marker_array = MarkerArray()
 
-        idx = 0
-        for i, j in zip(*np.where(self.walls == 1)):
-            x, y = self.env2highbay([(j + 0.5)*resolution, (i + 0.5)*resolution])
+    #     idx = 0
+    #     for i, j in zip(*np.where(self.walls == 1)):
+    #         x, y = self.env2highbay([(j + 0.5)*resolution, (i + 0.5)*resolution])
 
-            marker = Marker()
-            marker.header.frame_id = 'world'
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.ns = 'walls'
-            marker.id = idx
-            marker.type = Marker.CUBE
-            marker.action = Marker.ADD
-            marker.pose.position.x = float(x)
-            marker.pose.position.y = float(y)
-            marker.pose.position.z = float(height / 2.0)
-            marker.scale.x = marker.scale.y = resolution
-            marker.scale.z = height
-            marker.color = ColorRGBA(r=0.3, g=0.3, b=0.3, a=1.0)
-            marker.lifetime = Duration(sec=0)
-            marker_array.markers.append(marker)  # type: ignore
-            idx += 1
+    #         marker = Marker()
+    #         marker.header.frame_id = 'world'
+    #         marker.header.stamp = self.get_clock().now().to_msg()
+    #         marker.ns = 'walls'
+    #         marker.id = idx
+    #         marker.type = Marker.CUBE
+    #         marker.action = Marker.ADD
+    #         marker.pose.position.x = float(x)
+    #         marker.pose.position.y = float(y)
+    #         marker.pose.position.z = float(height / 2.0)
+    #         marker.scale.x = float(resolution / self.scale_factor[0])
+    #         marker.scale.y = float(resolution / self.scale_factor[1])
+    #         marker.scale.z = height
+    #         marker.color = ColorRGBA(r=0.3, g=0.3, b=0.3, a=1.0)
+    #         marker.lifetime = Duration(sec=0)
+    #         marker_array.markers.append(marker)  # type: ignore
+    #         idx += 1
 
-        self.wall_publisher.publish(marker_array)
+    #     self.wall_publisher.publish(marker_array)
 
     def env2highbay(self, position):
         return self.adjust_position(position, to_highbay_frame=True)
@@ -277,7 +314,6 @@ class DroneController(Node):
         return (position + self.origin_offset) / self.scale_factor if to_highbay_frame else (position * self.scale_factor) - self.origin_offset
         
     def waypoints_callback(self, msg: Float32MultiArray):
-        self.get_logger().info(f"Waypoints callback triggered for {self.drone_ns}")
         # Waypoints are in global ENU frame with first entry as home, last entry as goal
         self.current_wp_index = 1  # 1 Use 1 is you want the drone to skip the start waypoint -- useful when using single drones and can start anywhere in the highbay
         self.waypoints = np.array(msg.data, dtype=np.float32).reshape(-1, 3)
@@ -295,10 +331,11 @@ class DroneController(Node):
         other_waypoints = np.array(msg.data, dtype=np.float32).reshape(-1, 3)
         other_home = other_waypoints[0][:2].copy()
         self.other_agent_homes[drone_ns] = other_home
+        self.other_agent_positions[drone_ns] = other_home.copy()  # Initialize to home position
 
-    def start_callback(self, msg):
-        self.start_flag = True
-        self.get_logger().info(f"Drone {self.drone_id} received start signal.")
+    # def start_callback(self, msg):
+    #     self.start_flag = True
+    #     self.get_logger().info(f"Drone {self.drone_id} received start signal.")
 
     def position_callback(self, msg):
         # if self.gz_version == 'harmonic':
@@ -316,7 +353,6 @@ class DroneController(Node):
 
         # TODO: Replace this with the correct version above after debugging
         # Local position is in NED frame
-        self.get_logger().info(f"Position callback returned position {msg.pose.position.x}, {msg.pose.position.y}, {msg.pose.position.z} for {self.drone_ns}")
         self.current_position[0] = msg.pose.position.x
         self.current_position[1] = msg.pose.position.y
         self.current_position[2] = msg.pose.position.z
@@ -336,6 +372,10 @@ class DroneController(Node):
             self.other_agent_positions[drone_ns] = other_position
 
     def timer_callback(self):
+        self.start_flag, self.mission_name, self.land_ack = self._ready_to_start()
+        if self.land_ack:
+            self.current_state = "LAND"
+
         if self.current_state == "IDLE" and self.start_flag:
             self.current_state = "TAKEOFF"
             self.get_logger().info(f"Running the drone {self.drone_ns}")
@@ -408,6 +448,7 @@ class DroneController(Node):
                     # self.timehelper_sleep(self.land_duration + self.pause_duration)
                     self._land_started = False
                     self.current_state = "IDLE"
+                    self.get_logger().info(f"Landing completed for {self.drone_ns}")
 
     def offboard(self):
         self.counter = 0
@@ -498,11 +539,11 @@ class DroneController(Node):
                         return
                     target = self.waypoints[self.current_wp_index][:2].copy()
 
-                self.get_logger().info(f"Current position: {self.current_position}")
-                self.get_logger().info(f"Target: {target}")
-                self.get_logger().info(f"Next position: {self.next_location}")
-                self.get_logger().info(f"Distance to target is {np.linalg.norm(self.current_position[:2] - target)}")
-                self.get_logger().info(f"Distance to next location is {np.linalg.norm(self.current_position[:2] - self.next_location)}")
+                # self.get_logger().info(f"Current position: {self.current_position}")
+                # self.get_logger().info(f"Target: {target}")
+                # self.get_logger().info(f"Next position: {self.next_location}")
+                # self.get_logger().info(f"Distance to target is {np.linalg.norm(self.current_position[:2] - target)}")
+                # self.get_logger().info(f"Distance to next location is {np.linalg.norm(self.current_position[:2] - self.next_location)}")
 
                 # Updates the low-level waypoints towards the next location
                 if np.linalg.norm(self.current_position[:2] - self.next_location) < self.distance_threshold:
@@ -545,8 +586,8 @@ class DroneController(Node):
                         self.get_logger().info(
                             f"Drone {drone_ns} is too close to {self.drone_ns}, waiting at current location"
                         )
-                        if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
-                            return
+                        # if hasattr(self, "_goto_deadline") and self.node_time() < self._goto_deadline:
+                        #     return
                         self.send_trajectory(self.current_position[:2].copy())
                         return
 
@@ -555,8 +596,13 @@ class DroneController(Node):
                 self.send_trajectory(self.next_location)
 
             else:
-                self.start_flag = False
-                self.current_state = "LAND"
+                # self.start_flag = False
+                # self.current_state = "LAND"
+                if self.mission_name:
+                    self.get_logger().info(f"Mission {self.mission_name} completed for {self.drone_ns}")
+                    self._send_ack(self.mission_name)
+                    self.start_flag = False
+                    self.mission_name = ""
 
     def discretize_state(self, state, resolution=1.0):
         (i, j) = np.floor(resolution * state).astype(np.int64)

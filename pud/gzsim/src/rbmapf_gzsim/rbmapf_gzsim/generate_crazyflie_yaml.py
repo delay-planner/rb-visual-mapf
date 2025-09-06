@@ -23,7 +23,7 @@ def main():
                 'motion_capture': {
                     'tracking': 'librigidbodytracker',
                     'marker': 'default_single_marker',
-                    'dynamics': 'default'
+                    'dynamics': 'fast_cf'   # 'default'
                 },
                 'big_quad': False,
                 'battery': {
@@ -43,7 +43,8 @@ def main():
             'firmware_params': {
                 'commander': {'enHighLevel': 1},
                 'stabilizer': {'estimator': 2, 'controller': 2},
-                'locSrv': {'extPosStdDev': 1e-3, 'extQuatStdDev': 0.5e-1}
+                'locSrv': {'extPosStdDev': 1e-3, 'extQuatStdDev': 0.5e-1},
+                # 'colAv': {'enable': 1}
             },
             'reference_frame': 'world',
             'broadcasts': {
@@ -53,12 +54,27 @@ def main():
         }
     }
 
+    initial_positions = [
+        # [0.0, 0.0, 0.0],
+        # [3.185, 1.792, 0.781], # Old small marker
+        [3.15, 1.86, 0.8], # New medium marker
+        # [3.13, 1.95, 0.8],  # New big marker
+        # [0.0, -1.0, 0.0],
+        # [3.220, 1.080, 0.782],
+        [3.22, 1.00, 0.8],
+        [0.0, 1.0, 0.0],
+        [-1.0, 0.0, 0.0]
+    ]
+
     for idx in range(1, num_drones + 1):
         drone_id = f'cf{idx}'
         x, y = float(starts[idx - 1, 0]), float(starts[idx - 1, 1])
-        uri_suffix = f'E7E7E7E7{str(idx).zfill(2)}'
-        # initial_position = [x, y, 0.0]
-        initial_position = [0.0, 0.0, 0.0]  # Need this to avoid issues with drone flipping. Not sure why. 
+        uri_suffix = f'E7E7E7E7{str(idx + 2).zfill(2)}'  # TODO: Change the idx + 1 back to idx later!!
+        # Need this to avoid issues with drone flipping. Not sure why. 
+        # One reason is that the original starts are not actually where 
+        # the drone takesoff as its hard to place them exactly there in
+        # the highbay
+        initial_position = initial_positions[(idx - 1) % len(initial_positions)]
 
         data['robots'][drone_id] = {
             'enabled': True,

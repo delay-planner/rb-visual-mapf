@@ -86,6 +86,15 @@ def generate_rmpl(
 )))
         """
 
+    if drones == 1:
+        for n_mission in range(1, 2*missions + 2):
+            rmpl_content += f"""
+(define-control-program znoop-{number_to_name[n_mission]} ()
+    (declare (primitive)
+    (duration (simple :lower-bound 0 :upper-bound 0)
+)))
+            """
+
     # For each mission, create a parallel sequence that starts the mission for each drone,
     mission_sequences = []
     for mission in range(1, missions + 1):
@@ -112,9 +121,15 @@ def generate_rmpl(
 
         # Add a sync after each mission except the last one
         if mission < missions:
+            if drones == 1:
+                mission_sequences.append(f"(znoop-{number_to_name[2*mission]})")
+
             mission_sequences.append(f"""
 (sync-{number_to_name[mission]})
             """)
+
+            if drones == 1:
+                mission_sequences.append(f"(znoop-{number_to_name[2*mission + 1]})")
 
     # Add the final sequence that lands all drones
     land_sequence = ""

@@ -515,7 +515,7 @@ def spawn_processes(context, *args, **kwargs):
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
-            # parameters=[{'use_sim_time': False}],
+            parameters=[{'use_hardware': True}],
         )
         delayed_rviz = TimerAction(period=2.0, actions=[wall_rviz_node])
         actions.append(RegisterEventHandler(

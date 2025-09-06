@@ -22,6 +22,7 @@ class WallRVizNode(Node):
     def __init__(self, height=5.0, resolution=1.0):
         super().__init__('wall_rviz_node')
         self.declare_parameter('map_topic', 'wall_markers_3d/walls_3d')
+        self.declare_parameter('use_hardware', False)
 
         args = argument_parser()
         habitat = args.visual == 'True'
@@ -39,6 +40,9 @@ class WallRVizNode(Node):
             depth=1,
         )
 
+        use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
+        self.scale_factor = np.array([self.walls.shape[1] / 6., self.walls.shape[0] / 8.]) if use_hardware else np.array([1.0, 1.0])
+
         marker_array = self.publish_markers(height, resolution) if not habitat else self.publish_mesh_markers(args)
 
         map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
@@ -54,8 +58,10 @@ class WallRVizNode(Node):
 
         idx = 0
         for i, j in zip(*np.where(self.walls == 1)):
-            x = x0 + (j + 0.5) * resolution
-            y = y0 + (i + 0.5) * resolution
+            # x = x0 + (j + 0.5) * resolution
+            # y = y0 + (i + 0.5) * resolution
+            x = (x0 + (j + 0.5)*resolution) / self.scale_factor[0]
+            y = (y0 + (i + 0.5)*resolution) / self.scale_factor[1]
             z = height / 2.0
 
             marker = Marker()
@@ -71,8 +77,8 @@ class WallRVizNode(Node):
             marker.pose.position.z = float(z)
             marker.pose.orientation.w = 1.0
 
-            marker.scale.x = resolution
-            marker.scale.y = resolution
+            marker.scale.x = float(resolution / self.scale_factor[0])
+            marker.scale.y = float(resolution / self.scale_factor[1])
             marker.scale.z = height
 
             marker.lifetime = Duration(sec=0, nanosec=0)

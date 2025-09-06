@@ -16,6 +16,7 @@ pud/mapf/unit_tests/logs/
 cc-sorb-venv/
 pud/envs/safe_habitatenv/apsps/
 pud/gzsim/log/
+pud/gzsim/cache/
 pud/gzsim/install/
 pud/gzsim/test_data
 pud/gzsim/src/rbmapf_gzsim/test/

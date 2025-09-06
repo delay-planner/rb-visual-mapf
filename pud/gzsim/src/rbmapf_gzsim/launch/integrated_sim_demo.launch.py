@@ -545,10 +545,11 @@ def spawn_processes(context, *args, **kwargs):
             launch_arguments={
                 'crazyflies_yaml_file': crazyflie_yaml_path,
                 'rviz_config_file': rviz_config,
-                'debug': 'True',
+                'debug': 'False',
                 'rviz': 'False',
                 'gui': 'False',
                 'teleop': 'False',
+                'backend': 'cflib',
                 }.items()
         )
         delayed_spawn = TimerAction(period=5.0, actions=[crazyflie_server])
@@ -584,31 +585,11 @@ def spawn_processes(context, *args, **kwargs):
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
             ],
-            # parameters=[{'use_sim_time': False}],
+            parameters=[{'use_hardware': True}],
         )
         delayed_rviz = TimerAction(period=2.0, actions=[wall_rviz_node])
         actions.append(RegisterEventHandler(
             OnProcessStart(target_action=rviz, on_start=[delayed_rviz]),
-        ))
-
-        waypoint_generator = Node(
-            package="rbmapf_gzsim",
-            executable="waypoint_generator",
-            name="waypoint_generator",
-            output="screen",
-            arguments=[
-                '--visual', str(habitat),
-                '--config_file', config_file,
-                '--num_agents', str(num_drones),
-                '--use_hardware', str(hardware_demo),
-                '--problem_set_file', problem_set_file,
-                '--constrained_ckpt_file', constrained_ckpt_file,
-                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
-            ],
-            parameters=[{'interface': 'cf'}],
-        )
-        actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=rviz, on_start=[waypoint_generator]),
         ))
 
         # swarm = Crazyswarm()
@@ -628,8 +609,88 @@ def spawn_processes(context, *args, **kwargs):
 
             timed_actions = TimerAction(period=2.0, actions=[cf_drone_control])
             actions.append(RegisterEventHandler(
-                OnProcessStart(target_action=waypoint_generator, on_start=[timed_actions]),
+                OnProcessStart(target_action=wall_rviz_node, on_start=[timed_actions]),
             ))
+
+        waypoint_generator = Node(
+            package="rbmapf_gzsim",
+            executable="waypoint_generator",
+            name="waypoint_generator",
+            output="screen",
+            arguments=[
+                '--visual', str(habitat),
+                '--config_file', config_file,
+                '--num_agents', str(num_drones),
+                '--use_hardware', str(hardware_demo),
+                '--problem_set_file', problem_set_file,
+                '--constrained_ckpt_file', constrained_ckpt_file,
+                '--unconstrained_ckpt_file', unconstrained_ckpt_file,
+            ],
+            parameters=[{'interface': 'cf'}],
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=wall_rviz_node, on_start=[waypoint_generator]),
+        ))
+
+        waypoint_gen_checker = Node(
+            package="rbmapf_gzsim",
+            executable="check_waypoint_gen_finished",
+            name="check_waypoint_gen_finished",
+            output="screen",
+        )
+        actions.append(waypoint_gen_checker)
+
+        create_rmpl = ExecuteProcess(
+            cmd=['python', generate_rmpl_file_path.as_posix(),
+                 '--output-rmpl-path', rmpl_file_path.as_posix(),
+                 '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
+            name='create_rmpl',
+            output='screen',
+        )
+
+        upload_rmpl = ExecuteProcess(
+            cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
+            name='upload_rmpl',
+            output='screen',
+        )
+
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=waypoint_generator, on_start=[create_rmpl]),
+        ))
+
+        actions.append(RegisterEventHandler(
+            OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
+        ))
+
+        # Copy the execute.sh script to podman
+        copy_exec_script = ExecuteProcess(
+            cmd=['podman', 'cp', execute_kirk_file_path.as_posix(),
+                 f'{podman_image}:/common-lisp/enterprise/execute_kirk.sh'],
+            name='copy_exec_script',
+            output='screen',
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=waypoint_generator, on_start=[copy_exec_script]),
+        ))
+
+        for idx in range(1, num_drones + 1):
+            podman_exec = ExecuteProcess(
+                cmd=['podman', 'exec', '-it', podman_image, '/bin/bash', 'execute_kirk.sh', str(idx)],
+                name=f'podman_exec_{idx}',
+                output='screen',
+            )
+            actions.append(RegisterEventHandler(
+                OnProcessExit(target_action=waypoint_gen_checker, on_exit=[podman_exec]),
+            ))
+
+        kirk_server = ExecuteProcess(
+            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'DEBUG'],
+            name='kirk_server',
+            output='screen',
+        )
+        actions.append(RegisterEventHandler(
+            OnProcessStart(target_action=waypoint_generator, on_start=[kirk_server]),
+        ))
 
     if use_sim_time and gz_version not in ['classic', 'harmonic']:
         raise RuntimeError('Incorrect gz_version provided. Options include classic or harmonic')
