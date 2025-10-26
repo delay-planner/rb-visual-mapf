@@ -61,7 +61,8 @@ podman_image:
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:
-  default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
+  # default:   "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
+  default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server_delay.py"
   description: "Path to the Kirk server script"
 
 rmpl_file_path:

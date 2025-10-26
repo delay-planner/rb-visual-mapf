@@ -235,7 +235,7 @@ def generate_wps(args, problem_start=0, debug=False):
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
         "tree_save_frequency": 1,
         "budget_allocater": "uniform",
-        "risk_bound": 6.615,  # Low is 1.47 and High is 11.76
+        "risk_bound": 100,  # 6.615,  # Low is 1.47 and High is 11.76
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
     constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(

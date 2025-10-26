@@ -458,27 +458,27 @@ def spawn_processes(context, *args, **kwargs):
         )
         actions.append(waypoint_gen_checker)
 
-        create_rmpl = ExecuteProcess(
-            cmd=['python', generate_rmpl_file_path.as_posix(),
-                 '--output-rmpl-path', rmpl_file_path.as_posix(),
-                 '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
-            name='create_rmpl',
-            output='screen',
-        )
+        # create_rmpl = ExecuteProcess(
+        #     cmd=['python', generate_rmpl_file_path.as_posix(),
+        #          '--output-rmpl-path', rmpl_file_path.as_posix(),
+        #          '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
+        #     name='create_rmpl',
+        #     output='screen',
+        # )
 
-        upload_rmpl = ExecuteProcess(
-            cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
-            name='upload_rmpl',
-            output='screen',
-        )
+        # upload_rmpl = ExecuteProcess(
+        #     cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
+        #     name='upload_rmpl',
+        #     output='screen',
+        # )
 
-        actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=gz_sim, on_start=[create_rmpl]),
-        ))
+        # actions.append(RegisterEventHandler(
+        #     OnProcessStart(target_action=gz_sim, on_start=[create_rmpl]),
+        # ))
 
-        actions.append(RegisterEventHandler(
-            OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
-        ))
+        # actions.append(RegisterEventHandler(
+        #     OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
+        # ))
 
         # Copy the execute.sh script to podman
         copy_exec_script = ExecuteProcess(
@@ -549,7 +549,7 @@ def spawn_processes(context, *args, **kwargs):
                 'rviz': 'False',
                 'gui': 'False',
                 'teleop': 'False',
-                'backend': 'cflib',
+                'backend': 'sim',
                 }.items()
         )
         delayed_spawn = TimerAction(period=5.0, actions=[crazyflie_server])
@@ -640,27 +640,27 @@ def spawn_processes(context, *args, **kwargs):
         )
         actions.append(waypoint_gen_checker)
 
-        create_rmpl = ExecuteProcess(
-            cmd=['python', generate_rmpl_file_path.as_posix(),
-                 '--output-rmpl-path', rmpl_file_path.as_posix(),
-                 '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
-            name='create_rmpl',
-            output='screen',
-        )
+        # create_rmpl = ExecuteProcess(
+        #     cmd=['python', generate_rmpl_file_path.as_posix(),
+        #          '--output-rmpl-path', rmpl_file_path.as_posix(),
+        #          '--num-drones', str(num_drones), '--num-missions', str(num_missions)],
+        #     name='create_rmpl',
+        #     output='screen',
+        # )
 
-        upload_rmpl = ExecuteProcess(
-            cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
-            name='upload_rmpl',
-            output='screen',
-        )
+        # upload_rmpl = ExecuteProcess(
+        #     cmd=['podman', 'cp', rmpl_file_path.as_posix(), f'{podman_image}:/common-lisp/enterprise/mission.rmpl'],
+        #     name='upload_rmpl',
+        #     output='screen',
+        # )
 
-        actions.append(RegisterEventHandler(
-            OnProcessStart(target_action=waypoint_generator, on_start=[create_rmpl]),
-        ))
+        # actions.append(RegisterEventHandler(
+        #     OnProcessStart(target_action=waypoint_generator, on_start=[create_rmpl]),
+        # ))
 
-        actions.append(RegisterEventHandler(
-            OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
-        ))
+        # actions.append(RegisterEventHandler(
+        #     OnProcessExit(target_action=create_rmpl, on_exit=[upload_rmpl]),
+        # ))
 
         # Copy the execute.sh script to podman
         copy_exec_script = ExecuteProcess(
