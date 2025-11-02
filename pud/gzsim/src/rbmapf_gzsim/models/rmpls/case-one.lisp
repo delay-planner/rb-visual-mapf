@@ -67,6 +67,16 @@
     (declare (primitive)
     (duration (simple :lower-bound 7 :upper-bound 9)
 )))
+
+(define-control-program sync-one ()
+    (declare (primitive)
+    (duration (simple :lower-bound 0 :upper-bound 0)
+)))
+
+(define-control-program sync-two ()
+    (declare (primitive)
+    (duration (simple :lower-bound 0 :upper-bound 0)
+)))
  
         
 (define-control-program main ()
@@ -81,6 +91,13 @@
         (upload-a)
 
         (parallel (:slack t)
+            (land-drone-one)
+            (land-drone-two)
+        )
+
+	(sync-one)
+
+        (parallel (:slack t)
             (start-mission-two-drone-three)
             (start-mission-two-drone-four)
         )
@@ -88,14 +105,8 @@
         (upload-b)
 
         (parallel (:slack t)
-            (land-drone-one)
-            (parallel (:slack t)
-                (land-drone-two)
-                (parallel (:slack t)
-                    (land-drone-three)
-                    (land-drone-four)
-                )
-            )
+            (land-drone-three)
+            (land-drone-four)
         )
         
     ))

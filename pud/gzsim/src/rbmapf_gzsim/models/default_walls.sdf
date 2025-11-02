@@ -101,18 +101,18 @@
     </spherical_coordinates>
   
 
-                <model name="wall_6_6_09d3a8">
+                <model name="wall_6_6_cbb097">
                     <pose>-1.000 -1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_6_6_09d3a8">
-                    <collision name="col_wall_6_6_09d3a8">
+                    <link name="link_wall_6_6_cbb097">
+                    <collision name="col_wall_6_6_cbb097">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_6_6_09d3a8">
+                    <visual name="vis_wall_6_6_cbb097">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -128,18 +128,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_6_7_72e934">
+                <model name="wall_6_7_892759">
                     <pose>0.000 -1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_6_7_72e934">
-                    <collision name="col_wall_6_7_72e934">
+                    <link name="link_wall_6_7_892759">
+                    <collision name="col_wall_6_7_892759">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_6_7_72e934">
+                    <visual name="vis_wall_6_7_892759">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -155,18 +155,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_6_8_07aa6e">
+                <model name="wall_6_8_9cc87a">
                     <pose>1.000 -1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_6_8_07aa6e">
-                    <collision name="col_wall_6_8_07aa6e">
+                    <link name="link_wall_6_8_9cc87a">
+                    <collision name="col_wall_6_8_9cc87a">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_6_8_07aa6e">
+                    <visual name="vis_wall_6_8_9cc87a">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -182,18 +182,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_7_6_f7e124">
+                <model name="wall_7_6_0bf8ab">
                     <pose>-1.000 0.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_7_6_f7e124">
-                    <collision name="col_wall_7_6_f7e124">
+                    <link name="link_wall_7_6_0bf8ab">
+                    <collision name="col_wall_7_6_0bf8ab">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_7_6_f7e124">
+                    <visual name="vis_wall_7_6_0bf8ab">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -209,18 +209,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_7_7_bf02a4">
+                <model name="wall_7_7_0153e1">
                     <pose>0.000 0.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_7_7_bf02a4">
-                    <collision name="col_wall_7_7_bf02a4">
+                    <link name="link_wall_7_7_0153e1">
+                    <collision name="col_wall_7_7_0153e1">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_7_7_bf02a4">
+                    <visual name="vis_wall_7_7_0153e1">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -236,18 +236,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_7_8_39e211">
+                <model name="wall_7_8_6dc5cb">
                     <pose>1.000 0.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_7_8_39e211">
-                    <collision name="col_wall_7_8_39e211">
+                    <link name="link_wall_7_8_6dc5cb">
+                    <collision name="col_wall_7_8_6dc5cb">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_7_8_39e211">
+                    <visual name="vis_wall_7_8_6dc5cb">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -263,18 +263,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_8_6_c33cc8">
+                <model name="wall_8_6_44b40a">
                     <pose>-1.000 1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_8_6_c33cc8">
-                    <collision name="col_wall_8_6_c33cc8">
+                    <link name="link_wall_8_6_44b40a">
+                    <collision name="col_wall_8_6_44b40a">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_8_6_c33cc8">
+                    <visual name="vis_wall_8_6_44b40a">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -290,18 +290,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_8_7_49b97c">
+                <model name="wall_8_7_b1db9b">
                     <pose>0.000 1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_8_7_49b97c">
-                    <collision name="col_wall_8_7_49b97c">
+                    <link name="link_wall_8_7_b1db9b">
+                    <collision name="col_wall_8_7_b1db9b">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_8_7_49b97c">
+                    <visual name="vis_wall_8_7_b1db9b">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
@@ -317,18 +317,18 @@
                     <self_collide>false</self_collide>
                 </model>
 
-                <model name="wall_8_8_a610ff">
+                <model name="wall_8_8_d299c2">
                     <pose>1.000 1.000 2.500 0 0 0</pose>
                     <static>true</static>
-                    <link name="link_wall_8_8_a610ff">
-                    <collision name="col_wall_8_8_a610ff">
+                    <link name="link_wall_8_8_d299c2">
+                    <collision name="col_wall_8_8_d299c2">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
                             </box>
                         </geometry>
                     </collision>
-                    <visual name="vis_wall_8_8_a610ff">
+                    <visual name="vis_wall_8_8_d299c2">
                         <geometry>
                             <box>
                                 <size>1.000 1.000 5.000</size>
