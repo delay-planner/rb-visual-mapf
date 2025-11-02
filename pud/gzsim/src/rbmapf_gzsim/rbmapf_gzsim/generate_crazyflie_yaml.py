@@ -57,19 +57,19 @@ def main():
     initial_positions = [
         # [0.0, 0.0, 0.0],
         # [3.185, 1.792, 0.781], # Old small marker
-        [3.15, 1.86, 0.8], # New medium marker
+        [0.0, 0.0, 0.0], # New medium marker
         # [3.13, 1.95, 0.8],  # New big marker
         # [0.0, -1.0, 0.0],
         # [3.220, 1.080, 0.782],
-        [3.22, 1.00, 0.8],
-        [0.0, 1.0, 0.0],
-        [-1.0, 0.0, 0.0]
+        [0.0, -3.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, -2.0, 0.0]
     ]
 
     for idx in range(1, num_drones + 1):
         drone_id = f'cf{idx}'
         x, y = float(starts[idx - 1, 0]), float(starts[idx - 1, 1])
-        uri_suffix = f'E7E7E7E7{str(idx + 2).zfill(2)}'  # TODO: Change the idx + 1 back to idx later!!
+        uri_suffix = f'E7E7E7E7{str(idx).zfill(2)}'  # TODO: Change the idx + 1 back to idx later!!
         # Need this to avoid issues with drone flipping. Not sure why. 
         # One reason is that the original starts are not actually where 
         # the drone takesoff as its hard to place them exactly there in

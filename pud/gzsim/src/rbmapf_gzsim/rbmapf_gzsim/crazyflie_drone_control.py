@@ -41,6 +41,7 @@ class DroneController(Node):
 
         self.node_name = f"drone_controller_{drone_id}"
 
+        self.viz_flag = False
         self.start_flag = False
         self.habitat_state = None
         self.drone_ns = drone_ns
@@ -88,7 +89,7 @@ class DroneController(Node):
         self.altitude += (self.drone_id - 1) * 0.5
         self.current_state = "IDLE"
         self.offboard_mode = False
-        self.distance_threshold = 0.1 if not self.habitat else 0.15
+        self.distance_threshold = 0.1 if not self.habitat else 0.01
         self.current_position = np.zeros(3, dtype=float)
         self.current_orientation = np.zeros(4, dtype=float)
 
@@ -351,6 +352,7 @@ class DroneController(Node):
         self.publish_markers()
 
         self.home = self.waypoints[0][:2].copy()
+        # self.goal = self.waypoints[-1][:2].copy()
         # State needs to be in the coordinate frame that the GCRL policy was trained with
         # i.e origin is bottom left corner of the walls matrix not the origin of simulator!
         # self.state = self.home.copy() - self.origin_offset
@@ -559,7 +561,25 @@ class DroneController(Node):
                 if self.current_wp_index < len(self.waypoints):
 
                     target = self.waypoints[self.current_wp_index][:2].copy()
-                    self.send_debug_trajectory(self.current_position[:2])
+
+                    # dist_to_goal = np.linalg.norm(self.current_position[:2] - self.goal)
+                    # dist_to_goal_via_target = np.linalg.norm(target - self.goal) + np.linalg.norm(self.current_position[:2] - target)
+
+                    # if dist_to_goal < dist_to_goal_via_target:
+                    #     self.get_logger().info(
+                    #         f"Bypassing waypoint {self.current_wp_index} for {self.drone_ns} to go directly to goal"
+                    #     )
+                    #     self.current_wp_index += 1
+                    #     if self.current_wp_index >= len(self.waypoints):
+                    #         self.get_logger().info(f"Mission completed for {self.drone_ns}")
+                    #         return
+                    #     target = self.waypoints[self.current_wp_index][:2].copy()
+
+                    if np.linalg.norm(self.current_position[:2] - self.home) < self.distance_threshold:
+                        self.viz_flag = True
+
+                    if self.viz_flag:
+                        self.send_debug_trajectory(self.current_position[:2])
 
                     # self.get_logger().info(
                     #     f"Current position: {self.current_position[:2]}, Target: {target}, "
@@ -615,8 +635,8 @@ class DroneController(Node):
                             f"Next location updated to {self.next_location} for {self.drone_ns}"
                         )
 
-                        if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
-                                np.linalg.norm(action) < 0.01):
+                        # if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
+                        if (np.linalg.norm(action) < 0.01):
                             self.get_logger().info(
                                 f"Next location reached for {self.drone_ns}, moving to next waypoint"
                             )

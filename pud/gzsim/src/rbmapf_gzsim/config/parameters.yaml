@@ -6,6 +6,10 @@ num_drones:
   default: "2"
   description: "Number of drones to spawn."
 
+team_size:
+  default: "2"
+  description: "Number of drones per team."
+
 use_crazyflies:
   default: "True"
   description: "Use Crazyflies."
@@ -32,7 +36,7 @@ config_file:
   description: "Path to control config YAML (no default)."
 
 problem_set_file:
-  default: "../plots/data/centerdot/easy_hardware.npz"
+  default: "../plots/data/centerdot/easy_hardware_updated.npz"
   # default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
   # default: "../plots/data/illustration_pbs.pkl"
   # default: "../plots/data/sc0_staging_20/easy.npz"
@@ -61,8 +65,8 @@ podman_image:
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:
-  # default:   "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
-  default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server_delay.py"
+  default:   "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
+  # default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server_delay.py"
   description: "Path to the Kirk server script"
 
 rmpl_file_path:

@@ -36,7 +36,7 @@ build/
 develop-eggs/
 dist/
 downloads/
-models/
+models/CenterDot/
 eggs/
 .eggs/
 lib/

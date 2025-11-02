@@ -3,57 +3,37 @@
     
 (define-control-program start-mission-one-drone-one ()
     (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
+    (duration (simple :lower-bound 1 :upper-bound 600
+	:min-observation-delay 5
+	:max-observation-delay 10
+    )
     :contingent t
 )))
             
 (define-control-program start-mission-one-drone-two ()
     (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
-    :contingent t
-)))
-
-(define-control-program start-mission-one-drone-three ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
-    :contingent t
-)))
-
-(define-control-program start-mission-one-drone-four ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
-    :contingent t
-)))
- 
-
-            
-(define-control-program sync-one ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
-    :contingent t
-)))
-            
-(define-control-program start-mission-two-drone-one ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
-    :contingent t
-)))
-            
-(define-control-program start-mission-two-drone-two ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
+    (duration (simple :lower-bound 1 :upper-bound 600
+	:min-observation-delay 5
+	:max-observation-delay 10
+    )
     :contingent t
 )))
 
 (define-control-program start-mission-two-drone-three ()
     (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
+    (duration (simple :lower-bound 1 :upper-bound 600
+	:min-observation-delay 5
+	:max-observation-delay 10
+    )
     :contingent t
 )))
 
 (define-control-program start-mission-two-drone-four ()
     (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 600)
+    (duration (simple :lower-bound 1 :upper-bound 600
+	:min-observation-delay 5
+	:max-observation-delay 10
+    )
     :contingent t
 )))
 
@@ -80,12 +60,22 @@
 
 (define-control-program upload-a ()
     (declare (primitive)
-    (duration (simple :lower-bound 2 :upper-bound 5)
+    (duration (simple :lower-bound 2 :upper-bound 3)
 )))
 
 (define-control-program upload-b ()
     (declare (primitive)
-    (duration (simple :lower-bound 2 :upper-bound 5)
+    (duration (simple :lower-bound 2 :upper-bound 3)
+)))
+
+(define-control-program sync-one ()
+    (declare (primitive)
+    (duration (simple :lower-bound 0 :upper-bound 0)
+)))
+
+(define-control-program sync-two ()
+    (declare (primitive)
+    (duration (simple :lower-bound 0 :upper-bound 0)
 )))
  
         
@@ -101,6 +91,14 @@
         (upload-a)
 
         (parallel (:slack t)
+            (land-drone-one)
+            (land-drone-two)
+        )
+
+
+	    (sync-one)
+
+        (parallel (:slack t)
             (start-mission-two-drone-three)
             (start-mission-two-drone-four)
         )
@@ -108,14 +106,8 @@
         (upload-b)
 
         (parallel (:slack t)
-            (land-drone-one)
-            (parallel (:slack t)
-                (land-drone-two)
-                (parallel (:slack t)
-                    (land-drone-three)
-                    (land-drone-four)
-                )
-            )
+            (land-drone-three)
+            (land-drone-four)
         )
         
     ))

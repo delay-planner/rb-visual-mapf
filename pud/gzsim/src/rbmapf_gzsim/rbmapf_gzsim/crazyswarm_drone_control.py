@@ -46,6 +46,7 @@ class DroneController(Node):
 
         self.node_name = f"drone_controller_{drone_id}"
 
+        self.viz_flag = False
         self.start_flag = False
         self.habitat_state = None
         self.drone_ns = drone_ns
@@ -521,7 +522,12 @@ class DroneController(Node):
             if self.current_wp_index < len(self.waypoints):
 
                 target = self.waypoints[self.current_wp_index][:2].copy()
-                self.send_debug_trajectory(self.current_position[:2].copy())
+
+                if np.linalg.norm(self.current_position[:2] - self.home) < self.distance_threshold:
+                    self.viz_flag = True
+
+                if self.viz_flag:
+                    self.send_debug_trajectory(self.current_position[:2].copy())
 
                 # self.get_logger().info(
                 #     f"Current position: {self.current_position[:2]}, Target: {target}, "
@@ -568,8 +574,8 @@ class DroneController(Node):
                         f"Next location updated to {self.next_location} for {self.drone_ns}"
                     )
 
-                    if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
-                            np.linalg.norm(action) < 0.01):
+                    # if (np.linalg.norm(self.next_location - target) < self.distance_threshold or
+                    if (np.linalg.norm(action) < 0.01):
                         self.get_logger().info(
                             f"Next location reached for {self.drone_ns}, moving to next waypoint"
                         )

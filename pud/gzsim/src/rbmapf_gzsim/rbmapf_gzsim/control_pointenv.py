@@ -37,6 +37,7 @@ UNCONSTRAINED_PDIST_INDEX = 1
 def argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_agents", type=int, default=1)
+    parser.add_argument("--team_size", type=int, default=1)
     parser.add_argument("--visual", type=str, default="False")
     parser.add_argument("--config_file", type=str, default="")
     parser.add_argument("--device", type=str, default="cuda:0")
@@ -214,10 +215,11 @@ def generate_wps(args, problem_start=0, debug=False):
     # Only needed for multiple mission problems
     # Modify the problems object to ensure start of the current problem matches the goal of the previous problem
     if problem_start > 0:
+        # TODO: make sure the range is correct
         for idx in range(problem_start * args.num_agents, (problem_start + 1) * args.num_agents):
             prev_idx = idx - args.num_agents
             problems[idx]['start'] = problems[prev_idx]['goal']
-    problems = problems[problem_start * args.num_agents:]
+    problems = problems[problem_start * args.team_size:]
 
     assert isinstance(eval_env.unwrapped, PointEnv)
 
@@ -235,13 +237,13 @@ def generate_wps(args, problem_start=0, debug=False):
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
         "tree_save_frequency": 1,
         "budget_allocater": "uniform",
-        "risk_bound": 100,  # 6.615,  # Low is 1.47 and High is 11.76
+        "risk_bound": np.inf,  # 6.615,  # Low is 1.47 and High is 11.76
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
     constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
         agent=agent,
         rb_vec=rb_vec,
-        n_agents=args.num_agents,
+        n_agents=args.team_size,
         pdist=pdist,
         pcost=pcost,
         open_loop=True,
@@ -280,7 +282,7 @@ def generate_wps(args, problem_start=0, debug=False):
         goals = agent_goal.copy()
         starts = agent_start.copy()
 
-        for _ in range(args.num_agents - 1):
+        for _ in range(args.team_size - 1):
 
             agent_state = eval_env.reset()
             assert agent_state is not None
@@ -307,7 +309,7 @@ def generate_wps(args, problem_start=0, debug=False):
     cols, rows = eval_env.get_map().shape
     use_hardware = args.use_hardware == 'True'
 
-    for agent_id in range(args.num_agents):
+    for agent_id in range(args.team_size):
 
         agent_goal = goals[agent_id]
         agent_start = starts[agent_id]
@@ -332,7 +334,7 @@ def generate_wps(args, problem_start=0, debug=False):
         visualize_search_path(
             constrained_ma_search_policy,
             eval_env,
-            num_agents=args.num_agents,
+            num_agents=args.team_size,
             difficulty=0.9,
             outpath=figdir.joinpath("vis_constrained_multi_agent_search.jpg").as_posix()
         )
@@ -341,7 +343,7 @@ def generate_wps(args, problem_start=0, debug=False):
             agent,
             constrained_ma_search_policy,
             eval_env,
-            num_agents=args.num_agents,
+            num_agents=args.team_size,
             difficulty=0.9,
             outpath=figdir.joinpath("vis_compare_constrained_multi_agent.jpg").as_posix()
         )

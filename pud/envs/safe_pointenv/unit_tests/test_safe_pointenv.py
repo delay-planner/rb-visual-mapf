@@ -31,8 +31,8 @@ python -m debugpy \
 class TestSafePointEnv(unittest.TestCase):
     def setUp(self):
         self.env_kwargs = {
-            "walls": "Line",
-            "resize_factor": 1,
+            "walls": "CenterDot",
+            "resize_factor": 5,
             "thin": False,
         }
         self.cost_f_kwargs = {

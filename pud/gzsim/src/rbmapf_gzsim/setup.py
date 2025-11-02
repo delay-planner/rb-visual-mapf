@@ -15,6 +15,7 @@ setup(
         ('share/' + package_name + '/launch', ['launch/multi_drone.rviz']),
         ('share/' + package_name + '/launch', ['launch/multi_vehicle_spawn.launch.py']),
         ('share/' + package_name + '/launch', ['launch/integrated_sim_demo.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/group_integrated_sim_demo.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

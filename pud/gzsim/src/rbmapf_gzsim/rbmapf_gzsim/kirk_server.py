@@ -113,7 +113,7 @@ async def sync_finishes(data: SyncFinishData):
     """
     Sends ack to Kirk that the sync finishes
     """
-    send_kirk_ack(data.sync_name)
+    # send_kirk_ack(data.sync_name)
     logging.debug("Successfully removed")
     return JSONResponse(content={"success": True})
 

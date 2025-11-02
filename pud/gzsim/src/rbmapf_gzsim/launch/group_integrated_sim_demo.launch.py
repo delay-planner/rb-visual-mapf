@@ -134,6 +134,7 @@ def spawn_processes(context, *args, **kwargs):
     gz_version = LaunchConfiguration('gz_version').perform(context)
     world_file = LaunchConfiguration('world_file').perform(context)
     num_drones = int(LaunchConfiguration('num_drones').perform(context))
+    team_size = int(LaunchConfiguration('team_size').perform(context))
     num_missions = int(LaunchConfiguration('num_missions').perform(context))
     config_file = LaunchConfiguration('config_file').perform(context)
     habitat = LaunchConfiguration('habitat').perform(context) == 'True'
@@ -250,6 +251,7 @@ def spawn_processes(context, *args, **kwargs):
                     '--visual', str(habitat),
                     '--config_file', config_file,
                     '--num_agents', str(num_drones),
+                    '--team_size', str(team_size),
                     '--problem_set_file', problem_set_file,
                     '--constrained_ckpt_file', constrained_ckpt_file,
                     '--unconstrained_ckpt_file', unconstrained_ckpt_file,
@@ -327,6 +329,7 @@ def spawn_processes(context, *args, **kwargs):
                 '--visual', str(habitat),
                 '--config_file', config_file,
                 '--num_agents', str(num_drones),
+                '--team_size', str(team_size),
                 '--problem_set_file', problem_set_file,
                 '--constrained_ckpt_file', constrained_ckpt_file,
                 '--unconstrained_ckpt_file', unconstrained_ckpt_file,
@@ -502,7 +505,7 @@ def spawn_processes(context, *args, **kwargs):
             ))
 
         kirk_server = ExecuteProcess(
-            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'DEBUG'],
+            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'CRITICAL'],
             name='kirk_server',
             output='screen',
         )
@@ -549,7 +552,7 @@ def spawn_processes(context, *args, **kwargs):
                 'rviz': 'False',
                 'gui': 'False',
                 'teleop': 'False',
-                'backend': 'sim',
+                'backend': 'cflib',
                 }.items()
         )
         delayed_spawn = TimerAction(period=5.0, actions=[crazyflie_server])
@@ -621,6 +624,7 @@ def spawn_processes(context, *args, **kwargs):
                 '--visual', str(habitat),
                 '--config_file', config_file,
                 '--num_agents', str(num_drones),
+                '--team_size', str(team_size),
                 '--use_hardware', str(hardware_demo),
                 '--problem_set_file', problem_set_file,
                 '--constrained_ckpt_file', constrained_ckpt_file,
@@ -684,7 +688,7 @@ def spawn_processes(context, *args, **kwargs):
             ))
 
         kirk_server = ExecuteProcess(
-            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'DEBUG'],
+            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'CRITICAL'],
             name='kirk_server',
             output='screen',
         )

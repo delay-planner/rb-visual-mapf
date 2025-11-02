@@ -56,13 +56,16 @@ class WaypointGeneratorNode(Node):
 
     def _generate_waypoints(self):
 
-        agents_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, debug=False)
-        for agent_idx, waypoints in enumerate(agents_waypoints):
+        agents_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, debug=True)
+        agent_idx = self.problem_start * self.args.team_size
+        for waypoints in agents_waypoints:
+            # agent_idx += (self.problem_start % self.args.team_size) * self.args.team_size
             agent_wps = np.array(waypoints)
             waypoint_msg = Float32MultiArray()
             waypoint_msg.data = agent_wps.flatten().tolist()
             self.waypoint_publishers[agent_idx].publish(waypoint_msg)
             self.get_logger().info(f'Published waypoints for agent {agent_idx + 1}')
+            agent_idx += 1
 
     def publish_waypoints_gen_finished(self):
         self.waypoint_gen_finished.publish(Empty())
