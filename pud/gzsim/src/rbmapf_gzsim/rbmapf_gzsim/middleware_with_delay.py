@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uvicorn
 import logging
@@ -69,23 +70,70 @@ class SyncFinishData(BaseModel):
     sync_name: str
 
 
-def send_kirk_ack(event_id):
+MISSION_TO_TEAM = {
+    "DRONE-ONE":   {"team": [0, 1], "other": [2, 3]},
+    "DRONE-TWO":   {"team": [0, 1], "other": [2, 3]},
+    "DRONE-THREE": {"team": [2, 3], "other": [0, 1]},
+    "DRONE-FOUR":  {"team": [2, 3], "other": [0, 1]},
+}
+
+async def send_kirk_ack(event_id, drone_id):
     """
     Send an event ack to kirk
     """
 
-    for port in range(8000, 8000 + NUM_DRONES):
-        url = f"http://localhost:{port}/"
-        headers = {
-            "Content-Type": "application/json"
-        }
-        data = {
-            "event-ids": [event_id]
-        }
-        try:
-            _ = requests.post(url, headers=headers, data=json.dumps(data))
-        except Exception as e:
-            logging.error("Error with sending an ack to kirk", e)
+    logging.debug(f"Sending ack for event id: {event_id} from drone {drone_id + 1}")
+
+    # send to drones without delay
+    if "MISSION" in event_id:
+        team, other = [], []
+
+        for k in MISSION_TO_TEAM:
+            if k in event_id:
+                team = MISSION_TO_TEAM[k]["team"]
+                other = MISSION_TO_TEAM[k]["other"]
+                break
+
+        for port in range(8000 + team[0], 8000 + team[-1] + 1):
+            url = f"http://localhost:{port}/"
+            headers = {
+                "Content-Type": "application/json"
+            }
+            data = {
+                "event-ids": [event_id]
+            }
+            try:
+                _ = requests.post(url, headers=headers, data=json.dumps(data))
+            except Exception as e:
+                logging.error("Error with sending an ack to kirk", e)
+
+        await asyncio.sleep(130.0)
+
+        for port in range(8000 + other[0], 8000 + other[-1] + 1):
+            url = f"http://localhost:{port}/"
+            headers = {
+                "Content-Type": "application/json"
+            }
+            data = {
+                "event-ids": [event_id]
+            }
+            try:
+                _ = requests.post(url, headers=headers, data=json.dumps(data))
+            except Exception as e:
+                logging.error("Error with sending an ack to kirk", e)
+    else:
+        for port in range(8000, 8000 + NUM_DRONES):
+            url = f"http://localhost:{port}/"
+            headers = {
+                "Content-Type": "application/json"
+            }
+            data = {
+                "event-ids": [event_id]
+            }
+            try:
+                _ = requests.post(url, headers=headers, data=json.dumps(data))
+            except Exception as e:
+                logging.error("Error with sending an ack to kirk", e)
 
 
 @app.post("/done")
@@ -96,7 +144,7 @@ async def mission_finishes(data: MissionFinishData):
     logging.debug(f"Values are {values}")
     try:
         values[drone_id].remove(data.mission_name)
-        send_kirk_ack(data.mission_name)
+        await send_kirk_ack(data.mission_name, drone_id)
         logging.debug("Successfully removed")
 
         if "START" in data.mission_name and "LAND" in data.mission_name:
@@ -113,8 +161,8 @@ async def sync_finishes(data: SyncFinishData):
     """
     Sends ack to Kirk that the sync finishes
     """
-    # send_kirk_ack(data.sync_name)
-    logging.debug("Successfully removed")
+    # await send_kirk_ack(data.sync_name)
+    # logging.debug("Successfully removed")
     return JSONResponse(content={"success": True})
 
 
@@ -158,6 +206,8 @@ async def most_recent_mission(drone_id: int):
     if len(values[drone_id]) > 0:
         logging.debug("Return mission")
         logging.debug(f"Mission name is {values[drone_id][0]}")
+        # if land_list[drone_id]:
+        #     logging.critical(f"LANDING the drone! {drone_id} from most_recent_mission!", land_list)
         # There exists a mission to be returned, return the first
         return JSONResponse(content={"mission_ready": True, "mission_name": values[drone_id][0],
                                      "land": land_list[drone_id]})
@@ -199,6 +249,8 @@ async def receive_kirk_event(data: RequestData):
         # It's a sync command! we'll want to update the global sync structures
         # if it's actually a new command (not a duplicate from multiple drones)
 
+        logging.debug("Got sync command from kirk")
+
         if data.end_cmd in sync_seen:
             return JSONResponse(content=response_data)
         else:
@@ -217,8 +269,10 @@ async def receive_kirk_event(data: RequestData):
             logging.error(f"Unknown kirk id! {data.kirk_id}")
             assert False
 
-        if "LAND" in data.start_cmd and id_to_name[data.kirk_id] in data.start_cmd:
-            land_list[data.kirk_id] = True
+        if "LAND" in data.start_cmd:
+            # logging.critical("LAND command received!", str(data.start_cmd), str(data.end_cmd), id_to_name[data.kirk_id], id_to_name[data.kirk_id] in data.start_cmd)
+            if id_to_name[data.kirk_id] in data.start_cmd:
+                land_list[data.kirk_id] = True
 
         logging.debug("Got msg from kirk")
         if (data.end_cmd, data.kirk_id) not in visited_set:
@@ -232,7 +286,7 @@ async def receive_kirk_event(data: RequestData):
 
 
 def main():
-    uvicorn.run("kirk_server:app", host="127.0.0.1", port=5000, reload=True)
+    uvicorn.run("middleware_with_delay:app", host="127.0.0.1", port=5000, reload=True)
 
 
 if __name__ == "__main__":

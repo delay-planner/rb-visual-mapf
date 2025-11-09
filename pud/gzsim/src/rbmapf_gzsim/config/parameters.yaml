@@ -65,8 +65,8 @@ podman_image:
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:
-  default:   "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server.py"
-  # default: "./src/rbmapf_gzsim/rbmapf_gzsim/kirk_server_delay.py"
+  # default:   "./src/rbmapf_gzsim/rbmapf_gzsim/middleware.py"
+  default: "./src/rbmapf_gzsim/rbmapf_gzsim/middleware_with_delay.py"
   description: "Path to the Kirk server script"
 
 rmpl_file_path:
@@ -82,7 +82,8 @@ num_missions:
   description: "Number of missions to run in the RMPL scenario."
 
 execute_kirk_file_path:
-  default: "./src/rbmapf_gzsim/launch/execute_kirk.sh"
+  # default: "./src/rbmapf_gzsim/launch/execute_kirk.sh"
+  default: "./src/rbmapf_gzsim/launch/execute_team_kirk.sh"
   description: "Path to the script for executing the Kirk server."
 
 

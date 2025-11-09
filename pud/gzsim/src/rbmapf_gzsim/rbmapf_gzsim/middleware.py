@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uvicorn
 import logging
@@ -70,30 +69,12 @@ class SyncFinishData(BaseModel):
     sync_name: str
 
 
-async def send_kirk_ack(event_id, drone_id):
+def send_kirk_ack(event_id):
     """
     Send an event ack to kirk
     """
 
-
-    # port = 8000 + drone_id
-    # url = f"http://localhost:{port}/"
-    # headers = {
-    #     "Content-Type": "application/json"
-    # }
-    # data = {
-    #     "event-ids": [event_id]
-    # }
-    # try:
-    #     _ = requests.post(url, headers=headers, data=json.dumps(data))
-    # except Exception as e:
-    #     logging.error("Error with sending an ack to kirk", e)
-
-    await asyncio.sleep(5.0)
-
     for port in range(8000, 8000 + NUM_DRONES):
-        # if port == 8000 + drone_id:
-        #     continue
         url = f"http://localhost:{port}/"
         headers = {
             "Content-Type": "application/json"
@@ -115,7 +96,7 @@ async def mission_finishes(data: MissionFinishData):
     logging.debug(f"Values are {values}")
     try:
         values[drone_id].remove(data.mission_name)
-        await send_kirk_ack(data.mission_name, drone_id)
+        send_kirk_ack(data.mission_name)
         logging.debug("Successfully removed")
 
         if "START" in data.mission_name and "LAND" in data.mission_name:
@@ -132,7 +113,7 @@ async def sync_finishes(data: SyncFinishData):
     """
     Sends ack to Kirk that the sync finishes
     """
-    await send_kirk_ack(data.sync_name)
+    # send_kirk_ack(data.sync_name)
     logging.debug("Successfully removed")
     return JSONResponse(content={"success": True})
 
@@ -251,7 +232,7 @@ async def receive_kirk_event(data: RequestData):
 
 
 def main():
-    uvicorn.run("kirk_server:app", host="127.0.0.1", port=5000, reload=True)
+    uvicorn.run("middleware:app", host="127.0.0.1", port=5000, reload=True)
 
 
 if __name__ == "__main__":
