@@ -14,11 +14,11 @@ method_types=(
     "full_constrained_reward_search" 
     "full_constrained_risk_search" 
     "lagrangian_search" 
-    # "biobjective_search"
+    "biobjective_search"
     "risk_budgeted_search"
     "risk_bounded_uniform_search"
     "risk_bounded_utility_search"
-    # "risk_bounded_inverse_utility_search"
+    "risk_bounded_inverse_utility_search"
 )
 
 collect_trajectories() {
@@ -83,7 +83,7 @@ for env in "${envs[@]}"; do
             constrained_ckpt_file=models/CenterDot/lag/2024-07-30-21-31-48/ckpt/ckpt_0600000
             ;;
         *)
-            echo "❌  Unknown environment '$env' – skipping."
+            echo "Unknown environment '$env' – skipping."
             continue
             ;;
     esac
