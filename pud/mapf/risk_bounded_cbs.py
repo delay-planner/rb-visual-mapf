@@ -108,6 +108,24 @@ class RiskBoundedCBSSolver(CBSSolver):
         # Variables to keep track of the search tree
         self.open_list = []
 
+        self.risk_reallocation_strategy = config.get(
+            "risk_reallocation_strategy", "surplus_deficit"
+        )
+        market_config = config.get("risk_market_config", {})
+        default_eta0 = 0.05 * self.risk_bound if self.risk_bound > 0 else 1.0
+        default_eta_min = 0.005 * self.risk_bound if self.risk_bound > 0 else 0.1
+        self.market_eta0 = max(market_config.get("eta0", default_eta0), 1e-6)
+        self.market_eta_min = max(market_config.get("eta_min", default_eta_min), 1e-6)
+        self.market_eps_r = market_config.get("eps_R", self.market_eta_min)
+        self.market_tie_tol = market_config.get("tie_tol", 1e-3)
+        self.market_max_sweeps = market_config.get("max_sweeps", 6)
+        self.market_max_price_iters = market_config.get("max_price_iters", 20)
+        self.market_cache_precision = int(market_config.get("cache_precision", 6))
+        self.price_cache: Dict[
+            Tuple, Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]]
+        ] = {}
+        self.market_last_meta: Dict = {}
+
         self.budget_allocator_cls = None
         if self.budget_allocator == "uniform":
             self.budget_allocator_cls = UniformBudgetAllocater
@@ -150,6 +168,16 @@ class RiskBoundedCBSSolver(CBSSolver):
             return risk_value
 
     def reallocate_risk(
+        self,
+        failing_agents: List[int],
+        cbs_node: RiskBoundedCBSNode,
+    ) -> Union[Tuple[List[float], List], MAPFErrorCodes]:
+
+        if self.risk_reallocation_strategy == "price_clearing":
+            return self._price_clearing_reallocate(failing_agents, cbs_node)
+        return self._surplus_deficit_reallocate(failing_agents, cbs_node)
+
+    def _surplus_deficit_reallocate(
         self,
         failing_agents: List[int],
         cbs_node: RiskBoundedCBSNode,
@@ -227,6 +255,352 @@ class RiskBoundedCBSSolver(CBSSolver):
 
         diff = np.logical_not(np.isclose(cbs_node.risk_allocation, new_allocation))
         return new_allocation, np.where(diff)[0].tolist()
+
+    def _price_clearing_reallocate(
+        self,
+        failing_agents: List[int],
+        cbs_node: RiskBoundedCBSNode,
+    ) -> Union[Tuple[List[float], List], MAPFErrorCodes]:
+
+        signature = self._constraint_signature(cbs_node.constraints)
+        cache = self.price_cache.setdefault(signature, {})
+        agents = list(range(self.num_agents))
+
+        # 0) Compute per-agent feasibility windows.
+        delta_min: Dict[int, float] = {}
+        delta_max: Dict[int, float] = {}
+        for agent in agents:
+            min_risk = self._min_risk_cap_and_path(agent, cbs_node, cache)
+            if type(min_risk) is MAPFErrorCodes:
+                return min_risk
+            risk_cap, _ = min_risk  # type: ignore
+            delta_min[agent] = max(0.0, risk_cap)
+
+            min_length = self._min_length_cap_and_path(agent, cbs_node, cache)
+            if type(min_length) is MAPFErrorCodes:
+                return min_length
+            length_cap, _ = min_length  # type: ignore
+            delta_max[agent] = max(delta_min[agent], length_cap)
+
+        total_min = sum(delta_min.values())
+        if total_min - self.risk_bound > self.market_eps_r:
+            return MAPFErrorCodes.BUDGET_MISMATCH
+
+        total_max = sum(delta_max.values())
+        if total_max <= self.risk_bound + self.market_eps_r:
+            new_allocation = [delta_max[a] for a in agents]
+            self._update_paths_from_cache(agents, delta_max, cbs_node, cache)
+            changed = np.where(
+                np.logical_not(np.isclose(cbs_node.risk_allocation, new_allocation))
+            )[0].tolist()
+            self.market_last_meta = {"status": "EARLY_ACCEPT", "price": 0.0, "sum_caps": total_max}
+            return new_allocation, changed
+
+        # 1) Initial best-response at p=0.
+        start_allocation = {
+            agent: self._clamp_cap(
+                cbs_node.risk_allocation[agent], delta_min[agent], delta_max[agent]
+            )
+            for agent in agents
+        }
+        agent_order = self._agent_order(failing_agents, agents)
+        delta_lo = self._price_best_response(
+            price=0.0,
+            allocation=start_allocation,
+            delta_min=delta_min,
+            delta_max=delta_max,
+            cbs_node=cbs_node,
+            cache=cache,
+            agent_order=agent_order,
+        )
+        sum_lo = sum(delta_lo.values())
+        if sum_lo <= self.risk_bound + self.market_eps_r:
+            new_allocation = [delta_lo[a] for a in agents]
+            self._update_paths_from_cache(agents, delta_lo, cbs_node, cache)
+            changed = np.where(
+                np.logical_not(np.isclose(cbs_node.risk_allocation, new_allocation))
+            )[0].tolist()
+            self.market_last_meta = {"status": "EARLY_ACCEPT", "price": 0.0, "sum_caps": sum_lo}
+            return new_allocation, changed
+
+        # 2) Price bracketing: grow p_hi until supply ≤ Δ or no agent moves.
+        price_high = 1.0
+        delta_hi = delta_lo
+        for _ in range(self.market_max_price_iters):
+            candidate = self._price_best_response(
+                price=price_high,
+                allocation=delta_hi,
+                delta_min=delta_min,
+                delta_max=delta_max,
+                cbs_node=cbs_node,
+                cache=cache,
+                agent_order=agent_order,
+            )
+            if self._alloc_equal(candidate, delta_hi):
+                delta_hi = candidate
+                break
+            delta_hi = candidate
+            if sum(delta_hi.values()) <= self.risk_bound + self.market_eps_r:
+                break
+            price_high *= 2.0
+            if price_high > 1e6:
+                break
+
+        if sum(delta_hi.values()) - self.risk_bound > self.market_eps_r:
+            all_min = all(
+                np.isclose(delta_hi[a], delta_min[a], atol=self.market_eps_r)
+                for a in agents
+            )
+            if all_min:
+                return MAPFErrorCodes.BUDGET_MISMATCH
+
+        # 3) Bisection with plateau stop.
+        price_low = 0.0
+        delta_low = delta_lo
+        prev_allocation = None
+        final_allocation = delta_hi
+        for _ in range(self.market_max_price_iters):
+            price_mid = 0.5 * (price_low + price_high)
+            candidate = self._price_best_response(
+                price=price_mid,
+                allocation=delta_low,
+                delta_min=delta_min,
+                delta_max=delta_max,
+                cbs_node=cbs_node,
+                cache=cache,
+                agent_order=agent_order,
+            )
+            sum_mid = sum(candidate.values())
+
+            if prev_allocation is not None and self._alloc_equal(candidate, prev_allocation):
+                final_allocation = candidate
+                break
+            prev_allocation = candidate
+
+            if abs(sum_mid - self.risk_bound) <= self.market_eps_r:
+                final_allocation = candidate
+                break
+
+            if sum_mid > self.risk_bound:
+                price_low = price_mid
+                delta_low = candidate
+            else:
+                price_high = price_mid
+                delta_hi = candidate
+            final_allocation = candidate
+
+        if sum(final_allocation.values()) - self.risk_bound > self.market_eps_r:
+            return MAPFErrorCodes.BUDGET_MISMATCH
+
+        new_allocation = [final_allocation[a] for a in agents]
+        self._update_paths_from_cache(agents, final_allocation, cbs_node, cache)
+        diff = np.logical_not(np.isclose(cbs_node.risk_allocation, new_allocation))
+        changed_agents = np.where(diff)[0].tolist()
+
+        has_failing_change = any(agent in failing_agents for agent in changed_agents)
+        if not has_failing_change:
+            return MAPFErrorCodes.BUDGET_MISMATCH
+
+        self.market_last_meta = {
+            "status": "OK",
+            "price": 0.5 * (price_low + price_high),
+            "sum_caps": sum(final_allocation.values()),
+        }
+        return new_allocation, changed_agents
+
+    def _agent_order(self, failing_agents: List[int], agents: List[int]) -> List[int]:
+        failing_set = set(failing_agents)
+        order = failing_agents.copy()
+        for agent in agents:
+            if agent not in failing_set:
+                order.append(agent)
+        return order
+
+    def _price_best_response(
+        self,
+        price: float,
+        allocation: Dict[int, float],
+        delta_min: Dict[int, float],
+        delta_max: Dict[int, float],
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+        agent_order: List[int],
+    ) -> Dict[int, float]:
+        eta = max(self.market_eta0, self.market_eta_min)
+        current = allocation.copy()
+        for _ in range(self.market_max_sweeps):
+            sweep_changed = False
+            for agent in agent_order:
+                cap = current[agent]
+                best_cap = cap
+                best_score = self._price_score(
+                    agent, cap, price, cbs_node, cache, delta_min[agent], delta_max[agent]
+                )
+                candidates = [
+                    self._clamp_cap(cap - eta, delta_min[agent], delta_max[agent]),
+                    cap,
+                    self._clamp_cap(cap + eta, delta_min[agent], delta_max[agent]),
+                ]
+                for candidate_cap in candidates:
+                    if np.isclose(candidate_cap, cap):
+                        continue
+                    score = self._price_score(
+                        agent,
+                        candidate_cap,
+                        price,
+                        cbs_node,
+                        cache,
+                        delta_min[agent],
+                        delta_max[agent],
+                    )
+                    if score + 1e-9 < best_score:
+                        best_score = score
+                        best_cap = candidate_cap
+                if not np.isclose(best_cap, cap):
+                    current[agent] = best_cap
+                    sweep_changed = True
+            if not sweep_changed or eta <= self.market_eta_min:
+                break
+            eta = max(eta * 0.5, self.market_eta_min)
+        return current
+
+    def _price_score(
+        self,
+        agent: int,
+        cap: float,
+        price: float,
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+        cap_min: float,
+        cap_max: float,
+    ) -> float:
+        clamped = self._clamp_cap(cap, cap_min, cap_max)
+        path_info = self._get_or_plan_path(agent, clamped, cbs_node, cache)
+        if type(path_info) is MAPFErrorCodes or path_info is None:
+            return np.inf
+        return path_info["length"] + price * clamped  # type: ignore
+
+    def _get_or_plan_path(
+        self,
+        agent: int,
+        cap: float,
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+    ) -> Union[None, Dict[str, Union[float, List[int]]], MAPFErrorCodes]:
+        rounded = self._round_cap(cap)
+        key = (agent, rounded)
+        if key in cache:
+            return cache[key]
+
+        experience = cbs_node.paths[agent] if self.use_experience else None
+        path = self.single_agent_planners[agent].find_constrained_path(
+            constraints=cbs_node.constraints,
+            risk_budget=rounded,
+            experience=experience,
+            max_time=self.max_time // self.num_agents,
+        )
+        if type(path) is MAPFErrorCodes:
+            if path == MAPFErrorCodes.NO_PATH:
+                cache[key] = None
+                return None
+            cache[key] = path
+            return path
+
+        length = self.compute_cost(path)
+        risk = self.compute_cost(path, risk=True)
+        if risk - rounded > 1e-6:
+            cache[key] = None
+            return None
+
+        cache[key] = {"length": length, "risk": risk, "path": path}
+        return cache[key]
+
+    def _min_risk_cap_and_path(
+        self,
+        agent: int,
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+    ) -> Union[Tuple[float, List[int]], MAPFErrorCodes]:
+        experience = cbs_node.paths[agent] if self.use_experience else None
+        path = self.single_agent_planners[agent].find_path(
+            constraints=cbs_node.constraints,
+            experience=experience,
+            edge_attribute="cost",
+            max_time=self.max_time // self.num_agents,
+        )
+        if type(path) is MAPFErrorCodes:
+            return path
+        risk = self.compute_cost(path, risk=True)
+        length = self.compute_cost(path)
+        self._store_path_info(agent, risk, length, path, cache)
+        return risk, path
+
+    def _min_length_cap_and_path(
+        self,
+        agent: int,
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+    ) -> Union[Tuple[float, List[int]], MAPFErrorCodes]:
+        experience = cbs_node.paths[agent] if self.use_experience else None
+        path = self.single_agent_planners[agent].find_path(
+            constraints=cbs_node.constraints,
+            experience=experience,
+            max_time=self.max_time // self.num_agents,
+        )
+        if type(path) is MAPFErrorCodes:
+            return path
+        risk = self.compute_cost(path, risk=True)
+        length = self.compute_cost(path)
+        self._store_path_info(agent, risk, length, path, cache)
+        return risk, path
+
+    def _store_path_info(
+        self,
+        agent: int,
+        cap: float,
+        length: float,
+        path: List[int],
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+    ) -> None:
+        rounded = self._round_cap(cap)
+        cache[(agent, rounded)] = {"length": length, "risk": cap, "path": path}
+
+    def _update_paths_from_cache(
+        self,
+        agents: List[int],
+        allocation: Dict[int, float],
+        cbs_node: RiskBoundedCBSNode,
+        cache: Dict[Tuple[int, float], Union[None, Dict[str, Union[float, List[int]]]]],
+    ) -> None:
+        for agent in agents:
+            info = self._get_or_plan_path(agent, allocation[agent], cbs_node, cache)
+            if isinstance(info, dict) and "path" in info:
+                cbs_node.paths[agent] = info["path"]  # type: ignore
+                cbs_node.paths_found[agent] = True
+
+    def _constraint_signature(self, constraints: List[Dict]) -> Tuple:
+        def make_hashable(value):
+            if isinstance(value, dict):
+                return tuple(sorted((k, make_hashable(v)) for k, v in value.items()))
+            if isinstance(value, list):
+                return tuple(make_hashable(v) for v in value)
+            if isinstance(value, tuple):
+                return tuple(make_hashable(v) for v in value)
+            return value
+
+        return tuple(sorted(make_hashable(constraint) for constraint in constraints))
+
+    def _round_cap(self, cap: float) -> float:
+        return round(max(0.0, cap), self.market_cache_precision)
+
+    def _clamp_cap(self, cap: float, cap_min: float, cap_max: float) -> float:
+        return min(cap_max, max(cap_min, cap))
+
+    def _alloc_equal(self, alloc_a: Dict[int, float], alloc_b: Dict[int, float]) -> bool:
+        return all(
+            np.isclose(alloc_a[agent], alloc_b[agent], atol=self.market_eps_r)
+            for agent in alloc_a
+        )
 
     def push_node(
         self, cbs_node: RiskBoundedCBSNode, risk_allocations_changed: int = 0

@@ -360,7 +360,7 @@ def argument_parser():
         default="unconstrained",
     )
 
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     return args
 
 
@@ -1251,6 +1251,7 @@ def risk_bounded_search_policy(
         "edge_attributes": ["step", "cost"],
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
+        "risk_reallocation_strategy": "price_clearing",
         "tree_save_frequency": 1,
         "logdir": "pud/mapf/unit_tests/logs/rbcbs",
     }
@@ -1503,7 +1504,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
 
 def main():
-    save = True
+    save = False
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
@@ -1632,7 +1633,7 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     main()
     # try:
     #     logging.basicConfig(level=logging.INFO)

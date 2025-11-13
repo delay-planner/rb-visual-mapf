@@ -5,32 +5,32 @@ num_samples=50
 agents=(1 5 10)
 problem_types=("hard" "medium" "easy")
 method_types=(
-    "collect_bounds_data"
-    "unconstrained" 
-    "unconstrained_reward_search" 
-    "constrained" 
-    "constrained_reward_search" 
-    "constrained_risk_search" 
-    "full_constrained_reward_search" 
-    "full_constrained_risk_search" 
-    "lagrangian_search" 
-    "biobjective_search"
-    "risk_budgeted_search"
+    # "collect_bounds_data"
+    # "unconstrained" 
+    # "unconstrained_reward_search" 
+    # "constrained" 
+    # "constrained_reward_search" 
+    # "constrained_risk_search" 
+    # "full_constrained_reward_search" 
+    # "full_constrained_risk_search" 
+    # "lagrangian_search" 
+    # "biobjective_search"
+    # "risk_budgeted_search"
     "risk_bounded_uniform_search"
-    "risk_bounded_utility_search"
-    "risk_bounded_inverse_utility_search"
+    # "risk_bounded_utility_search"
+    # "risk_bounded_inverse_utility_search"
 )
 
 collect_trajectories() {
     while true; do
-        python -u pud/plots/collect_safe_trajectory_records.py              \
+        taskset -c 0 python -u pud/plots/collect_safe_trajectory_records.py              \
             --config_file "$config_file"                                    \
             --unconstrained_ckpt_file "$unconstrained_ckpt_file"            \
             --constrained_ckpt_file "$constrained_ckpt_file"                \
             --load_problem_set --problem_set_file "$problem_set_file"       \
             --num_samples "$num_samples"                                    \
             --method_type "$method_type"                                    \
-            --num_agents "$num_agent"                                      \
+            --num_agents "$num_agent"                                       \
             --traj_difficulty "$problem_type"                               \
             "$visual"
         EXIT_CODE=$?
@@ -43,7 +43,8 @@ collect_trajectories() {
     done
 }
 
-envs=("sc0_staging_20" "sc2_staging_08" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15" "centerdot") 
+# envs=("sc0_staging_20" "sc2_staging_08" "sc3_staging_05" "sc3_staging_11" "sc3_staging_15" "centerdot") 
+envs=("centerdot")
 
 for env in "${envs[@]}"; do
     echo
@@ -95,12 +96,11 @@ for env in "${envs[@]}"; do
         visual=""
     fi
 
-
     if [[ $DO_SAMPLE = true ]]; then
         for problem_type in "${problem_types[@]}"; do
             printf "%*s\n" 100 | tr ' ' '*'
             echo "Sampling problems for ${env} on ${problem_type} problems"
-            python -u pud/plots/collect_safe_trajectory_records.py              \
+            taskset -c 0 python -u pud/plots/collect_safe_trajectory_records.py              \
             --config_file "$config_file"                                        \
             --unconstrained_ckpt_file "$unconstrained_ckpt_file"                \
             --constrained_ckpt_file "$constrained_ckpt_file"                    \

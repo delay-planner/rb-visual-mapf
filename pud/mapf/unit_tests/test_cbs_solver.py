@@ -144,7 +144,12 @@ class TestCBSSolver(unittest.TestCase):
             goal_node = goal_node[0] * boolean_map.shape[1] + goal_node[1]
             self.goal_ids.append(goal_node)
 
-        self.graph_waypoints = np.array(self.graph_waypoints)
+        self.graph_waypoints = np.array(self.graph_waypoints, dtype=float)
+
+        # Pre-compute identical Manhattan-distance ensembles (the learned version would differ per slice).
+        diff = self.graph_waypoints[:, None, :] - self.graph_waypoints[None, :, :]
+        manhattan = np.abs(diff).sum(axis=-1)
+        self.pdist = np.repeat(manhattan[None, :, :], repeats=3, axis=0)
 
     def test_cbs_paths(self):
         self.load_problem(self.filename)
@@ -166,10 +171,10 @@ class TestCBSSolver(unittest.TestCase):
 
         solver = CBSSolver(
             graph=self.G,
-            config=config,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
+            config=config,
         )
         solution = solver.find_paths()
         paths = solution.paths
@@ -183,7 +188,7 @@ class TestCBSSolver(unittest.TestCase):
         print("Accumulated Risk: {}".format(accumulated_risk))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
         print("Number of expanded nodes: {}".format(solver.num_expanded))
         print("Number of generated nodes: {}".format(solver.num_generated))
@@ -208,10 +213,10 @@ class TestCBSSolver(unittest.TestCase):
 
         solver = CBSSolver(
             graph=self.G,
-            config=config,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
+            config=config,
         )
         solution = solver.find_paths()
         paths = solution.paths
@@ -226,7 +231,7 @@ class TestCBSSolver(unittest.TestCase):
         print("Accumulated Risk: {}".format(accumulated_risk))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
         print("Number of expanded nodes: {}".format(solver.num_expanded))
         print("Number of generated nodes: {}".format(solver.num_generated))
@@ -245,16 +250,18 @@ class TestCBSSolver(unittest.TestCase):
             "risk_attribute": "cost",
             "tree_save_frequency": 100,
             "split_strategy": "disjoint",
-            "budget_allocater": "utility",
+            "budget_allocater": "uniform",
             "edge_attributes": ["step", "cost"],
             "logdir": "pud/mapf/unit_tests/logs/rbcbs",
+            "risk_reallocation_strategy": "price_clearing",
+            # "risk_reallocation_strategy": "surplus_deficit",
         }
 
         solver = RiskBoundedCBSSolver(
             graph=self.G,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
             config=config,
         )
         solution = solver.find_paths()
@@ -274,7 +281,7 @@ class TestCBSSolver(unittest.TestCase):
 
         self.assertTrue(len(paths) == 5)
         self.assertTrue(accumulated_risk <= config["risk_bound"])
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
     def test_lagrangian_cbs_paths(self):
         self.load_problem(self.filename)
@@ -296,10 +303,10 @@ class TestCBSSolver(unittest.TestCase):
 
         solver = LagrangianCBSSolver(
             graph=self.G,
-            config=config,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
+            config=config,
         )
         solution = solver.find_paths()
         paths = solution.paths
@@ -317,7 +324,7 @@ class TestCBSSolver(unittest.TestCase):
         print("Number of generated nodes: {}".format(solver.num_generated))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
     def test_mocbs_paths(self):
         self.load_problem(self.filename)
@@ -340,7 +347,7 @@ class TestCBSSolver(unittest.TestCase):
             graph=self.G,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
             config=config,
         )
         all_paths, all_cost_vectors, success = solver.find_paths()
@@ -402,7 +409,7 @@ class TestCBSSolver(unittest.TestCase):
         )
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
     def test_bocbs_paths(self):
         self.load_problem(self.filename)
@@ -425,7 +432,7 @@ class TestCBSSolver(unittest.TestCase):
             graph=self.G,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
             config=config,
         )
         all_paths, all_cost_vectors, success = solver.find_paths()
@@ -485,7 +492,7 @@ class TestCBSSolver(unittest.TestCase):
         ))
 
         self.assertTrue(len(paths) == 5)
-        self.assertTrue(detect_collisions(paths, self.graph_waypoints, 0.0) == [])
+        self.assertTrue(detect_collisions(paths, self.pdist, 0.0) == [])
 
     def test_namocbs_paths(self):
         self.load_problem(self.filename)
@@ -508,7 +515,7 @@ class TestCBSSolver(unittest.TestCase):
             graph=self.G,
             goals=self.goal_ids,
             starts=self.start_ids,
-            graph_waypoints=self.graph_waypoints,
+            pdist=self.pdist,
             config=config,
         )
         all_paths, all_cost_vectors, success = solver.find_paths()
