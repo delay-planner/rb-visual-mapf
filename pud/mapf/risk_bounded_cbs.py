@@ -321,6 +321,12 @@ class RiskBoundedCBSSolver(CBSSolver):
             numerator = ell_risk_map[agent] - ell_len_map[agent]
             price_stars[agent] = numerator / denom if denom != 0 else 0.0
 
+        logging.debug("Delta min = {}".format(delta_min))
+        logging.debug("Delta max = {}".format(delta_max))
+        logging.debug("Ell risk map = {}".format(ell_risk_map))
+        logging.debug("Ell length map = {}".format(ell_len_map))
+        logging.debug("Price stars = {}".format(price_stars))
+
         # 1) Initial best-response at p=0 (low-price endpoint).
         delta_lo = {
             agent: self._clamp_cap(
@@ -354,50 +360,55 @@ class RiskBoundedCBSSolver(CBSSolver):
             return new_allocation, changed
 
         # Old adaptive price_high logic retained for reference:
-        # price_low = 0.0
-        # price_high = 1.0
-        # delta_hi = {agent: delta_min[agent] for agent in agents}
-        # for _ in range(self.market_max_price_iters):
-        #     delta_hi = self._price_best_response(
-        #         price=price_high,
-        #         allocation=delta_hi,
-        #         delta_min=delta_min,
-        #         delta_max=delta_max,
-        #         cbs_node=cbs_node,
-        #         cache=cache,
-        #         agent_order=agent_order,
-        #         eta=eta,
-        #     )
-        #     sum_hi = sum(delta_hi.values())
-        #     if sum_hi <= self.risk_bound + eps_r:
-        #         break
-        #     all_min = all(
-        #         np.isclose(delta_hi[a], delta_min[a], atol=eps_r) for a in agents
-        #     )
-        #     if all_min:
-        #         return MAPFErrorCodes.BUDGET_MISMATCH
-        #     price_high *= 2.0
-
-        # 2) Compute critical prices and initialize bracket [p_lo, p_hi].
         price_low = 0.0
         max_price_star = max(price_stars.values()) if price_stars else 0.0
         price_high = max(
             self.market_price_tol, max_price_star + self.market_price_tol
         )
-        delta_hi_seed = {agent: delta_min[agent] for agent in agents}
-        delta_hi = self._price_best_response(
-            price=price_high,
-            allocation=delta_hi_seed,
-            delta_min=delta_min,
-            delta_max=delta_max,
-            cbs_node=cbs_node,
-            cache=cache,
-            agent_order=agent_order,
-            eta=eta,
-        )
-        sum_hi = sum(delta_hi.values())
-        if sum_hi - self.risk_bound > eps_r:
-            return MAPFErrorCodes.BUDGET_MISMATCH
+        delta_hi = {agent: delta_min[agent] for agent in agents}
+        for _ in range(self.market_max_price_iters):
+            delta_hi = self._price_best_response(
+                price=price_high,
+                allocation=delta_hi,
+                delta_min=delta_min,
+                delta_max=delta_max,
+                cbs_node=cbs_node,
+                cache=cache,
+                agent_order=agent_order,
+                eta=eta,
+            )
+            sum_hi = sum(delta_hi.values())
+            if sum_hi <= self.risk_bound + eps_r:
+                break
+            # all_min = all(
+            #     np.isclose(delta_hi[a], delta_min[a], atol=eps_r) for a in agents
+            # )
+            # if all_min:
+            #     return MAPFErrorCodes.BUDGET_MISMATCH
+            price_high *= 2.0
+
+        # 2) Compute critical prices and initialize bracket [p_lo, p_hi].
+        # price_low = 0.0
+        # max_price_star = max(price_stars.values()) if price_stars else 0.0
+        # price_high = max(
+        #     self.market_price_tol, max_price_star + self.market_price_tol
+        # )
+        # delta_hi_seed = {agent: delta_min[agent] for agent in agents}
+        # delta_hi = self._price_best_response(
+        #     price=price_high,
+        #     allocation=delta_hi_seed,
+        #     delta_min=delta_min,
+        #     delta_max=delta_max,
+        #     cbs_node=cbs_node,
+        #     cache=cache,
+        #     agent_order=agent_order,
+        #     eta=eta,
+        # )
+        # sum_hi = sum(delta_hi.values())
+        # if sum_hi - self.risk_bound > eps_r:
+        #     import ipdb
+        #     ipdb.set_trace()
+        #     return MAPFErrorCodes.BUDGET_MISMATCH
 
         delta_best = delta_hi.copy()
         r_best = sum_hi
@@ -438,6 +449,8 @@ class RiskBoundedCBSSolver(CBSSolver):
             r_best = sum_mid
 
         if r_best - self.risk_bound > eps_r:
+            import ipdb
+            ipdb.set_trace()
             return MAPFErrorCodes.BUDGET_MISMATCH
 
         new_allocation = [delta_best[a] for a in agents]
