@@ -486,7 +486,7 @@ def spawn_processes(context, *args, **kwargs):
         # Copy the execute.sh script to podman
         copy_exec_script = ExecuteProcess(
             cmd=['podman', 'cp', execute_kirk_file_path.as_posix(),
-                 f'{podman_image}:/common-lisp/enterprise/_execute_kirk.sh'],
+                 f'{podman_image}:/common-lisp/enterprise/execute_kirk.sh'],
             name='copy_exec_script',
             output='screen',
         )
