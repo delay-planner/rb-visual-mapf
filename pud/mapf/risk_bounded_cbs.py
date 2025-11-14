@@ -112,8 +112,8 @@ class RiskBoundedCBSSolver(CBSSolver):
             "risk_reallocation_strategy", "surplus_deficit"
         )
         market_config = config.get("risk_market_config", {})
-        default_eta0 = 0.05 * self.risk_bound if self.risk_bound > 0 else 1.0
-        default_eta_min = 0.005 * self.risk_bound if self.risk_bound > 0 else 0.1
+        default_eta0 = 0.05 * (self.risk_bound / self.num_agents) if self.risk_bound > 0 else 1.0
+        default_eta_min = 0.005 * (self.risk_bound / self.num_agents) if self.risk_bound > 0 else 0.1
         self.market_eta0 = max(market_config.get("eta0", default_eta0), 1e-6)
         self.market_eta_min = max(market_config.get("eta_min", default_eta_min), 1e-6)
         self.market_eps_r = market_config.get("eps_R", self.market_eta_min)
@@ -336,9 +336,9 @@ class RiskBoundedCBSSolver(CBSSolver):
                 cache=cache,
                 agent_order=agent_order,
             )
-            if self._alloc_equal(candidate, delta_hi):
-                delta_hi = candidate
-                break
+            # if self._alloc_equal(candidate, delta_hi):
+            #     delta_hi = candidate
+            #     break
             delta_hi = candidate
             if sum(delta_hi.values()) <= self.risk_bound + self.market_eps_r:
                 break
@@ -459,7 +459,8 @@ class RiskBoundedCBSSolver(CBSSolver):
                 if not np.isclose(best_cap, cap):
                     current[agent] = best_cap
                     sweep_changed = True
-            if not sweep_changed or eta <= self.market_eta_min:
+            # if not sweep_changed or eta <= self.market_eta_min:
+            if eta <= self.market_eta_min:
                 break
             eta = max(eta * 0.5, self.market_eta_min)
         return current
