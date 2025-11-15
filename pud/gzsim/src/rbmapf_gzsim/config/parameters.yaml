@@ -61,7 +61,7 @@ world_file:
   description: "Path to the Gazebo world file (no default)."
 
 podman_image:
-  default: "3d2642905d0e"
+  default: "d68da9dc2ade"
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:
@@ -83,7 +83,7 @@ num_missions:
 
 execute_kirk_file_path:
   # default: "./src/rbmapf_gzsim/launch/execute_kirk.sh"
-  default: "./src/rbmapf_gzsim/launch/execute_team_kirk.sh"
+  default: "./src/rbmapf_gzsim/demo_logs/pointenv/ack-within-bound/execute_kirk.sh"
   description: "Path to the script for executing the Kirk server."
 
 

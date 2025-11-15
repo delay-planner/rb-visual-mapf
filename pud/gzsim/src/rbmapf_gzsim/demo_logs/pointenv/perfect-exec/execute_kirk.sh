@@ -9,5 +9,5 @@ port=$(( kirk_id + 8000 ))
 tolerance=1.0
 
 kirk run mission.rmpl -P scenario1 \
-    --driver-command "curl -X POST -H 'Content-Type: application/json' -d '{\"start_cmd\":\"~A\", \"end_cmd\":\"~A\", \"kirk_id\": \"$kirk_id\"}' http://mers-earth.csail.mit.edu:5000/submit" \
+    --driver-command "curl -X POST -H 'Content-Type: application/json' -d '{\"start_cmd\":\"~A\", \"end_cmd\":\"~A\", \"kirk_id\": \"$kirk_id\"}' http://localhost:5000/submit" \
     --tolerance $tolerance -p $port --optimistic --verbose

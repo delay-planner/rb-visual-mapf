@@ -107,7 +107,7 @@ async def send_kirk_ack(event_id, drone_id):
             except Exception as e:
                 logging.error("Error with sending an ack to kirk", e)
 
-        await asyncio.sleep(130.0)
+        await asyncio.sleep(30.0)
 
         for port in range(8000 + other[0], 8000 + other[-1] + 1):
             url = f"http://localhost:{port}/"
@@ -286,7 +286,7 @@ async def receive_kirk_event(data: RequestData):
 
 
 def main():
-    uvicorn.run("middleware_with_delay:app", host="127.0.0.1", port=5000, reload=True)
+    uvicorn.run("middleware_with_delay:app", host="0.0.0.0", port=5000, reload=True)
 
 
 if __name__ == "__main__":
