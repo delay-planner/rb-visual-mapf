@@ -19,6 +19,7 @@ class WaypointGeneratorNode(Node):
         habitat = self.args.visual == 'True'
 
         if habitat:
+            # TODO: The implementations of the generate_wps for habitat and pointenv have diverged!
             from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_habitatenv import generate_wps
         else:
             from pud.gzsim.src.rbmapf_gzsim.rbmapf_gzsim.control_pointenv import generate_wps
@@ -34,6 +35,7 @@ class WaypointGeneratorNode(Node):
         )
 
         self.waypoint_publishers = []
+        self.current_agent_problems = []
         for agent_idx in range(self.args.num_agents):
             instance_idx = agent_idx + 1
             if interface != "cf":
@@ -54,11 +56,14 @@ class WaypointGeneratorNode(Node):
         self.waypoint_gen_finished = self.create_publisher(Empty, '/waypoints_generated', self.qos_profile)
         self.waypoints_gen_finished_timer = self.create_timer(1.0, self.publish_waypoints_gen_finished)
 
-    def _generate_waypoints(self):
+    def _generate_waypoints(self, recovery=list()):
 
-        agents_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, debug=True)
+        agents_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, recovery=recovery, debug=True)
         agent_idx = self.problem_start * self.args.team_size
         for waypoints in agents_waypoints:
+
+            agent_start, agent_end = waypoints[0], waypoints[-1]
+            self.current_agent_problems.append({'start': agent_start, 'end': agent_end})
             # agent_idx += (self.problem_start % self.args.team_size) * self.args.team_size
             agent_wps = np.array(waypoints)
             waypoint_msg = Float32MultiArray()
@@ -80,10 +85,11 @@ class WaypointGeneratorNode(Node):
             # self.get_logger().info(f"Response from server: {data}")
             sync_ready = data.get("sync_ready", False) is True
             sync_name = data.get("sync_name", "")
-            return sync_ready, sync_name
+            recovery = data.get("recovery", dict())
+            return sync_ready, sync_name, recovery
         except (requests.RequestException, ValueError) as e:
             self.get_logger().error(f"Request failed or invalid JSON: {e}")
-            return False, ""
+            return False, "", dict()
 
     def _send_ack(self, mission_name):
         try:
@@ -101,11 +107,18 @@ class WaypointGeneratorNode(Node):
             self.get_logger().error(f"Failed to send ack for mission {mission_name}: {e}")
 
     def replan_callback(self):
-        sync_ready, sync_name = self._plan_next_mission()
+        sync_ready, sync_name, recovery = self._plan_next_mission()
         if sync_ready:
             self.sync_name = sync_name
             self.get_logger().info(f"New mission {self.sync_name} received, replanning...")
-            self._generate_waypoints()
+            recovery_dict = list()
+            if len(recovery) > 0:
+                recovery_agent = recovery.get("recovery_agent", 0)
+                to_recover = recovery.get("to_recover", [])
+                for agent_idx in to_recover:
+                    recovery_dict.append({'start': self.current_agent_problems[recovery_agent]['start'], 'goal': self.current_agent_problems[agent_idx]['goal']})
+                self.get_logger().info("Recovery dictionary:" + str(recovery_dict))
+            self._generate_waypoints(recovery_dict)
             self.problem_start += 1
             self._send_ack(self.sync_name)
             self.get_logger().info(f"Mission {self.sync_name} acknowledged.")

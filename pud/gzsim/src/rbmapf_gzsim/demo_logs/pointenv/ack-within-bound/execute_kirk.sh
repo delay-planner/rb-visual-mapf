@@ -6,7 +6,7 @@ fi
 # drone_id from MAPF is 1-indexed, kirk_id is 0-indexed so we subtract 1
 kirk_id=$(( $1 - 1 ))
 port=$(( kirk_id + 8000 ))
-tolerance=0.5
+tolerance=1.0
 
 if [ "$kirk_id" -lt 2 ]; then
 	kirk run mission-team-1.rmpl -P scenario1 \

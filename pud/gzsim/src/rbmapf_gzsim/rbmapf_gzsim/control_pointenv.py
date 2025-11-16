@@ -192,7 +192,7 @@ def adjust_positions(position, env, hardware=False):
     return position
 
 
-def generate_wps(args, problem_start=0, debug=False):
+def generate_wps(args, problem_start=0, recovery=list(), debug=False):
 
     config, eval_env, agent = pointenv_setup(args)
 
@@ -220,6 +220,12 @@ def generate_wps(args, problem_start=0, debug=False):
             prev_idx = idx - args.num_agents
             problems[idx]['start'] = problems[prev_idx]['goal']
     problems = problems[problem_start * args.team_size:]
+
+    # Recovery should be a list of dictionaries with 'start' and 'goal' keys
+    if len(recovery) > 0:
+        # Inject the recovery states into the problems at the beginning
+        for idx, recov in enumerate(recovery):
+            problems.insert(idx, recov)
 
     assert isinstance(eval_env.unwrapped, PointEnv)
 

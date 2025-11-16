@@ -49,8 +49,8 @@ class DroneController(Node):
         self.num_drones = num_drones
         self.waypoint_follow = waypoint_follow
 
-        self.ack_endpoint = "http://mers-earth.csail.mit.edu:5000/done"
-        self.mission_url = f"http://mers-earth.csail.mit.edu:5000/?drone_id={self.drone_id}"
+        self.ack_endpoint = "http://localhost:5000/done"
+        self.mission_url = f"http://localhost:5000/?drone_id={self.drone_id}"
 
         if self.habitat:
             config_file, ckpt_file, walls_file, bounds_file = files

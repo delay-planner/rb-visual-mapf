@@ -1,5 +1,3 @@
-## Delay = 30 sec
-
 ## Drone 1
 
 ```
@@ -10,95 +8,83 @@
 [podman_exec_1-25] +-----------------------------------------------+--------+
 [podman_exec_1-25] |+START-MISSION-ONE-DRONE-TWO::START+           |0       |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1941                                         |0       |
+[podman_exec_1-25] |EV1853                                         |0       |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1913                                         |0       |
+[podman_exec_1-25] |EV1825                                         |0       |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1409                                         |0       |
+[podman_exec_1-25] |++LOWER-+UPLOAD-A-ONE::START+-REWOL++          |1       |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |++LOWER-+START-MISSION-ONE-DRONE-ONE::END+-R...|41      |
+[podman_exec_1-25] |++LOWER-+UPLOAD-A-TWO::START+-REWOL++          |1       |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |++LOWER-+START-MISSION-ONE-DRONE-TWO::END+-R...|41      |
+[podman_exec_1-25] |+UPLOAD-A-TWO::START+                          |60      |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-ONE-DRONE-TWO::END+             |61      |
+[podman_exec_1-25] |+UPLOAD-A-TWO::END+                            |90      |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-ONE-DRONE-ONE::END+             |131     |
+[podman_exec_1-25] |+UPLOAD-A-ONE::START+                          |132     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+UPLOAD-A::START+                              |131     |
+[podman_exec_1-25] |+SYNC-ONE::START+                              |162     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1454                                         |131     |
+[podman_exec_1-25] |EV1412                                         |162     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1404                                         |131     |
+[podman_exec_1-25] |EV1125                                         |162     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1142                                         |131     |
+[podman_exec_1-25] |+UPLOAD-A-ONE::END+                            |162     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-ONE::START+                        |191     |
+[podman_exec_1-25] |+LAND-DRONE-ONE::START+                        |163     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-TWO::START+                        |191     |
+[podman_exec_1-25] |+LAND-DRONE-TWO::START+                        |163     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1553                                         |191     |
+[podman_exec_1-25] |+SYNC-ONE::END+                                |163     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+UPLOAD-A::END+                                |191     |
+[podman_exec_1-25] |+START-MISSION-TWO-DRONE-FOUR::START+          |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-TWO-DRONE-FOUR::START+          |192     |
+[podman_exec_1-25] |+START-MISSION-TWO-DRONE-THREE::START+         |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-TWO-DRONE-THREE::START+         |192     |
+[podman_exec_1-25] |EV1663                                         |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+SYNC-ONE::START+                              |192     |
+[podman_exec_1-25] |EV1543                                         |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1697                                         |192     |
+[podman_exec_1-25] |EV1497                                         |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1598                                         |192     |
+[podman_exec_1-25] |+LAND-DRONE-TWO::END+                          |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1548                                         |192     |
+[podman_exec_1-25] |+LAND-DRONE-ONE::END+                          |164     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1502                                         |192     |
+[podman_exec_1-25] |++LOWER-+UPLOAD-B-ONE::START+-REWOL++          |165     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+SYNC-ONE::END+                                |192     |
+[podman_exec_1-25] |++LOWER-+UPLOAD-B-TWO::START+-REWOL++          |165     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-TWO::END+                          |192     |
+[podman_exec_1-25] |+UPLOAD-B-TWO::START+                          |210     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-ONE::END+                          |192     |
+[podman_exec_1-25] |+UPLOAD-B-TWO::END+                            |240     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |++LOWER-+START-MISSION-TWO-DRONE-FOUR::END+-...|203     |
+[podman_exec_1-25] |+UPLOAD-B-ONE::START+                          |261     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |++LOWER-+START-MISSION-TWO-DRONE-THREE::END+...|203     |
+[podman_exec_1-25] |+LAND-DRONE-FOUR::START+                       |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-TWO-DRONE-FOUR::END+            |241     |
+[podman_exec_1-25] |+LAND-DRONE-THREE::START+                      |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+START-MISSION-TWO-DRONE-THREE::END+           |288     |
+[podman_exec_1-25] |EV1775                                         |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+UPLOAD-B::START+                              |289     |
+[podman_exec_1-25] |EV1658                                         |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1742                                         |289     |
+[podman_exec_1-25] |EV1595                                         |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1692                                         |289     |
+[podman_exec_1-25] |+UPLOAD-B-ONE::END+                            |291     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1646                                         |289     |
+[podman_exec_1-25] |EV1820                                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-FOUR::START+                       |349     |
+[podman_exec_1-25] |EV1770                                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-THREE::START+                      |349     |
+[podman_exec_1-25] |EV1724                                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1841                                         |349     |
+[podman_exec_1-25] |EV1110                                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+UPLOAD-B::END+                                |349     |
+[podman_exec_1-25] |EV1082                                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1908                                         |350     |
+[podman_exec_1-25] |+LAND-DRONE-THREE::END+                        |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1883                                         |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1836                                         |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1790                                         |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1104                                         |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |EV1076                                         |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-THREE::END+                        |350     |
-[podman_exec_1-25] +-----------------------------------------------+--------+
-[podman_exec_1-25] |+LAND-DRONE-FOUR::END+                         |350     |
+[podman_exec_1-25] |+LAND-DRONE-FOUR::END+                         |292     |
 [podman_exec_1-25] +-----------------------------------------------+--------+
 ```
 
@@ -112,95 +98,83 @@
 [podman_exec_2-24] +-----------------------------------------------+--------+
 [podman_exec_2-24] |+START-MISSION-ONE-DRONE-TWO::START+           |0       |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1941                                         |0       |
+[podman_exec_2-24] |EV1853                                         |0       |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1913                                         |0       |
+[podman_exec_2-24] |EV1825                                         |0       |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1409                                         |0       |
+[podman_exec_2-24] |++LOWER-+UPLOAD-A-ONE::START+-REWOL++          |1       |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |++LOWER-+START-MISSION-ONE-DRONE-ONE::END+-R...|41      |
+[podman_exec_2-24] |++LOWER-+UPLOAD-A-TWO::START+-REWOL++          |1       |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |++LOWER-+START-MISSION-ONE-DRONE-TWO::END+-R...|41      |
+[podman_exec_2-24] |+UPLOAD-A-TWO::START+                          |60      |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-ONE-DRONE-TWO::END+             |61      |
+[podman_exec_2-24] |+UPLOAD-A-TWO::END+                            |90      |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-ONE-DRONE-ONE::END+             |131     |
+[podman_exec_2-24] |+UPLOAD-A-ONE::START+                          |132     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+UPLOAD-A::START+                              |131     |
+[podman_exec_2-24] |+SYNC-ONE::START+                              |162     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1454                                         |131     |
+[podman_exec_2-24] |EV1412                                         |162     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1404                                         |131     |
+[podman_exec_2-24] |EV1125                                         |162     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1142                                         |131     |
+[podman_exec_2-24] |+UPLOAD-A-ONE::END+                            |162     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-ONE::START+                        |191     |
+[podman_exec_2-24] |+LAND-DRONE-ONE::START+                        |163     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-TWO::START+                        |191     |
+[podman_exec_2-24] |+LAND-DRONE-TWO::START+                        |163     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1553                                         |191     |
+[podman_exec_2-24] |+SYNC-ONE::END+                                |163     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+UPLOAD-A::END+                                |191     |
+[podman_exec_2-24] |+START-MISSION-TWO-DRONE-FOUR::START+          |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-TWO-DRONE-FOUR::START+          |192     |
+[podman_exec_2-24] |+START-MISSION-TWO-DRONE-THREE::START+         |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-TWO-DRONE-THREE::START+         |192     |
+[podman_exec_2-24] |EV1663                                         |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+SYNC-ONE::START+                              |192     |
+[podman_exec_2-24] |EV1543                                         |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1697                                         |192     |
+[podman_exec_2-24] |EV1497                                         |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1598                                         |192     |
+[podman_exec_2-24] |+LAND-DRONE-TWO::END+                          |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1548                                         |192     |
+[podman_exec_2-24] |+LAND-DRONE-ONE::END+                          |164     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1502                                         |192     |
+[podman_exec_2-24] |++LOWER-+UPLOAD-B-ONE::START+-REWOL++          |165     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+SYNC-ONE::END+                                |192     |
+[podman_exec_2-24] |++LOWER-+UPLOAD-B-TWO::START+-REWOL++          |165     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-TWO::END+                          |192     |
+[podman_exec_2-24] |+UPLOAD-B-TWO::START+                          |210     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-ONE::END+                          |192     |
+[podman_exec_2-24] |+UPLOAD-B-TWO::END+                            |240     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |++LOWER-+START-MISSION-TWO-DRONE-FOUR::END+-...|203     |
+[podman_exec_2-24] |+UPLOAD-B-ONE::START+                          |261     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |++LOWER-+START-MISSION-TWO-DRONE-THREE::END+...|203     |
+[podman_exec_2-24] |+LAND-DRONE-FOUR::START+                       |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-TWO-DRONE-FOUR::END+            |241     |
+[podman_exec_2-24] |+LAND-DRONE-THREE::START+                      |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+START-MISSION-TWO-DRONE-THREE::END+           |288     |
+[podman_exec_2-24] |EV1775                                         |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+UPLOAD-B::START+                              |289     |
+[podman_exec_2-24] |EV1658                                         |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1742                                         |289     |
+[podman_exec_2-24] |EV1595                                         |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1692                                         |289     |
+[podman_exec_2-24] |+UPLOAD-B-ONE::END+                            |291     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1646                                         |289     |
+[podman_exec_2-24] |EV1820                                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-FOUR::START+                       |349     |
+[podman_exec_2-24] |EV1770                                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-THREE::START+                      |349     |
+[podman_exec_2-24] |EV1724                                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1841                                         |349     |
+[podman_exec_2-24] |EV1110                                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+UPLOAD-B::END+                                |349     |
+[podman_exec_2-24] |EV1082                                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1908                                         |350     |
+[podman_exec_2-24] |+LAND-DRONE-THREE::END+                        |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1883                                         |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1836                                         |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1790                                         |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1104                                         |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |EV1076                                         |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-THREE::END+                        |350     |
-[podman_exec_2-24] +-----------------------------------------------+--------+
-[podman_exec_2-24] |+LAND-DRONE-FOUR::END+                         |350     |
+[podman_exec_2-24] |+LAND-DRONE-FOUR::END+                         |292     |
 [podman_exec_2-24] +-----------------------------------------------+--------+
 ```
 
@@ -214,96 +188,85 @@
 [podman_exec_3-23] +-----------------------------------------------+--------+
 [podman_exec_3-23] |+START-MISSION-ONE-DRONE-TWO::START+           |0       |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1941                                         |0       |
+[podman_exec_3-23] |EV1853                                         |0       |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1913                                         |0       |
+[podman_exec_3-23] |EV1825                                         |0       |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1409                                         |0       |
+[podman_exec_3-23] |++LOWER-+UPLOAD-A-ONE::START+-REWOL++          |1       |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |++LOWER-+START-MISSION-ONE-DRONE-ONE::END+-R...|41      |
+[podman_exec_3-23] |++LOWER-+UPLOAD-A-TWO::START+-REWOL++          |1       |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |++LOWER-+START-MISSION-ONE-DRONE-TWO::END+-R...|41      |
+[podman_exec_3-23] |+UPLOAD-A-TWO::START+                          |60      |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-ONE-DRONE-TWO::END+             |61      |
+[podman_exec_3-23] |+UPLOAD-A-TWO::END+                            |90      |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-ONE-DRONE-ONE::END+             |131     |
+[podman_exec_3-23] |+UPLOAD-A-ONE::START+                          |132     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+UPLOAD-A::START+                              |131     |
+[podman_exec_3-23] |+SYNC-ONE::START+                              |162     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1454                                         |131     |
+[podman_exec_3-23] |EV1412                                         |162     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1404                                         |131     |
+[podman_exec_3-23] |EV1125                                         |162     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1142                                         |131     |
+[podman_exec_3-23] |+UPLOAD-A-ONE::END+                            |162     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-ONE::START+                        |191     |
+[podman_exec_3-23] |+LAND-DRONE-ONE::START+                        |163     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-TWO::START+                        |191     |
+[podman_exec_3-23] |+LAND-DRONE-TWO::START+                        |163     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1553                                         |191     |
+[podman_exec_3-23] |+SYNC-ONE::END+                                |163     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+UPLOAD-A::END+                                |191     |
+[podman_exec_3-23] |+START-MISSION-TWO-DRONE-FOUR::START+          |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-TWO-DRONE-FOUR::START+          |192     |
+[podman_exec_3-23] |+START-MISSION-TWO-DRONE-THREE::START+         |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-TWO-DRONE-THREE::START+         |192     |
+[podman_exec_3-23] |EV1663                                         |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+SYNC-ONE::START+                              |192     |
+[podman_exec_3-23] |EV1543                                         |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1697                                         |192     |
+[podman_exec_3-23] |EV1497                                         |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1598                                         |192     |
+[podman_exec_3-23] |+LAND-DRONE-TWO::END+                          |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1548                                         |192     |
+[podman_exec_3-23] |+LAND-DRONE-ONE::END+                          |164     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1502                                         |192     |
+[podman_exec_3-23] |++LOWER-+UPLOAD-B-ONE::START+-REWOL++          |165     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+SYNC-ONE::END+                                |192     |
+[podman_exec_3-23] |++LOWER-+UPLOAD-B-TWO::START+-REWOL++          |165     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-TWO::END+                          |192     |
+[podman_exec_3-23] |+UPLOAD-B-TWO::START+                          |210     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-ONE::END+                          |192     |
+[podman_exec_3-23] |+UPLOAD-B-TWO::END+                            |240     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |++LOWER-+START-MISSION-TWO-DRONE-FOUR::END+-...|203     |
+[podman_exec_3-23] |+UPLOAD-B-ONE::START+                          |261     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |++LOWER-+START-MISSION-TWO-DRONE-THREE::END+...|203     |
+[podman_exec_3-23] |+LAND-DRONE-FOUR::START+                       |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-TWO-DRONE-FOUR::END+            |242     |
+[podman_exec_3-23] |+LAND-DRONE-THREE::START+                      |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+START-MISSION-TWO-DRONE-THREE::END+           |289     |
+[podman_exec_3-23] |EV1775                                         |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+UPLOAD-B::START+                              |289     |
+[podman_exec_3-23] |EV1658                                         |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1742                                         |289     |
+[podman_exec_3-23] |EV1595                                         |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1692                                         |289     |
+[podman_exec_3-23] |+UPLOAD-B-ONE::END+                            |291     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1646                                         |289     |
+[podman_exec_3-23] |EV1820                                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-FOUR::START+                       |349     |
+[podman_exec_3-23] |EV1770                                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-THREE::START+                      |349     |
+[podman_exec_3-23] |EV1724                                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1841                                         |349     |
+[podman_exec_3-23] |EV1110                                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+UPLOAD-B::END+                                |349     |
+[podman_exec_3-23] |EV1082                                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1908                                         |350     |
+[podman_exec_3-23] |+LAND-DRONE-THREE::END+                        |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1883                                         |350     |
+[podman_exec_3-23] |+LAND-DRONE-FOUR::END+                         |292     |
 [podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1836                                         |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1790                                         |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1104                                         |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |EV1076                                         |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-THREE::END+                        |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
-[podman_exec_3-23] |+LAND-DRONE-FOUR::END+                         |350     |
-[podman_exec_3-23] +-----------------------------------------------+--------+
+
 ```
 
 ## Drone 4
@@ -316,94 +279,83 @@
 [podman_exec_4-22] +-----------------------------------------------+--------+
 [podman_exec_4-22] |+START-MISSION-ONE-DRONE-TWO::START+           |0       |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1941                                         |0       |
+[podman_exec_4-22] |EV1853                                         |0       |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1913                                         |0       |
+[podman_exec_4-22] |EV1825                                         |0       |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1409                                         |0       |
+[podman_exec_4-22] |++LOWER-+UPLOAD-A-ONE::START+-REWOL++          |1       |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |++LOWER-+START-MISSION-ONE-DRONE-ONE::END+-R...|41      |
+[podman_exec_4-22] |++LOWER-+UPLOAD-A-TWO::START+-REWOL++          |1       |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |++LOWER-+START-MISSION-ONE-DRONE-TWO::END+-R...|41      |
+[podman_exec_4-22] |+UPLOAD-A-TWO::START+                          |60      |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-ONE-DRONE-TWO::END+             |61      |
+[podman_exec_4-22] |+UPLOAD-A-TWO::END+                            |90      |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-ONE-DRONE-ONE::END+             |131     |
+[podman_exec_4-22] |+UPLOAD-A-ONE::START+                          |132     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+UPLOAD-A::START+                              |131     |
+[podman_exec_4-22] |+SYNC-ONE::START+                              |162     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1454                                         |131     |
+[podman_exec_4-22] |EV1412                                         |162     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1404                                         |131     |
+[podman_exec_4-22] |EV1125                                         |162     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1142                                         |131     |
+[podman_exec_4-22] |+UPLOAD-A-ONE::END+                            |162     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-ONE::START+                        |191     |
+[podman_exec_4-22] |+LAND-DRONE-ONE::START+                        |163     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-TWO::START+                        |191     |
+[podman_exec_4-22] |+LAND-DRONE-TWO::START+                        |163     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1553                                         |191     |
+[podman_exec_4-22] |+SYNC-ONE::END+                                |163     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+UPLOAD-A::END+                                |191     |
+[podman_exec_4-22] |+START-MISSION-TWO-DRONE-FOUR::START+          |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-TWO-DRONE-FOUR::START+          |192     |
+[podman_exec_4-22] |+START-MISSION-TWO-DRONE-THREE::START+         |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-TWO-DRONE-THREE::START+         |192     |
+[podman_exec_4-22] |EV1663                                         |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+SYNC-ONE::START+                              |192     |
+[podman_exec_4-22] |EV1543                                         |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1697                                         |192     |
+[podman_exec_4-22] |EV1497                                         |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1598                                         |192     |
+[podman_exec_4-22] |+LAND-DRONE-TWO::END+                          |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1548                                         |192     |
+[podman_exec_4-22] |+LAND-DRONE-ONE::END+                          |164     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1502                                         |192     |
+[podman_exec_4-22] |++LOWER-+UPLOAD-B-ONE::START+-REWOL++          |165     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+SYNC-ONE::END+                                |192     |
+[podman_exec_4-22] |++LOWER-+UPLOAD-B-TWO::START+-REWOL++          |165     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-TWO::END+                          |192     |
+[podman_exec_4-22] |+UPLOAD-B-TWO::START+                          |210     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-ONE::END+                          |192     |
+[podman_exec_4-22] |+UPLOAD-B-TWO::END+                            |240     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |++LOWER-+START-MISSION-TWO-DRONE-FOUR::END+-...|203     |
+[podman_exec_4-22] |+UPLOAD-B-ONE::START+                          |261     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |++LOWER-+START-MISSION-TWO-DRONE-THREE::END+...|203     |
+[podman_exec_4-22] |+LAND-DRONE-FOUR::START+                       |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-TWO-DRONE-FOUR::END+            |241     |
+[podman_exec_4-22] |+LAND-DRONE-THREE::START+                      |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+START-MISSION-TWO-DRONE-THREE::END+           |288     |
+[podman_exec_4-22] |EV1775                                         |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+UPLOAD-B::START+                              |289     |
+[podman_exec_4-22] |EV1658                                         |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1742                                         |289     |
+[podman_exec_4-22] |EV1595                                         |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1692                                         |289     |
+[podman_exec_4-22] |+UPLOAD-B-ONE::END+                            |291     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1646                                         |289     |
+[podman_exec_4-22] |EV1820                                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-FOUR::START+                       |349     |
+[podman_exec_4-22] |EV1770                                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-THREE::START+                      |349     |
+[podman_exec_4-22] |EV1724                                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1841                                         |349     |
+[podman_exec_4-22] |EV1110                                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+UPLOAD-B::END+                                |349     |
+[podman_exec_4-22] |EV1082                                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1908                                         |350     |
+[podman_exec_4-22] |+LAND-DRONE-THREE::END+                        |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1883                                         |350     |
+[podman_exec_4-22] |+LAND-DRONE-FOUR::END+                         |292     |
 [podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1836                                         |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1790                                         |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1104                                         |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |EV1076                                         |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-THREE::END+                        |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
-[podman_exec_4-22] |+LAND-DRONE-FOUR::END+                         |350     |
-[podman_exec_4-22] +-----------------------------------------------+--------+
+
 ```

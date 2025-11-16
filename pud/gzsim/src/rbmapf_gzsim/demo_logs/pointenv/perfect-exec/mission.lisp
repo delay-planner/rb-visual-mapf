@@ -4,8 +4,6 @@
 (define-control-program start-mission-one-drone-one ()
     (declare (primitive)
     (duration (simple :lower-bound 1 :upper-bound 600
-	:min-observation-delay 30
-	:max-observation-delay 40
     )
     :contingent t
 )))
@@ -13,8 +11,6 @@
 (define-control-program start-mission-one-drone-two ()
     (declare (primitive)
     (duration (simple :lower-bound 1 :upper-bound 600
-	:min-observation-delay 30
-	:max-observation-delay 40
     )
     :contingent t
 )))
@@ -22,8 +18,6 @@
 (define-control-program start-mission-two-drone-three ()
     (declare (primitive)
     (duration (simple :lower-bound 1 :upper-bound 600
-	:min-observation-delay 5
-	:max-observation-delay 10
     )
     :contingent t
 )))
@@ -31,8 +25,6 @@
 (define-control-program start-mission-two-drone-four ()
     (declare (primitive)
     (duration (simple :lower-bound 1 :upper-bound 600
-	:min-observation-delay 5
-	:max-observation-delay 10
     )
     :contingent t
 )))
@@ -58,45 +50,64 @@
     (duration (simple :lower-bound 1 :upper-bound 5)
 )))
 
-(define-control-program upload-a ()
+(define-control-program upload-a-one ()
     (declare (primitive)
-    (duration (simple :lower-bound 60 :upper-bound 70)
+    (duration (simple :lower-bound 30 :upper-bound 40)
 )))
 
-(define-control-program upload-b ()
+(define-control-program upload-a-two ()
     (declare (primitive)
-    (duration (simple :lower-bound 60 :upper-bound 70)
+    (duration (simple :lower-bound 30 :upper-bound 40)
+)))
+
+(define-control-program upload-b-one ()
+    (declare (primitive)
+    (duration (simple :lower-bound 30 :upper-bound 40)
+)))
+
+(define-control-program upload-b-two ()
+    (declare (primitive)
+    (duration (simple :lower-bound 30 :upper-bound 40)
 )))
 
 (define-control-program sync-one ()
     (declare (primitive)
-    (duration (simple :lower-bound 0 :upper-bound 0)
+    (duration (simple :lower-bound 1 :upper-bound 1)
 )))
 
 (define-control-program main ()
     (with-temporal-constraint (simple-temporal :upper-bound 2400)
-    (sequence (:slack t)
+    (sequence (:slack nil)
         
         (parallel (:slack t)
-            (start-mission-one-drone-one)
-            (start-mission-one-drone-two)
+            (sequence (:slack nil) 
+                (start-mission-one-drone-one)
+                (upload-a-one)
+            )
+            (sequence (:slack nil)
+                (start-mission-one-drone-two)
+                (upload-a-two)
+            )
         )
 
-        (upload-a)
+	    (sync-one)
 
         (parallel (:slack t)
             (land-drone-one)
             (land-drone-two)
         )
 
-	    (sync-one)
 
         (parallel (:slack t)
-            (start-mission-two-drone-three)
-            (start-mission-two-drone-four)
+            (sequence (:slack nil)
+                (start-mission-two-drone-three)
+                (upload-b-one)
+            )
+            (sequence (:slack nil)
+                (start-mission-two-drone-four)
+                (upload-b-two)
+            )
         )
-
-        (upload-b)
 
         (parallel (:slack t)
             (land-drone-three)
