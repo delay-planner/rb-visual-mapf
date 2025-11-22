@@ -28,6 +28,9 @@ num_to_names = {
     9: "NINE",
     10: "TEN",
 }
+recovery_agent = -1
+to_recover = list()
+recovery_flag = False
 
 app = FastAPI()
 
@@ -114,8 +117,12 @@ async def sync_finishes(data: SyncFinishData):
     """
     Sends ack to Kirk that the sync finishes
     """
+    global recovery_flag
+
     # send_kirk_ack(data.sync_name)
     # logging.debug("Successfully removed")
+    recovery_flag = False
+
     return JSONResponse(content={"success": True})
 
 
@@ -124,29 +131,17 @@ async def plan_new_mission():
     """
     Returns whether we're ready to plan a new mission!
     """
-    global sync, sync_name
-
-    if sync:
-        content = {"sync_ready": True, "sync_name": sync_name}
-        sync = False
-        sync_name = ""
-        return JSONResponse(content=content)
-    else:
-        return JSONResponse(content={"sync_ready": False, "sync_name": ""})
-
-
-@app.get("/plan")
-def set_sync_with_recovery(recovery_agent, to_recover):
-    """
-    Returns whether we're ready to plan a new mission!
-    """
-    global sync, sync_name
+    global sync, sync_name, recovery_agent, to_recover
 
     if sync:
         content = {"sync_ready": True, "sync_name": sync_name,
                    "recovery": {"recovery_agent": recovery_agent, "to_recover": to_recover}}
         sync = False
         sync_name = ""
+        if recovery_agent != -1:
+            logging.debug(f"Resetting recovery state, had agent {str(recovery_agent)} recovering {','.join([str(i) for i in to_recover])}")
+            recovery_agent = -1
+            to_recover = list()
         return JSONResponse(content=content)
     else:
         return JSONResponse(content={"sync_ready": False, "sync_name": "", "recovery": dict()})
@@ -163,7 +158,7 @@ async def most_recent_mission(drone_id: int):
         land: bool,           # if true, just land
     }
     """
-    global values, land_list
+    global values, land_list, recovery_flag
     drone_id = int(drone_id) - 1
     # logging.debug(f"Values are {values}")
 
@@ -177,6 +172,9 @@ async def most_recent_mission(drone_id: int):
         # logging.debug("Return mission")
         # logging.debug(f"Mission name is {values[drone_id][0]}")
         # There exists a mission to be returned, return the first
+        if recovery_flag:
+            return JSONResponse(content={"mission_ready": False, "mission_name": "", "land": land_list[drone_id]})
+        
         return JSONResponse(content={"mission_ready": True, "mission_name": values[drone_id][0],
                                      "land": land_list[drone_id]})
     else:
@@ -200,7 +198,7 @@ async def receive_kirk_event(data: RequestData):
     The kirk_id corresponds to from which kirk did we get the start event (the drone id)
     kirk_id is zero-indexed
     """
-    global values, sync_seen, sync, sync_name, land_list, visited_set, acks_recieved, NUM_DRONES
+    global values, sync_seen, sync, sync_name, land_list, visited_set, acks_recieved, NUM_DRONES, recovery_agent, to_recover, recovery_flag
 
     # Make the info a dictionary
     response_data = {
@@ -255,13 +253,16 @@ async def receive_kirk_event(data: RequestData):
         logging.debug(f"Recovery assigned drone is {minimum_recovery_id} missing drones are {missing_drones}")
 
         if data.kirk_id == minimum_recovery_id:
+            recovery_flag = True
 
             logging.debug(f"Doing recovery tasks for missing drones {missing_drones} as {data.kirk_id}")
             # do the new tasks
             # (1) request a new set of endpoints from the drone controller
             sync = True
             sync_name = data.end_cmd
-            set_sync_with_recovery(minimum_recovery_id, list(missing_drones))
+            recovery_agent = minimum_recovery_id
+            to_recover = list(missing_drones)
+            # set_sync_with_recovery(minimum_recovery_id, list(missing_drones))
             # (2) execute those tasks
             # TODO
 
@@ -299,7 +300,7 @@ async def receive_kirk_event(data: RequestData):
 
 
 def main():
-    logging.debug("Starting middleware with recovery")
+    logging.debug(f"Starting middleware with recovery for {args.num_drones} drones")
     uvicorn.run("middleware_with_recovery:app", host="0.0.0.0", port=5000, reload=True)
 
 

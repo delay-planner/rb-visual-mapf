@@ -115,12 +115,11 @@ def pointenv_setup(args):
 
     return config, eval_env, agent
 
-
 def denormalize(wp, height, width, z=2.0):
     print(f"Denormalizing: {wp}")
     ans = np.array([wp[0] * height, wp[1] * width], dtype=np.float32)
     print(f"Denormalized: {ans}")
-    return np.array([wp[0] * height, wp[1] * width, z], dtype=np.float32)
+    return np.array([*ans, z], dtype=np.float32)
 
 
 def load_problem_set(file_path):
@@ -191,7 +190,6 @@ def adjust_positions(position, env, hardware=False):
         position /= np.array([cols / 6., rows / 8., 1.0])
     return position
 
-
 def generate_wps(args, problem_start=0, recovery=list(), debug=False):
 
     config, eval_env, agent = pointenv_setup(args)
@@ -225,7 +223,8 @@ def generate_wps(args, problem_start=0, recovery=list(), debug=False):
     if len(recovery) > 0:
         # Inject the recovery states into the problems at the beginning
         for idx, recov in enumerate(recovery):
-            problems.insert(idx, recov)
+            recov_object = {'start': np.array(recov['start']), 'goal': np.array(recov['goal'])}
+            problems.insert(idx, recov_object)
 
     assert isinstance(eval_env.unwrapped, PointEnv)
 
@@ -243,7 +242,7 @@ def generate_wps(args, problem_start=0, recovery=list(), debug=False):
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
         "tree_save_frequency": 1,
         "budget_allocater": "uniform",
-        "risk_bound": np.inf,  # 6.615,  # Low is 1.47 and High is 11.76
+        "risk_bound": 10.0, # np.inf,  # 6.615,  # Low is 1.47 and High is 11.76
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
     constrained_ma_search_policy = ConstrainedMultiAgentSearchPolicy(
@@ -312,6 +311,7 @@ def generate_wps(args, problem_start=0, recovery=list(), debug=False):
         waypoints = constrained_ma_search_policy.get_augmented_waypoints()
 
     wps = []
+    original_wps = []
     cols, rows = eval_env.get_map().shape
     use_hardware = args.use_hardware == 'True'
 
@@ -330,6 +330,7 @@ def generate_wps(args, problem_start=0, recovery=list(), debug=False):
 
         waypoint_vec = np.array([agent_start, *waypoint_vec, agent_goal])
         denormed = [denormalize(wp, cols, rows) for wp in waypoint_vec]
+        original_wps.append(deepcopy(denormed))
         denormed_adjusted = [adjust_positions(wp, eval_env, use_hardware) for wp in denormed]
         wps.append(denormed_adjusted)
 
@@ -355,4 +356,6 @@ def generate_wps(args, problem_start=0, recovery=list(), debug=False):
         )
 
     # Returned wps are denormalized and shifted to match the origin of simulation/hardware environment
-    return wps
+    print("Wps are: ", wps)
+    print("Original Wps are: ", original_wps)
+    return wps, original_wps

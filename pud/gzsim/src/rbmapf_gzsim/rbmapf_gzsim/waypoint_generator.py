@@ -56,19 +56,27 @@ class WaypointGeneratorNode(Node):
         self.waypoint_gen_finished = self.create_publisher(Empty, '/waypoints_generated', self.qos_profile)
         self.waypoints_gen_finished_timer = self.create_timer(1.0, self.publish_waypoints_gen_finished)
 
+        self.recovery_agent = -1
+
     def _generate_waypoints(self, recovery=list()):
 
-        agents_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, recovery=recovery, debug=True)
-        agent_idx = self.problem_start * self.args.team_size
-        for waypoints in agents_waypoints:
+        agents_waypoints, agents_env_waypoints = self._generate_waypoints_func(self.args, problem_start=self.problem_start, recovery=recovery, debug=False)
+        self.get_logger().info(f"Generated waypoints env for agents: {agents_env_waypoints}")
+        self.get_logger().info(f"Generated waypoints for agents: {agents_waypoints}")
+        agent_idx = self.problem_start * self.args.team_size if len(recovery) == 0 else (self.problem_start - 1) * self.args.team_size
+        for waypoints, waypoints_env in zip(agents_waypoints, agents_env_waypoints):
 
-            agent_start, agent_end = waypoints[0], waypoints[-1]
-            self.current_agent_problems.append({'start': agent_start, 'end': agent_end})
+            agent_start, agent_end = waypoints_env[0], waypoints_env[-1]
+            self.get_logger().info(f'Agent {agent_idx + 1} start: {agent_start}, goal: {agent_end}')
+            self.current_agent_problems.append({'start': agent_start[:2], 'goal': agent_end[:2]})
             # agent_idx += (self.problem_start % self.args.team_size) * self.args.team_size
             agent_wps = np.array(waypoints)
             waypoint_msg = Float32MultiArray()
             waypoint_msg.data = agent_wps.flatten().tolist()
-            self.waypoint_publishers[agent_idx].publish(waypoint_msg)
+            if len(recovery) > 0 and self.recovery_agent == agent_idx:
+                self.waypoint_publishers[agent_idx].publish(waypoint_msg)
+            if len(recovery) == 0:
+                self.waypoint_publishers[agent_idx].publish(waypoint_msg)
             self.get_logger().info(f'Published waypoints for agent {agent_idx + 1}')
             agent_idx += 1
 
@@ -114,10 +122,13 @@ class WaypointGeneratorNode(Node):
             recovery_dict = list()
             if len(recovery) > 0:
                 recovery_agent = recovery.get("recovery_agent", 0)
+                self.recovery_agent = recovery_agent
                 to_recover = recovery.get("to_recover", [])
                 for agent_idx in to_recover:
-                    recovery_dict.append({'start': self.current_agent_problems[recovery_agent]['start'], 'goal': self.current_agent_problems[agent_idx]['goal']})
+                    recovery_dict.append({'start': self.current_agent_problems[recovery_agent]['goal'], 'goal': self.current_agent_problems[agent_idx]['goal']})
                 self.get_logger().info("Recovery dictionary:" + str(recovery_dict))
+            else:
+                self.recovery_agent = -1
             self._generate_waypoints(recovery_dict)
             self.problem_start += 1
             self._send_ack(self.sync_name)

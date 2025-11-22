@@ -37,7 +37,7 @@ config_file:
 
 problem_set_file:
   # default: "../plots/data/centerdot/easy_hardware_updated.npz"
-  default: "../plots/data/centerdot/medium.npz"
+  default: "../plots/data/centerdot/easy.npz"
   # default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
   # default: "../plots/data/illustration_pbs.pkl"
   # default: "../plots/data/sc0_staging_20/easy.npz"
@@ -62,7 +62,7 @@ world_file:
   description: "Path to the Gazebo world file (no default)."
 
 podman_image:
-  default: "d68da9dc2ade"
+  default: "3d2642905d0e"
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:

@@ -335,6 +335,7 @@ def generate_wps(args, problem_start=0, debug=False):
         waypoints = constrained_ma_search_policy.get_augmented_waypoints()
 
     wps = []
+    original_wps = []
     cols, rows = eval_env.get_map().shape
     normalizing_factor = np.array([cols, rows])
 
@@ -361,6 +362,7 @@ def generate_wps(args, problem_start=0, debug=False):
 
         waypoint_vec = np.array([agent_start, *waypoint_vec, agent_goal])
         denormed = [denormalize(wp, cols, rows) for wp in waypoint_vec]
+        original_wps.append(denormed.copy())
         denormed_adjusted = [adjust_positions(wp, eval_env) for wp in denormed]
         wps.append(denormed_adjusted)
 
@@ -388,4 +390,4 @@ def generate_wps(args, problem_start=0, debug=False):
         )
 
     # Returned wps are denormalized and shifted to match the origin of simulation/hardware environment
-    return wps
+    return wps, original_wps
