@@ -134,6 +134,7 @@ async def plan_new_mission():
     else:
         return JSONResponse(content={"sync_ready": False, "sync_name": ""})
 
+
 @app.get("/plan")
 def set_sync_with_recovery(recovery_agent, to_recover):
     """
@@ -142,12 +143,14 @@ def set_sync_with_recovery(recovery_agent, to_recover):
     global sync, sync_name
 
     if sync:
-        content = {"sync_ready": True, "sync_name": sync_name, "recovery": {"recovery_agent": recovery_agent, "to_recover": to_recover}}
+        content = {"sync_ready": True, "sync_name": sync_name,
+                   "recovery": {"recovery_agent": recovery_agent, "to_recover": to_recover}}
         sync = False
         sync_name = ""
         return JSONResponse(content=content)
     else:
         return JSONResponse(content={"sync_ready": False, "sync_name": "", "recovery": dict()})
+
 
 @app.get("/")
 async def most_recent_mission(drone_id: int):
@@ -226,10 +229,15 @@ async def receive_kirk_event(data: RequestData):
         return JSONResponse(content=response_data)
     elif "NOOP" in data.start_cmd:
         return JSONResponse(content=response_data)
-    elif "BROADCAST" in data.start_cmd:
+    # elif "BROADCAST" in data.start_cmd and id_to_name[data.kirk_id] in data.start_cmd:
+    elif "BROADCAST" in data.start_cmd and id_to_name[data.kirk_id] in data.start_cmd:
+        # NOTE: SYNTHETIC FAILURE, MUST CHANGE LATER!!!!!!!!!
+        if data.kirk_id == 1:
+            return JSONResponse(content=response_data)
         # for broadcast, keep track of every alive drone that acked
         logging.debug(f"Got broadcast from kirk {data.kirk_id}")
         acks_recieved.add(int(data.kirk_id))
+        send_kirk_ack(data.end_cmd)
         return JSONResponse(content=response_data)
     elif "RECOVERY" in data.start_cmd:
         logging.debug(f"Got recovery from kirk {data.kirk_id} acks: {acks_recieved}")
@@ -237,6 +245,7 @@ async def receive_kirk_event(data: RequestData):
         if len(acks_recieved) == 0:
             assert False, "No drones acked"
         if len(missing_drones) == 0:
+            logging.debug(f"no missing drones for {data.kirk_id}")
             # immediately ack that you completed the task
             send_kirk_ack(data.end_cmd)
 
@@ -260,9 +269,10 @@ async def receive_kirk_event(data: RequestData):
                 visited_set.add((data.end_cmd, data.kirk_id))
                 values[data.kirk_id].append(data.end_cmd)
 
-        else:
-            # immediately ack that you completed the task
-            send_kirk_ack(data.end_cmd)
+        # otherwise, we want to wait for the recovery drone to ack
+        # else:
+        #     # immediately ack that you completed the task
+        #     send_kirk_ack(data.end_cmd)
 
         return JSONResponse(content=response_data)
 
@@ -289,6 +299,7 @@ async def receive_kirk_event(data: RequestData):
 
 
 def main():
+    logging.debug("Starting middleware with recovery")
     uvicorn.run("middleware_with_recovery:app", host="0.0.0.0", port=5000, reload=True)
 
 

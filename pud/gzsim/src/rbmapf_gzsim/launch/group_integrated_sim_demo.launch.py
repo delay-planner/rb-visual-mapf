@@ -505,7 +505,7 @@ def spawn_processes(context, *args, **kwargs):
             ))
 
         kirk_server = ExecuteProcess(
-            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'CRITICAL'],
+            cmd=['python', kirk_server_path.as_posix(), '--num-drones', str(num_drones), '--logging-level', 'DEBUG'],
             name='kirk_server',
             output='screen',
         )

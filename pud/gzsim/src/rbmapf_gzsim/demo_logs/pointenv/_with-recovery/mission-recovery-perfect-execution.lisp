@@ -25,18 +25,25 @@
     (duration (simple :lower-bound 1 :upper-bound 5)
 )))
 
-(define-control-program broadcast-event ()
-    (declare (primitive)
-    (duration (simple :lower-bound 1 :upper-bound 20)
-    :contingent t
-)))
-
 (define-control-program optional-recovery-mission ()
     (declare (primitive)
     (duration (simple :lower-bound 1 :upper-bound 600
     )
     :contingent t
 )))
+
+(define-control-program broadcast-event-drone-one ()
+    (declare (primitive)
+    (duration (simple :lower-bound 1 :upper-bound 20)
+    :contingent t
+)))
+
+(define-control-program broadcast-event-drone-two ()
+    (declare (primitive)
+    (duration (simple :lower-bound 1 :upper-bound 20)
+    :contingent t
+)))
+
 
 (define-control-program main ()
     (with-temporal-constraint (simple-temporal :upper-bound 2400)
@@ -47,7 +54,10 @@
             (start-mission-one-drone-two)
         )
 
-        (broadcast-event)
+        (parallel (:slack t)
+            (broadcast-event-drone-one)
+            (broadcast-event-drone-two)
+        )
 
         (optional-recovery-mission)
         

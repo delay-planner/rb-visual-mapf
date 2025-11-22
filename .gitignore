@@ -21,6 +21,7 @@ pud/gzsim/install/
 pud/gzsim/test_data
 pud/gzsim/src/rbmapf_gzsim/test/
 pud/gzsim/src/rbmapf_gzsim/resource/
+models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

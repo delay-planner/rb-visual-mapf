@@ -36,7 +36,8 @@ config_file:
   description: "Path to control config YAML (no default)."
 
 problem_set_file:
-  default: "../plots/data/centerdot/easy_hardware_updated.npz"
+  # default: "../plots/data/centerdot/easy_hardware_updated.npz"
+  default: "../plots/data/centerdot/medium.npz"
   # default: "../envs/safe_pointenv/illustration_set/CenterDot_resize_3_linear_r3_4pts.txt"
   # default: "../plots/data/illustration_pbs.pkl"
   # default: "../plots/data/sc0_staging_20/easy.npz"
@@ -61,13 +62,13 @@ world_file:
   description: "Path to the Gazebo world file (no default)."
 
 podman_image:
-  default: "3d2642905d0e"
+  default: "d68da9dc2ade"
   description: "Podman image to use for the simulation (no default)."
 
 kirk_server_path:
   # default:   "./src/rbmapf_gzsim/rbmapf_gzsim/middleware.py"
-  default: "./src/rbmapf_gzsim/rbmapf_gzsim/middleware_with_delay.py"
-  # default: "./src/rbmapf_gzsim/rbmapf_gzsim/middleware_with_recovery.py"
+  # default: "./src/rbmapf_gzsim/rbmapf_gzsim/middleware_with_delay.py"
+  default: "./src/rbmapf_gzsim/rbmapf_gzsim/middleware_with_recovery.py"
   description: "Path to the Kirk server script"
 
 rmpl_file_path:
@@ -84,6 +85,6 @@ num_missions:
 
 execute_kirk_file_path:
   # default: "./src/rbmapf_gzsim/launch/execute_kirk.sh"
-  default: "./src/rbmapf_gzsim/demo_logs/pointenv/ack-within-bound/execute_kirk.sh"
-  # default: "./src/rbmapf_gzsim/demo_logs/pointenv/_with-recovery/execute_kirk.sh"
+  # default: "./src/rbmapf_gzsim/demo_logs/pointenv/ack-within-bound/execute_kirk.sh"
+  default: "./src/rbmapf_gzsim/demo_logs/pointenv/_with-recovery/execute_kirk.sh"
   description: "Path to the script for executing the Kirk server."
