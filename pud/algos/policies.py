@@ -5,14 +5,14 @@ import logging
 import numpy as np
 import networkx as nx
 from pathlib import Path
-from typing import Union
+from typing import List, Optional, Union
 
-from pud.mapf.bocbs import BiObjectiveCBSSolver
 from pud.mapf.cbs import CBSNode, CBSSolver
+from pud.mapf.bocbs import BiObjectiveCBSSolver
 from pud.mapf.lagrangian_cbs import LagrangianCBSSolver
+from pud.mapf.single_agent_planner import compute_sum_of_costs
 from pud.mapf.path_constrained_cbs import PathConstrainedCBSSolver
 from pud.mapf.risk_bounded_cbs import RiskBoundedCBSNode, RiskBoundedCBSSolver
-from pud.mapf.single_agent_planner import compute_sum_of_costs
 
 
 class BasePolicy:
@@ -111,6 +111,8 @@ class SearchPolicy(BasePolicy):
         self.no_waypoint_hopping = no_waypoint_hopping
 
         self.planning_graph = planning_graph
+        self._last_cbs_plan_risk: Optional[float] = None
+        self._last_cbs_plan_time: Optional[float] = None
 
         if self.planning_graph is None:
             self.build_rb_graph(self.rb_vec)
@@ -166,10 +168,36 @@ class SearchPolicy(BasePolicy):
             path_planning_fails=0,
             graph_search_time=0.0,
             path_planning_attempts=0,
+            cbs_planning_time=0.0,
         )
+        self._last_cbs_plan_risk = None
+        self._last_cbs_plan_time = None
+
+    def get_last_cbs_plan_risk(self) -> Optional[float]:
+        return self._last_cbs_plan_risk
+
+    def get_last_cbs_plan_time(self) -> Optional[float]:
+        return self._last_cbs_plan_time
 
     def get_stats(self):
         return self.stats
+
+    def _update_last_cbs_plan_risk(
+        self, paths: List[List[int]], graph: nx.Graph, risk_attribute: str
+    ) -> None:
+        self._last_cbs_plan_risk = self._compute_cbs_plan_risk(paths, graph, risk_attribute)
+
+    def _compute_cbs_plan_risk(
+        self, paths: List[List[int]], graph: nx.Graph, risk_attribute: str
+    ) -> Optional[float]:
+        if graph is None or risk_attribute is None:
+            return None
+        if len(nx.get_edge_attributes(graph, risk_attribute)) == 0:
+            return None
+        try:
+            return compute_sum_of_costs(paths, graph, risk_attribute)
+        except (KeyError, ValueError):
+            return None
 
     def set_cleanup(
         self, cleanup
@@ -328,6 +356,7 @@ class SearchPolicy(BasePolicy):
         num_nodes = rb_vec.shape[0] - 1
         goal_ids = [num_nodes + 2]
         start_ids = [num_nodes + 1]
+        self._last_cbs_plan_risk = None
 
         if self.planning_graph is not None:
             graph = self.planning_graph
@@ -372,12 +401,20 @@ class SearchPolicy(BasePolicy):
             goals=goal_ids,
             config=self.cbs_config,
         )
+        self._last_cbs_plan_time = None
+        cbs_start_time = time.perf_counter()
         try:
             solution = cbs_solver.find_paths()
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError("CBS failed to find a solution. " + error_message)
+        finally:
+            cbs_end_time = time.perf_counter()
+            duration = cbs_end_time - cbs_start_time
+            self.stats["cbs_planning_time"] += duration
+            self._last_cbs_plan_time = duration
+            logging.info("CBS planning time: {:.6f}s".format(duration))
 
         if "use_multi_objective" in self.cbs_config.keys():
             assert type(solution) is tuple and len(solution) == 3
@@ -394,6 +431,8 @@ class SearchPolicy(BasePolicy):
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             paths = solution.paths
             solution_cost = solution.cost
+
+        self._update_last_cbs_plan_risk(paths, graph, "cost")
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution_cost))
@@ -615,7 +654,7 @@ class ConstrainedSearchPolicy(SearchPolicy):
         For closed loop replanning at each step. Uses the precomputed distances
         `rb_distances` b/w states in `rb_vec`
         """
-        obs_to_rb_cost, _ = self.get_pairwise_cost_to_rb(state)
+        obs_to_rb_cost, _, _ = self.get_pairwise_cost_to_rb(state)
         obs_to_rb_dist, rb_to_goal_dist, _ = self.get_pairwise_dist_to_rb(state)
         # (B x A), (A x B)
 
@@ -804,12 +843,20 @@ class VisualSearchPolicy(SearchPolicy):
             goals=goal_ids,
             config=self.cbs_config,
         )
+        self._last_cbs_plan_time = None
+        cbs_start_time = time.perf_counter()
         try:
             solution = cbs_solver.find_paths()
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError("CBS failed to find a solution. " + error_message)
+        finally:
+            cbs_end_time = time.perf_counter()
+            duration = cbs_end_time - cbs_start_time
+            self.stats["cbs_planning_time"] += duration
+            self._last_cbs_plan_time = duration
+            logging.info("CBS planning time: {:.6f}s".format(duration))
 
         if "use_multi_objective" in self.cbs_config.keys():
             assert type(solution) is tuple and len(solution) == 3
@@ -826,6 +873,8 @@ class VisualSearchPolicy(SearchPolicy):
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             paths = solution.paths
             solution_cost = solution.cost
+
+        self._update_last_cbs_plan_risk(paths, graph, "cost")
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution_cost))  # type: ignore
@@ -1154,8 +1203,9 @@ class MultiAgentSearchPolicy(SearchPolicy):
             goals=goal_ids,
             config=self.cbs_config,
         )
+        self._last_cbs_plan_time = None
+        cbs_start_time = time.perf_counter()
         try:
-            start_time = time.time()
             solution = cbs_solver.find_paths()
 
             # TODO: Temporary code here for now. Remove after collection step is done!
@@ -1188,12 +1238,16 @@ class MultiAgentSearchPolicy(SearchPolicy):
                         ).tolist()
                     ub_data.append(ub_cost)
                     np.save(self.cbs_config["ub_save_path"], ub_data)
-
-            print("Time to find paths: ", time.time() - start_time)
         except Exception as e:
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError("CBS failed to find a solution. " + error_message)
+        finally:
+            cbs_end_time = time.perf_counter()
+            duration = cbs_end_time - cbs_start_time
+            self.stats["cbs_planning_time"] += duration
+            self._last_cbs_plan_time = duration
+            logging.info("CBS planning time: {:.6f}s".format(duration))
 
         if "use_multi_objective" in self.cbs_config.keys():
             assert type(solution) is tuple and len(solution) == 3
@@ -1210,6 +1264,8 @@ class MultiAgentSearchPolicy(SearchPolicy):
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             paths = solution.paths
             solution_cost = solution.cost
+
+        self._update_last_cbs_plan_risk(paths, graph, "cost")
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution_cost))
@@ -1646,6 +1702,8 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             goals=goal_ids,
             config=self.cbs_config,
         )
+        self._last_cbs_plan_time = None
+        cbs_start_time = time.perf_counter()
         try:
             solution = cbs_solver.find_paths()
 
@@ -1684,6 +1742,12 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             # Get the error message from the exception
             error_message = e.args[0]
             raise RuntimeError("CBS failed to find a solution. " + error_message)
+        finally:
+            cbs_end_time = time.perf_counter()
+            duration = cbs_end_time - cbs_start_time
+            self.stats["cbs_planning_time"] += duration
+            self._last_cbs_plan_time = duration
+            logging.info("CBS planning time: {:.6f}s".format(duration))
 
         if "use_multi_objective" in self.cbs_config.keys():
             assert type(solution) is tuple and len(solution) == 3
@@ -1700,6 +1764,8 @@ class VisualMultiAgentSearchPolicy(MultiAgentSearchPolicy):
             assert type(solution) is CBSNode or type(solution) is RiskBoundedCBSNode
             paths = solution.paths
             solution_cost = solution.cost
+
+        self._update_last_cbs_plan_risk(paths, graph, "cost")
 
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             print("Cost of solution: {}".format(solution_cost))  # type: ignore

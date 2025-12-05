@@ -351,11 +351,14 @@ def argument_parser():
             "constrained_risk_search",
             "constrained_reward_search",
             "unconstrained_reward_search",
-            "risk_bounded_uniform_search",
-            "risk_bounded_utility_search",
+            "surplus_driven_uniform_search",
+            "surplus_driven_utility_search",
             "full_constrained_risk_search",
             "full_constrained_reward_search",
-            "risk_bounded_inverse_utility_search",
+            "tatonnement_driven_uniform_search",
+            "tatonnement_driven_utility_search",
+            "surplus_driven_inverse_utility_search",
+            "tatonnement_driven_inverse_utility_search",
         ],
         default="unconstrained",
     )
@@ -1205,6 +1208,7 @@ def risk_bounded_search_policy(
     basedir,
     save=False,
     allocater="uniform",
+    strategy="surplus_deficit",
 ):
     assert allocater in ["uniform", "utility", "inverse_utility"]
 
@@ -1251,7 +1255,7 @@ def risk_bounded_search_policy(
         "edge_attributes": ["step", "cost"],
         "max_distance": eval_env.max_goal_dist,
         "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
-        "risk_reallocation_strategy": "price_clearing",
+        "risk_reallocation_strategy": strategy,
         "tree_save_frequency": 1,
         "logdir": "pud/mapf/unit_tests/logs/rbcbs",
     }
@@ -1504,7 +1508,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
 
 def main():
-    save = False
+    save = True
     args = argument_parser()
     if args.visual:
         config, eval_env, agent, trained_cost_limit = habitat_setup(args)
@@ -1513,9 +1517,9 @@ def main():
 
     basedir = Path("pud/plots/data")
     if not args.visual:
-        basedir = basedir / config.env.walls.lower()
+        basedir = basedir / (config.env.walls.lower() + "_icaps")
     else:
-        basedir = basedir / config.env.simulator_settings.scene.lower()
+        basedir = basedir / (config.env.simulator_settings.scene.lower() + "_icaps")
 
     if not basedir.exists():
         basedir.mkdir(parents=True)
@@ -1600,11 +1604,11 @@ def main():
             risk_budgeted_search_policy(
                 agent, eval_env, problem_setup, args, config, basedir, save=save
             )
-        elif args.method_type == "risk_bounded_uniform_search":
+        elif args.method_type == "surplus_driven_uniform_search":
             risk_bounded_search_policy(
                 agent, eval_env, problem_setup, args, config, basedir, save=save
             )
-        elif args.method_type == "risk_bounded_utility_search":
+        elif args.method_type == "surplus_driven_utility_search":
             risk_bounded_search_policy(
                 agent,
                 eval_env,
@@ -1615,7 +1619,7 @@ def main():
                 save=save,
                 allocater="utility",
             )
-        elif args.method_type == "risk_bounded_inverse_utility_search":
+        elif args.method_type == "surplus_driven_inverse_utility_search":
             risk_bounded_search_policy(
                 agent,
                 eval_env,
@@ -1626,6 +1630,41 @@ def main():
                 save=save,
                 allocater="inverse_utility",
             )
+        elif args.method_type == "tatonnement_driven_uniform_search":
+            risk_bounded_search_policy(
+                agent,
+                eval_env,
+                problem_setup,
+                args,
+                config,
+                basedir,
+                save=save,
+                strategy="price_clearing",
+            )
+        elif args.method_type == "tatonnement_driven_utility_search":
+            risk_bounded_search_policy(
+                agent,
+                eval_env,
+                problem_setup,
+                args,
+                config,
+                basedir,
+                save=save,
+                allocater="utility",
+                strategy="price_clearing",
+            )
+        elif args.method_type == "tatonnement_driven_inverse_utility_search":
+            risk_bounded_search_policy(
+                agent,
+                eval_env,
+                problem_setup,
+                args,
+                config,
+                basedir,
+                save=save,
+                allocater="inverse_utility",
+                strategy="price_clearing",
+            )
         elif args.method_type == "collect_bounds_data":
             collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir)
         else:
@@ -1633,7 +1672,7 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     main()
     # try:
     #     logging.basicConfig(level=logging.INFO)

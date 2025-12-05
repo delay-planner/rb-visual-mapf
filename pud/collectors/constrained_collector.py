@@ -198,6 +198,20 @@ class ConstrainedCollector(Collector):
         return rb_vec
 
     @classmethod
+    def _get_policy_cbs_plan_cost(cls, policy):
+        getter = getattr(policy, "get_last_cbs_plan_risk", None)
+        if callable(getter):
+            return getter()
+        return None
+
+    @classmethod
+    def _get_policy_cbs_plan_time(cls, policy):
+        getter = getattr(policy, "get_last_cbs_plan_time", None)
+        if callable(getter):
+            return getter()
+        return None
+
+    @classmethod
     def sample_initial_unconstrained_visual_states(cls, eval_env, num_states):
         rb_vec = []
         for _ in range(num_states):
@@ -363,6 +377,8 @@ class ConstrainedCollector(Collector):
             "max_step_cost": 0.0,
             "first_step_cost": start_cost_value,
             "cumulative_costs": start_cost_value,
+            "cbs_plan_cost": None,
+            "cbs_plan_time": None,
         }
 
         while True:
@@ -370,6 +386,14 @@ class ConstrainedCollector(Collector):
 
             # NOTE: state['goal'] may be modified
             action = policy.select_action(state)
+            if ep_record["cbs_plan_cost"] is None:
+                plan_cost = cls._get_policy_cbs_plan_cost(policy)
+                if plan_cost is not None:
+                    ep_record["cbs_plan_cost"] = plan_cost
+            if ep_record["cbs_plan_time"] is None:
+                plan_time = cls._get_policy_cbs_plan_time(policy)
+                if plan_time is not None:
+                    ep_record["cbs_plan_time"] = plan_time
 
             ep_waypoint_list.append(state["goal"])
 
@@ -426,12 +450,22 @@ class ConstrainedCollector(Collector):
             "max_step_cost": 0.0,
             "first_step_cost": start_cost_value,
             "cumulative_costs": start_cost_value,
+            "cbs_plan_cost": None,
+            "cbs_plan_time": None,
         }
         while True:
             ep_observation = (state["grid"]["observation"], state["observation"])
             ep_observation_list.append(ep_observation)
 
             action = policy.select_action(state)  # NOTE: state['goal'] may be modified
+            if ep_record["cbs_plan_cost"] is None:
+                plan_cost = cls._get_policy_cbs_plan_cost(policy)
+                if plan_cost is not None:
+                    ep_record["cbs_plan_cost"] = plan_cost
+            if ep_record["cbs_plan_time"] is None:
+                plan_time = cls._get_policy_cbs_plan_time(policy)
+                if plan_time is not None:
+                    ep_record["cbs_plan_time"] = plan_time
 
             ep_waypoint = (state["grid"]["goal"], state["goal"])
             ep_waypoint_list.append(ep_waypoint)
@@ -517,6 +551,8 @@ class ConstrainedCollector(Collector):
                     "max_step_cost": 0.0,
                     "first_step_cost": 0.0,
                     "cumulative_costs": 0.0,
+                    "cbs_plan_cost": None,
+                    "cbs_plan_time": None,
                 }
             )
 
@@ -595,6 +631,16 @@ class ConstrainedCollector(Collector):
             # NOTE: state's agent_observations, agent_waypoints and goal are updated
             if isinstance(policy, BasePolicy):
                 actions, agent_goals = policy.select_action(state)
+            plan_cost = cls._get_policy_cbs_plan_cost(policy)
+            if plan_cost is not None:
+                for record in augmented_ep_record_list:
+                    if record.get("cbs_plan_cost") is None:
+                        record["cbs_plan_cost"] = plan_cost
+            plan_time = cls._get_policy_cbs_plan_time(policy)
+            if plan_time is not None:
+                for record in augmented_ep_record_list:
+                    if record.get("cbs_plan_time") is None:
+                        record["cbs_plan_time"] = plan_time
 
             wait_agents = []
             for agent_id in range(num_agents):
@@ -743,6 +789,8 @@ class ConstrainedCollector(Collector):
                     "max_step_cost": 0.0,
                     "first_step_cost": 0.0,
                     "cumulative_costs": 0.0,
+                    "cbs_plan_cost": None,
+                    "cbs_plan_time": None,
                 }
             )
 
@@ -825,6 +873,16 @@ class ConstrainedCollector(Collector):
             # NOTE: state's agent_observations, agent_waypoints and goal are updated
             if isinstance(policy, BasePolicy):
                 actions, agent_goals = policy.select_action(state)
+            plan_cost = cls._get_policy_cbs_plan_cost(policy)
+            if plan_cost is not None:
+                for record in augmented_ep_record_list:
+                    if record.get("cbs_plan_cost") is None:
+                        record["cbs_plan_cost"] = plan_cost
+            plan_time = cls._get_policy_cbs_plan_time(policy)
+            if plan_time is not None:
+                for record in augmented_ep_record_list:
+                    if record.get("cbs_plan_time") is None:
+                        record["cbs_plan_time"] = plan_time
 
             wait_agents = []
             for agent_id in range(num_agents):
