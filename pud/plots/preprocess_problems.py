@@ -20,7 +20,7 @@ from collect_safe_trajectory_records import (
     UNCONSTRAINED_PDIST_INDEX,
 )
 
-MAX_TIMELIMIT = 120
+MAX_TIMELIMIT = 600
 
 
 def argument_parser():
@@ -78,19 +78,23 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
     pdist = problem_setup[UNCONSTRAINED_PDIST_INDEX].copy()
     pcost = agent.get_pairwise_cost(rb_vec, aggregate=None)  # type: ignore
 
-    cbs_config = {
+    base_cbs_config = {
         "seed": None,
         "use_experience": True,
         "use_cardinality": True,
         "collision_radius": 0.0,
         "risk_attribute": "cost",
         "split_strategy": "disjoint",
-        "edge_attributes": ["step"],
         "max_distance": eval_env.max_goal_dist,
-        "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT),
-        "tree_save_frequency": 1,
+        "max_time": min(TIMELIMIT * args.num_agents, MAX_TIMELIMIT * 2),
+        "tree_save_frequency": 1000,
         "logdir": "pud/mapf/unit_tests/logs/cbs",
     }
+    if args.num_agents >= 20:
+        base_cbs_config["max_time"] = 600
+        base_cbs_config["enable_intersection"] = False
+
+    cbs_config = {**base_cbs_config, "edge_attributes": ["step"]}
 
     problems = problem_setup[PROBLEM_INDEX].copy()
     eval_env.set_pbs(pb_list=problems.copy())  # type: ignore
@@ -114,8 +118,18 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
     if len(valid_pbs) > 0:
         idx = len(valid_pbs) - 1
         logging.info(f"Starting from problem index {idx + 1}")
+
+    stats = {
+        "attempted": 0,
+        "dup_start": 0,
+        "dup_goal": 0,
+        "not_connected": 0,
+        "cbs_fail": 0,
+    }
+
     with tqdm(total=args.num_samples - len(valid_pbs)) as pbar:
         while len(valid_pbs) < args.num_samples:
+            stats["attempted"] += 1
             idx += 1
             skip_idx = False
 
@@ -129,10 +143,22 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
             tuple_starts = [tuple(start) for start in starts]
             if len(set(tuple_starts)) != args.num_agents:
                 logging.debug(f"Duplicate starts for problem {idx}")
+                stats["dup_start"] += 1
+                pbar.set_postfix(
+                    tried=stats["attempted"],
+                    cbs_fail=stats["cbs_fail"],
+                    conn_fail=stats["not_connected"],
+                )
                 continue
             tuple_goals = [tuple(goal) for goal in goals]
             if len(set(tuple_goals)) != args.num_agents:
                 logging.debug(f"Duplicate goals for problem {idx}")
+                stats["dup_goal"] += 1
+                pbar.set_postfix(
+                    tried=stats["attempted"],
+                    cbs_fail=stats["cbs_fail"],
+                    conn_fail=stats["not_connected"],
+                )
                 continue
 
             normalized_goals = [eval_env.normalize_obs(goal) for goal in goals]
@@ -212,18 +238,28 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
                     logging.debug(
                         f"Failed to connect start or goal to the replay buffer for problem {idx}"
                     )
+                    stats["not_connected"] += 1
                     skip_idx = True
                     break
 
                 num_nodes += 2
 
             if skip_idx:
+                pbar.set_postfix(
+                    tried=stats["attempted"],
+                    cbs_fail=stats["cbs_fail"],
+                    conn_fail=stats["not_connected"],
+                )
                 continue
 
-            # Ensure that vanilla CBS can find a solution for the problem
+            # Ensure that vanilla CBS can find a solution for the step-based (UB) objective
 
-            augmented_wps = np.concatenate([rb_vec, normalized_starts, normalized_goals], axis=0)
-            extended_pdist = unconstrained_agent.get_pairwise_dist(augmented_wps, aggregate=None)
+            augmented_wps = np.concatenate(
+                [rb_vec, normalized_starts, normalized_goals], axis=0
+            )
+            extended_pdist = unconstrained_agent.get_pairwise_dist(
+                augmented_wps, aggregate=None
+            )
 
             cbs_solver = CBSSolver(
                 graph=pb_graph,
@@ -234,10 +270,18 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
             )
 
             try:
-                logging.debug(f"Finding path for problem {idx}")
+                logging.debug("Finding path for problem %d", idx)
                 cbs_solver.find_paths()
             except Exception as e:
-                logging.debug(f"Failed to find path for problem {idx} because {e}")
+                logging.debug(
+                    f"Failed to find path for problem {idx} because {e}"
+                )
+                stats["cbs_fail"] += 1
+                pbar.set_postfix(
+                    tried=stats["attempted"],
+                    cbs_fail=stats["cbs_fail"],
+                    conn_fail=stats["not_connected"],
+                )
                 continue
 
             valid_pb = {
@@ -249,6 +293,17 @@ def try_problems(agent, eval_env, problem_setup, args, config, basedir):
             valid_pbs.append(valid_pb)
             np.save(save_path, valid_pbs)
             pbar.update(1)
+
+            if stats["attempted"] % 50 == 0:
+                logging.info(
+                    "Tried %d | valid %d | dup_start %d | dup_goal %d | conn_fail %d | cbs_fail %d",
+                    stats["attempted"],
+                    len(valid_pbs),
+                    stats["dup_start"],
+                    stats["dup_goal"],
+                    stats["not_connected"],
+                    stats["cbs_fail"],
+                )
 
     np.save(save_path, valid_pbs)
 
@@ -263,7 +318,7 @@ if __name__ == "__main__":
 
     basedir = Path("pud/plots/data")
     if not args.visual:
-        basedir = basedir / config.env.walls.lower()
+        basedir = basedir / (config.env.walls.lower() + "_icaps")
     else:
         basedir = basedir / config.env.simulator_settings.scene.lower()
 

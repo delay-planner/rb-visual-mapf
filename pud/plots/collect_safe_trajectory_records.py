@@ -563,6 +563,7 @@ def unconstrained_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         MultiAgentSearchPolicy if not habitat else VisualMultiAgentSearchPolicy
@@ -696,6 +697,7 @@ def constrained_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
@@ -842,6 +844,7 @@ def lagrangian_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
     search_policy = search_policy_cls(
@@ -958,6 +961,7 @@ def biobjective_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
@@ -1090,6 +1094,7 @@ def risk_budgeted_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
@@ -1262,6 +1267,7 @@ def risk_bounded_search_policy(
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy
@@ -1418,6 +1424,7 @@ def collect_bounds_data(agent, eval_env, problem_setup, args, config, basedir):
 
     if args.num_agents >= 20:
         cbs_config["max_time"] = 600
+        cbs_config["enable_intersection"] = True
 
     search_policy_cls = (
         ConstrainedMultiAgentSearchPolicy if not habitat else VisualConstrainedMultiAgentSearchPolicy

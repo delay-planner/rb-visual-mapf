@@ -91,6 +91,7 @@ class CBSSolver(object):
         self.use_cardinality = config["use_cardinality"]
         self.edge_attributes = config["edge_attributes"]
         self.collision_radius = config["collision_radius"]
+        self.enable_intersection = config.get("enable_intersection", True)
 
         self.risk_attribute = config["risk_attribute"]
         assert (
@@ -188,9 +189,14 @@ class CBSSolver(object):
                 elif (constraint["location"][0] == successor_path_location[0]
                       or constraint["location"][1] == successor_path_location[1]):
                     violating_agents.add((agent, "vertex"))
-                elif intersection_check(constraint["location"][0], constraint["location"][1],
-                                        previous_location, current_location,
-                                        self.pdist, agent_radius=self.collision_radius):
+                elif self.enable_intersection and intersection_check(
+                    constraint["location"][0],
+                    constraint["location"][1],
+                    previous_location,
+                    current_location,
+                    self.pdist,
+                    agent_radius=self.collision_radius,
+                ):
                     violating_agents.add((agent, "intersection"))
 
         logging.debug("Violating agents are {}".format(violating_agents))
@@ -289,7 +295,10 @@ class CBSSolver(object):
 
         root.cost = self.compute_sum_of_costs(root.paths)
         root.collisions = detect_collisions(
-            root.paths, self.pdist, self.collision_radius
+            root.paths,
+            self.pdist,
+            collision_radius=self.collision_radius,
+            enable_intersection=self.enable_intersection,
         )
         self.push_node(root)
 
@@ -456,7 +465,10 @@ class CBSSolver(object):
 
                     if not skip:
                         successor.collisions = detect_collisions(
-                            successor.paths, self.pdist, self.collision_radius
+                            successor.paths,
+                            self.pdist,
+                            collision_radius=self.collision_radius,
+                            enable_intersection=self.enable_intersection,
                         )
                         if len(successor.collisions) > len(current_node.collisions):
                             continue

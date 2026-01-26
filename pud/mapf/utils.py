@@ -38,7 +38,12 @@ def intersection_check(p0, p1, q0, q1, pdist, agent_radius=0.1):
 
 
 def location_collision(
-    path1: List[int], path2: List[int], timestep: int, pdist: NDArray, agent_radius: float = 0.0
+    path1: List[int],
+    path2: List[int],
+    timestep: int,
+    pdist: NDArray,
+    agent_radius: float = 0.0,
+    enable_intersection: bool = True,
 ):
 
     position1 = get_location(path1, timestep)
@@ -51,7 +56,7 @@ def location_collision(
         next_position2 = get_location(path2, timestep + 1)
         if position1 == next_position2 and position2 == next_position1:
             return [position1, next_position1], timestep + 1, "edge"
-        if (
+        if enable_intersection and (
             intersection_check(
                 position1, next_position1,
                 position2, next_position2,
@@ -75,6 +80,7 @@ def radius_collision(
     graph_waypoints: NDArray,
     pdist: NDArray,
     radius: float = 0.1,
+    enable_intersection: bool = True,
 ):
     if (
         np.linalg.norm(
@@ -95,7 +101,7 @@ def radius_collision(
         ):
             return [path1[timestep], path1[timestep + 1]], timestep + 1, "edge"
 
-        if (
+        if enable_intersection and (
             intersection_check(
                 position1, next_position1,
                 position2, next_position2,
@@ -128,7 +134,11 @@ def radius_collision(
 
 
 def detect_collision(
-    pathA: List[int], pathB: List[int], pdist: NDArray, collision_radius=0.1
+    pathA: List[int],
+    pathB: List[int],
+    pdist: NDArray,
+    collision_radius: float = 0.1,
+    enable_intersection: bool = True,
 ):
 
     path1 = pathA.copy()
@@ -150,7 +160,14 @@ def detect_collision(
         #         path1, path2, timestep, graph_waypoints, pdist, collision_radius
         #     )
         # else:
-        collided = location_collision(path1, path2, timestep, pdist, agent_radius=collision_radius)
+        collided = location_collision(
+            path1,
+            path2,
+            timestep,
+            pdist,
+            agent_radius=collision_radius,
+            enable_intersection=enable_intersection,
+        )
 
         if collided is not None:
             return collided
@@ -159,13 +176,20 @@ def detect_collision(
 
 
 def detect_collisions(
-    paths: List[List[int]], pdist: NDArray, collision_radius=0.1
+    paths: List[List[int]],
+    pdist: NDArray,
+    collision_radius: float = 0.1,
+    enable_intersection: bool = True,
 ) -> List[Dict]:
     agg_collisions = []
     for i in range(len(paths)):
         for j in range(i + 1, len(paths)):
             collisions = detect_collision(
-                paths[i], paths[j], pdist, collision_radius
+                paths[i],
+                paths[j],
+                pdist,
+                collision_radius=collision_radius,
+                enable_intersection=enable_intersection,
             )
             if collisions is not None:
                 agg_collisions.append(
