@@ -124,3 +124,16 @@ The precomputed problem-set artifacts used by ROS/GZSim live under `pud/plots/da
 
 ### Visual Navigation
 <img src="pud/plots/figures/paper/safe_multi_agent_habitatenv_comparison.svg" alt="Visualized 2D Navigation results">
+
+## Citation
+If you use our work or codebase in your research, please cite our paper.
+```bibtex
+@inproceedings{parimi2026rbvisualmapf,
+  author    = {Viraj Parimi and Brian C. Williams},
+  title     = {Risk-Bounded Multi-Agent Visual Navigation via Iterative Risk Allocation},
+  booktitle = {Proceedings of the 36th International Conference on Automated Planning and Scheduling (ICAPS 2026)},
+  year      = {2026},
+  address   = {Dublin, Ireland},
+  note      = {To appear}
+}
+```
